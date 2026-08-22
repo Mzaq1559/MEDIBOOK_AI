@@ -1,1 +1,1 @@
-# MEDIBOOK_AI
+# MEDIBOOK_AI (Hackathon Project)
