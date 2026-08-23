@@ -127,7 +127,7 @@ export const DoctorDashboard: React.FC = () => {
   const [notesText, setNotesText] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const doctorName = currentUser?.role === 'Doctor' ? currentUser.name : 'Dr. Ahmed Khan, MD';
+  const doctorName = currentUser?.userType === 'doctor' ? currentUser.name : 'Dr. Ahmed Khan, MD';
   const doctorSpecialty = currentUser?.specialization || 'Senior Cardiologist & Vascular Specialist';
 
   // Format today's date nicely

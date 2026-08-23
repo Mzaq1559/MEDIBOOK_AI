@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Card, Button, Input, ErrorBanner } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
+import { parseApiError } from '../utils/authErrors';
+import { getDashboardPath } from '../utils/authRouting';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -32,7 +34,7 @@ export const Login: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -42,30 +44,21 @@ export const Login: React.FC = () => {
 
     setIsLoading(true);
 
-    // Simulate authentication check
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const user = await login(email.trim(), password);
 
-      if (email.trim().toLowerCase() === 'test@fail.com') {
-        setErrorMessage('Invalid credentials or account suspended. Please check your email and password.');
+      const from = (location.state as { from?: { pathname?: string } })?.from?.pathname;
+      if (from && from !== '/login') {
+        navigate(from, { replace: true });
       } else {
-        const isDoctor = email.toLowerCase().includes('doctor') || email.toLowerCase().includes('dr.');
-        const role = isDoctor ? 'Doctor' : 'Patient';
-
-        // Set authenticated user in AuthContext
-        login(email.trim(), role);
-
-        // Redirect to intended page or appropriate dashboard
-        const from = (location.state as { from?: { pathname?: string } })?.from?.pathname;
-        if (from) {
-          navigate(from, { replace: true });
-        } else if (isDoctor) {
-          navigate('/doctor-dashboard', { replace: true });
-        } else {
-          navigate('/dashboard', { replace: true });
-        }
+        navigate(getDashboardPath(user.userType), { replace: true });
       }
-    }, 1000);
+    } catch (error) {
+      const { message } = parseApiError(error);
+      setErrorMessage(message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -76,7 +69,6 @@ export const Login: React.FC = () => {
           shadow="md"
           className="p-7 sm:p-10 bg-white border border-surfaceContainerHigh"
         >
-          {/* Brand Header */}
           <div className="text-center mb-8">
             <Link
               to="/"
@@ -104,7 +96,6 @@ export const Login: React.FC = () => {
             </p>
           </div>
 
-          {/* Error Banner if authentication fails */}
           {errorMessage && (
             <div className="mb-6 animate-fadeIn">
               <ErrorBanner
@@ -115,9 +106,7 @@ export const Login: React.FC = () => {
             </div>
           )}
 
-          {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-            {/* Email Field */}
             <Input
               label="Email Address"
               type="email"
@@ -140,7 +129,6 @@ export const Login: React.FC = () => {
               }
             />
 
-            {/* Password Field with Show/Hide Toggle */}
             <div className="space-y-1">
               <Input
                 label="Password"
@@ -206,7 +194,6 @@ export const Login: React.FC = () => {
               </div>
             </div>
 
-            {/* Primary Submit Button */}
             <div className="pt-2">
               <Button
                 type="submit"
@@ -220,25 +207,6 @@ export const Login: React.FC = () => {
             </div>
           </form>
 
-          {/* Test Hint */}
-          <div className="mt-6 p-3 bg-surfaceContainer rounded-xl border border-surfaceContainerHigh text-center space-y-1">
-            <p className="text-[11px] text-textSecondary">
-              <span className="font-semibold text-textPrimary">Patient Demo:</span> Any email/password (e.g.{' '}
-              <code className="text-primary bg-white px-1.5 py-0.5 rounded font-mono text-[10px]">
-                sarah@example.com
-              </code>
-              )
-            </p>
-            <p className="text-[11px] text-textSecondary">
-              <span className="font-semibold text-textPrimary">Doctor Demo:</span> Use{' '}
-              <code className="text-primary bg-white px-1.5 py-0.5 rounded font-mono text-[10px]">
-                dr.ahmed@example.com
-              </code>{' '}
-              to log in as Doctor.
-            </p>
-          </div>
-
-          {/* Footer Link to Register */}
           <div className="mt-8 pt-6 border-t border-surfaceContainerHigh text-center">
             <p className="text-sm text-textSecondary">
               Don't have an account?{' '}
