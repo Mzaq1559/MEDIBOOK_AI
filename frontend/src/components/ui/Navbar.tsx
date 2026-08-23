@@ -48,7 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const logoDestination = user
     ? user.role === 'Doctor'
       ? '/doctor-dashboard'
-      : user.role === 'Admin'
+      : user.role === 'Administrator'
       ? '/admin'
       : '/dashboard'
     : '/';
