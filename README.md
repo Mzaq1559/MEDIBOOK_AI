@@ -677,7 +677,7 @@ Built in 6 days by a 4-person team for the Alibaba Cloud AI Hackathon Pakistan 2
 |------|------|--------|---------------|
 | Muhammad Zulqarnain Abdullah | Project Lead | [@Mzaq1559](https://github.com/Mzaq1559) | Architecture, Docker, seeding, chat integration, repo coordination |
 | Insider | Backend Developer | — | FastAPI backend core, database models, appointment engine, tests |
-| BSCS2455 | Frontend Developer | [@BSCS2455](https://github.com/BSCS2455) | React UI, design system, page layouts |
+| Aleeza Imran | Frontend Developer | [@BSCS2455](https://github.com/BSCS2455) | React UI, design system, page layouts |
 | Ayesha Sajjad | AI & Integrations | [@AyeshaSajjad0786](https://github.com/AyeshaSajjad0786) | AI microservice, Groq NLU, symptom triage, booking conversation flow |
 
 ---
