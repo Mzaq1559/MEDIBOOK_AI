@@ -69,7 +69,7 @@ def list_appointments(
     doctor_id: Optional[uuid.UUID] = Query(None, description="Filter by doctor UUID"),
     patient_id: Optional[uuid.UUID] = Query(None, description="Filter by patient UUID"),
     clinic_id: Optional[uuid.UUID] = Query(None, description="Filter by clinic UUID"),
-    status: Optional[str] = Query(None, description="Filter by status"),
+    status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     date_from: Optional[str] = Query(None, description="Start date/time (ISO format)"),
     date_to: Optional[str] = Query(None, description="End date/time (ISO format)"),
     date: Optional[str] = Query(None, description="Filter by date ('today' or YYYY-MM-DD)"),
@@ -100,8 +100,8 @@ def list_appointments(
         query = query.filter(Appointment.patient_id == patient_id)
     if clinic_id:
         query = query.filter(Appointment.clinic_id == clinic_id)
-    if status:
-        query = query.filter(Appointment.status == status)
+    if status_filter:
+        query = query.filter(Appointment.status == status_filter)
 
     if date:
         try:

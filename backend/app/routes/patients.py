@@ -149,7 +149,7 @@ def update_patient_profile(
 )
 def get_patient_appointments(
     patient_id: uuid.UUID,
-    status: Optional[str] = Query(None, description="Filter by status (scheduled, completed, cancelled, no_show)"),
+    status_filter: Optional[str] = Query(None, alias="status", description="Filter by status (scheduled, completed, cancelled, no_show)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
@@ -169,8 +169,8 @@ def get_patient_appointments(
         )
 
     query = db.query(Appointment).filter(Appointment.patient_id == patient.id)
-    if status:
-        query = query.filter(Appointment.status == status)
+    if status_filter:
+        query = query.filter(Appointment.status == status_filter)
 
     total = query.count()
     appts = query.order_by(Appointment.appointment_time.desc()).offset(offset).limit(limit).all()
