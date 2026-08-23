@@ -40,7 +40,7 @@
 | Role | Contributor | GitHub |
 |------|-------------|--------|
 | Project Lead | Muhammad Zulqarnain Abdullah | [@Mzaq1559](https://github.com/Mzaq1559) |
-| Backend | Insider | — |
+| Backend | Sidra Pervaiz | [@SidraPervaiz1122](https://github.com/SidraPervaiz1122) |
 | Frontend | Aleeza Imran | [@BSCS2455](https://github.com/BSCS2455) |
 | AI Service | Ayesha Sajjad | [@AyeshaSajjad0786](https://github.com/AyeshaSajjad0786) |
 
