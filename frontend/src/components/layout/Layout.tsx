@@ -2,21 +2,34 @@ import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Navbar } from '../ui/Navbar';
 import { useAuth } from '../../context/AuthContext';
+import { getNavItemsForUserType, getUserTypeLabel } from '../../utils/authRouting';
 
 export const Layout: React.FC = () => {
-  const { currentUser, logout, isLoggedIn } = useAuth();
+  const { currentUser, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
   };
+
+  const navbarUser = currentUser
+    ? {
+        name: currentUser.name,
+        email: currentUser.email,
+        avatarUrl: currentUser.avatarUrl,
+        role: getUserTypeLabel(currentUser.userType),
+      }
+    : null;
+
+  const navItems = currentUser ? getNavItemsForUserType(currentUser.userType) : undefined;
 
   return (
     <div className="min-h-screen bg-background text-textPrimary flex flex-col font-sans selection:bg-primaryContainer/20 selection:text-primary">
       <Navbar
-        user={isLoggedIn ? currentUser : null}
-        onLogout={isLoggedIn ? handleLogout : undefined}
+        user={isAuthenticated ? navbarUser : null}
+        navItems={navItems}
+        onLogout={isAuthenticated ? handleLogout : undefined}
       />
       <main className="flex-1 w-full">
         <Outlet />
