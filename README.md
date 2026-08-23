@@ -41,7 +41,7 @@
 |------|-------------|--------|
 | Project Lead | Muhammad Zulqarnain Abdullah | [@Mzaq1559](https://github.com/Mzaq1559) |
 | Backend | Insider | — |
-| Frontend | BSCS2455 (PIEAS) | — |
+| Frontend | Aleeza Imran | [@BSCS2455](https://github.com/BSCS2455) |
 | AI Service | Ayesha Sajjad | [@AyeshaSajjad0786](https://github.com/AyeshaSajjad0786) |
 
 ---
