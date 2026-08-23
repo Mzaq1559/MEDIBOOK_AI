@@ -7,6 +7,7 @@ export interface AppointmentListParams {
   status?: string
   date_from?: string
   date_to?: string
+  date?: string
   limit?: number
   offset?: number
 }
@@ -21,8 +22,25 @@ export async function getAppointment(appointmentId: string) {
   return data
 }
 
+export async function getPatientAppointments(patientId: string, status?: string) {
+  const { data } = await apiClient.get(`/patients/${patientId}/appointments`, {
+    params: status ? { status } : undefined,
+  })
+  return data
+}
+
 export async function createAppointment(payload: Record<string, unknown>) {
   const { data } = await apiClient.post('/appointments', payload)
+  return data
+}
+
+export async function completeAppointment(appointmentId: string, payload?: { notes?: string }) {
+  const { data } = await apiClient.patch(`/appointments/${appointmentId}/complete`, payload || {})
+  return data
+}
+
+export async function markNoShow(appointmentId: string) {
+  const { data } = await apiClient.patch(`/appointments/${appointmentId}/no-show`)
   return data
 }
 
@@ -33,8 +51,8 @@ export async function cancelAppointment(appointmentId: string) {
 
 export async function submitAppointmentFeedback(
   appointmentId: string,
-  payload: { rating: number; feedback?: string }
+  payload: { feedback_score: number; feedback_text?: string }
 ) {
-  const { data } = await apiClient.post(`/appointments/${appointmentId}/feedback`, payload)
+  const { data } = await apiClient.patch(`/appointments/${appointmentId}/feedback`, payload)
   return data
 }

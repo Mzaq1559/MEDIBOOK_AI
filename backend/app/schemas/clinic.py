@@ -16,6 +16,20 @@ class ClinicCreate(BaseModel):
     is_active: bool = True
 
 
+class ClinicUpdate(BaseModel):
+    name: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    working_hours_start: Optional[str] = None
+    working_hours_end: Optional[str] = None
+    working_days: Optional[str] = None
+    timezone: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+
 class ClinicListItem(BaseModel):
     clinic_id: UUID
     name: str
