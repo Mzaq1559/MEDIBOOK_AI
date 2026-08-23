@@ -13,6 +13,7 @@ import { Chat } from './pages/Chat';
 import { Appointments } from './pages/Appointments';
 import { DoctorDashboard } from './pages/DoctorDashboard';
 import { Admin } from './pages/Admin';
+import { PlaceholderPage } from './pages/PlaceholderPage';
 import { getDashboardPath } from './utils/authRouting';
 
 const RootIndexRoute: React.FC = () => {
@@ -63,7 +64,7 @@ export function App() {
             <Route
               path="/dashboard"
               element={
-                <ProtectedRoute allowedRoles={['patient', 'receptionist', 'admin']}>
+                <ProtectedRoute allowedRoles={['patient']}>
                   <Dashboard />
                 </ProtectedRoute>
               }
@@ -87,7 +88,7 @@ export function App() {
             <Route
               path="/doctor-dashboard"
               element={
-                <ProtectedRoute allowedRoles={['doctor', 'admin']}>
+                <ProtectedRoute allowedRoles={['doctor']}>
                   <DoctorDashboard />
                 </ProtectedRoute>
               }
@@ -97,6 +98,18 @@ export function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/receptionist-dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['receptionist']}>
+                  <PlaceholderPage
+                    title="Receptionist Dashboard"
+                    description="Manage patient check-ins, desk scheduling, and appointment queues."
+                    path="/receptionist-dashboard"
+                  />
                 </ProtectedRoute>
               }
             />

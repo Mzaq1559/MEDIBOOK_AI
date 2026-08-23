@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getDashboardPath } from '../../utils/authRouting';
+import { getDashboardPath, isPathAllowedForUserType } from '../../utils/authRouting';
 
 export const GuestRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading, currentUser } = useAuth();
@@ -20,9 +20,14 @@ export const GuestRoute: React.FC<{ children: React.ReactNode }> = ({ children }
 
   if (isAuthenticated && currentUser) {
     const from = (location.state as { from?: { pathname?: string } })?.from?.pathname;
-    const destination = from && from !== '/login' && from !== '/register'
-      ? from
-      : getDashboardPath(currentUser.userType);
+    const destination =
+      from &&
+      from !== '/login' &&
+      from !== '/register' &&
+      from !== '/' &&
+      isPathAllowedForUserType(from, currentUser.userType)
+        ? from
+        : getDashboardPath(currentUser.userType);
     return <Navigate to={destination} replace />;
   }
 
