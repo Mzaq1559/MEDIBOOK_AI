@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Card, Button, Input, ErrorBanner } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { parseApiError } from '../utils/authErrors';
-import { getDashboardPath } from '../utils/authRouting';
+import { getDashboardPath, isPathAllowedForUserType } from '../utils/authRouting';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -48,11 +48,16 @@ export const Login: React.FC = () => {
       const user = await login(email.trim(), password);
 
       const from = (location.state as { from?: { pathname?: string } })?.from?.pathname;
-      if (from && from !== '/login') {
-        navigate(from, { replace: true });
-      } else {
-        navigate(getDashboardPath(user.userType), { replace: true });
-      }
+      const targetPath =
+        from &&
+        from !== '/login' &&
+        from !== '/register' &&
+        from !== '/' &&
+        isPathAllowedForUserType(from, user.userType)
+          ? from
+          : getDashboardPath(user.userType);
+
+      navigate(targetPath, { replace: true });
     } catch (error) {
       const { message } = parseApiError(error);
       setErrorMessage(message);
