@@ -18,7 +18,8 @@ from app.schemas.doctor import (
     DoctorListResponse, DoctorListItem,
     DoctorDetailResponse, AvailabilityResponse,
     DoctorScheduleUpdate, DoctorScheduleResponse,
-    DoctorHolidayRequest, DoctorHolidayResponse
+    DoctorHolidayRequest, DoctorHolidayResponse,
+    DoctorCreate, DoctorUpdate
 )
 
 router = APIRouter(prefix="/api/doctors", tags=["Doctors"])
@@ -346,3 +347,159 @@ def mark_doctor_holiday(
         reason=payload.reason,
         message="Doctor marked as unavailable for this date"
     )
+
+
+@router.post(
+    "",
+    response_model=DoctorListItem,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create Doctor Profile",
+    description="Create a new doctor record and associated user account (Admin required)."
+)
+def create_doctor(
+    request: Request,
+    payload: DoctorCreate,
+    current_user: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db)
+):
+    from app.core.security import get_password_hash
+    # Check if user with this email already exists
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user:
+        user = User(
+            id=uuid.uuid4(),
+            email=payload.email,
+            name=payload.name,
+            password_hash=get_password_hash("Doctor123!"),
+            user_type="doctor",
+            is_active=True,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(user)
+        db.flush()
+
+    doctor = Doctor(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        clinic_id=payload.clinic_id,
+        specialization=payload.specialization,
+        consultation_fee=payload.consultation_fee,
+        max_patients_per_day=payload.max_patients_per_day,
+        bio=payload.bio,
+        is_available=payload.is_available,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db.add(doctor)
+
+    log_audit_event(
+        db=db,
+        action="created_doctor",
+        table_name="doctors",
+        record_id=doctor.id,
+        user_id=current_user.id,
+        new_values={"name": payload.name, "specialization": payload.specialization},
+        ip_address=request.client.host if request.client else None
+    )
+
+    db.commit()
+    db.refresh(doctor)
+    db.refresh(user)
+
+    clinic = doctor.clinic
+
+    return DoctorListItem(
+        doctor_id=doctor.id,
+        user_id=user.id,
+        name=user.name,
+        email=user.email,
+        phone=user.phone,
+        specialization=doctor.specialization,
+        consultation_fee=float(doctor.consultation_fee),
+        bio=doctor.bio,
+        is_available=doctor.is_available,
+        rating=float(doctor.rating or 0.0),
+        total_appointments=doctor.total_appointments or 0,
+        languages_spoken=doctor.languages_spoken or "[]",
+        clinic_id=doctor.clinic_id,
+        clinic_name=clinic.name if clinic else "Clinic"
+    )
+
+
+@router.put(
+    "/{doctor_id}",
+    response_model=DoctorListItem,
+    status_code=status.HTTP_200_OK,
+    summary="Update Doctor Profile",
+    description="Update a doctor's profile, fee, specialization, clinic, or availability."
+)
+def update_doctor(
+    request: Request,
+    doctor_id: uuid.UUID,
+    payload: DoctorUpdate,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: Session = Depends(get_db)
+):
+    doc = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Doctor not found", "error_code": "NOT_FOUND"}
+        )
+
+    if current_user.user_type == "doctor" and doc.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Cannot update another doctor's profile", "error_code": "FORBIDDEN"}
+        )
+
+    if payload.name and doc.user:
+        doc.user.name = payload.name
+    if payload.email and doc.user:
+        doc.user.email = payload.email
+    if payload.specialization is not None:
+        doc.specialization = payload.specialization
+    if payload.clinic_id is not None:
+        doc.clinic_id = payload.clinic_id
+    if payload.consultation_fee is not None:
+        doc.consultation_fee = payload.consultation_fee
+    if payload.max_patients_per_day is not None:
+        doc.max_patients_per_day = payload.max_patients_per_day
+    if payload.bio is not None:
+        doc.bio = payload.bio
+    if payload.is_available is not None:
+        doc.is_available = payload.is_available
+
+    doc.updated_at = datetime.utcnow()
+
+    log_audit_event(
+        db=db,
+        action="updated_doctor",
+        table_name="doctors",
+        record_id=doc.id,
+        user_id=current_user.id,
+        new_values={"specialization": doc.specialization, "is_available": doc.is_available},
+        ip_address=request.client.host if request.client else None
+    )
+
+    db.commit()
+    db.refresh(doc)
+
+    return DoctorListItem(
+        doctor_id=doc.id,
+        user_id=doc.user_id,
+        name=doc.user.name if doc.user else "Doctor",
+        email=doc.user.email if doc.user else "",
+        phone=doc.user.phone if doc.user else None,
+        specialization=doc.specialization,
+        consultation_fee=float(doc.consultation_fee),
+        bio=doc.bio,
+        is_available=doc.is_available,
+        rating=float(doc.rating or 0.0),
+        total_appointments=doc.total_appointments or 0,
+        languages_spoken=doc.languages_spoken or "[]",
+        clinic_id=doc.clinic_id,
+        clinic_name=doc.clinic.name if doc.clinic else "Clinic"
+    )
+
