@@ -83,12 +83,12 @@ MediBook AI is a **24/7 AI virtual receptionist** backed by a full clinic manage
 
 | Area | Status |
 |------|--------|
-| **Patient / Doctor / Admin dashboards** | ⚠️ Polished UI with **mock data** — not yet wired to backend APIs |
+| **Patient / Doctor / Admin dashboards** | ✅ Fully wired to backend APIs; real data loading verified |
 | **WhatsApp / SMS reminders** | ⚠️ Reminder timestamps computed and returned on booking; **no outbound messages sent** |
 | **Google Calendar sync** | ⚠️ DB column + env vars exist; **no Calendar API integration** |
 | **n8n workflow automation** | ❌ Not in codebase |
 | **Prescriptions** | ⚠️ Database model exists; **no REST endpoints** |
-| **Backend stub chat** (`POST /api/chat/message` on port 8000) | ⚠️ Basic keyword bot — **frontend uses the AI microservice instead** |
+| **Backend stub chat** | ❌ Not used; frontend correctly routes to AI microservice for real Groq LLM |
 
 ---
 
