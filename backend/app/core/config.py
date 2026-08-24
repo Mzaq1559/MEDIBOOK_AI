@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # Calendar Integration
     GOOGLE_CALENDAR_API_KEY: str = ""
     GOOGLE_CALENDAR_SECRET: str = ""
+    GOOGLE_CALENDAR_SERVICE_ACCOUNT_PATH: str = "./credentials.json"
 
     # Notifications
     SMTP_SERVER: str = "smtp.gmail.com"
