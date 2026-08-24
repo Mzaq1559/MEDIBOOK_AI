@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     ]
 
     # Database
-    DATABASE_URL: str = "postgresql://medibook:password123@localhost:5432/medibook_db"
+    DATABASE_URL: str = "postgresql://medibook:password123@db:5432/medibook_db"
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
 
