@@ -27,32 +27,68 @@ SPECIALTY_CARDIOLOGY = "Cardiologist"
 SPECIALTY_DERMATOLOGY = "Dermatologist"
 SPECIALTY_ENT = "ENT Specialist"
 
-_EMERGENCY_PHRASES = [
-    r"cannot breathe",
-    r"can't breathe",
-    r"cant breathe",
-    r"can not breathe",
-    r"unable to breathe",
-    r"not breathing",
-    r"stopped breathing",
-    r"unconscious",
-    r"unresponsive",
-    r"heavy bleeding",
-    r"bleeding heavily",
-    r"severe bleeding",
-    r"stroke",
-    r"seizure",
-    r"heart attack",
-    r"suicid",
-    r"overdose",
-]
-
-_SEVERE_CHEST = re.compile(r"severe\s+chest\s+pain", re.IGNORECASE)
-_CHEST_PAIN = re.compile(r"chest\s+pain", re.IGNORECASE)
-_BREATHING_CRISIS = re.compile(
-    r"(can'?t|cannot|unable to|can not)\s+breathe|not breathing|stopped breathing",
+# Chest discomfort keywords (English & Roman Urdu)
+_CHEST_PATTERN = re.compile(
+    r"\b(chest\s+pain|chest\s+tightness|chest\s+pressure|chest\s+heaviness|chest\s+burning|"
+    r"pain\s+in\s+(?:my\s+)?chest|pain\s+in\s+(?:the\s+)?chest|"
+    r"seene\s+me(?:in)?\s+dard|seene\s+me(?:in)?\s+jalan|seene\s+me(?:in)?\s+dabao|"
+    r"dil\s+me(?:in)?\s+dard|chhati\s+me(?:in)?\s+dard)\b",
     re.IGNORECASE,
 )
+
+# Breathing distress / difficulty keywords (English & Roman Urdu)
+_BREATHING_PATTERN = re.compile(
+    r"\b(shortness\s+of\s+breath|short\s+of\s+breath|can'?t\s+breathe|cannot\s+breathe|"
+    r"unable\s+to\s+breathe|can\s+not\s+breathe|not\s+breathing|stopped\s+breathing|"
+    r"trouble\s+breathing|difficulty\s+breathing|hard\s+to\s+breathe|gasping(?:\s+for\s+air)?|"
+    r"suffocating|choking|breathless(?:ness)?|"
+    r"saans\s+lene\s+me(?:in)?\s+(?:dushwari|takleef|mushkil)|saans\s+nahi\s+aa\s+rahi|"
+    r"saans\s+phool\s+rahi|saans\s+ruk|saans\s+band|dam\s+ghut)\b",
+    re.IGNORECASE,
+)
+
+# Standalone high-urgency emergency phrases (English & Roman Urdu)
+_STANDALONE_EMERGENCY_PATTERNS = [
+    # 1. Severe / acute chest pain on its own
+    r"(?:severe|intense|crushing|heavy|sharp|unbearable|excruciating)\s+(?:chest\s+pain|pain\s+in\s+(?:my\s+|the\s+)?chest)",
+    r"(?:chest\s+pain|pain\s+in\s+(?:my\s+|the\s+)?chest)\s+(?:is\s+)?(?:severe|unbearable|intense|excruciating)",
+    r"seene\s+(?:me|mein)\s+(?:shadeed|bohot(?:\s+zyada)?|tez|sakht)\s+(?:dard|takleef|jalan|dabao)",
+    r"(?:shadeed|bohot(?:\s+zyada)?|tez|sakht)\s+seene\s+(?:me|mein)\s+(?:dard|takleef)",
+    r"dil\s+(?:me|mein)\s+(?:shadeed|bohot(?:\s+zyada)?|tez|sakht)\s+(?:dard|takleef)",
+    # 2. Critical breathing crisis on its own
+    r"(?:can'?t|cannot|unable\s+to|can\s+not)\s+breathe",
+    r"(?:not|stopped)\s+breathing",
+    r"gasping\s+for\s+air|suffocating|severe\s+shortness\s+of\s+breath|severe\s+difficulty\s+breathing",
+    r"saans\s+lene\s+me(?:in)?\s+dushwari",
+    r"saans\s+lene\s+me(?:in)?\s+takleef",
+    r"saans\s+nahi\s+aa\s+rahi",
+    r"saans\s+ruk\s+gayi",
+    r"saans\s+band",
+    r"dam\s+ghut(?:\s+raha)?",
+    # 3. Unconsciousness / Fainting / Altered mental state
+    r"\bunconscious\b|\bunresponsive\b|\bpassed\s+out\b|\bfainted\b|\bfainting\b|\bblacked\s+out\b|\bcollapse[d]?\b|\bloss\s+of\s+consciousness\b|\bnot\s+waking\s+up\b",
+    r"\bbehosh\b|hosh\s+nahi|hosh\s+kho\s+(?:diya|baitha)|gash\s+aa\s+gaya",
+    # 4. Severe / Hemorrhagic Bleeding
+    r"(?:heavy|severe|profuse|excessive|non-stop|uncontrolled)\s+bleeding",
+    r"bleeding\s+(?:heavily|severely|profusely|non-stop)",
+    r"gushing\s+blood|coughing\s+(?:up\s+)?blood|vomiting\s+blood",
+    r"bohot\s+(?:zyada\s+)?khoon|shadeed\s+khoon|khoon\s+ki\s+ulti|khoon\s+ruk\s+nahi|khoon\s+beh\s+raha",
+    # 5. Stroke / Neurological Emergency
+    r"\bstroke\b|\bmini-stroke\b|\btransient\s+ischemic\b|\bface\s+droop(?:ing)?\b|\bparalysis\b|\bslurred\s+speech\b|\bsudden\s+numbness\b",
+    r"\bfalij\b|\blakwa\b|\bjism\s+sunn\b|\bchehra\s+terha\b",
+    # 6. Seizure / Convulsion
+    r"\bseizure[s]?\b|\bconvulsion[s]?\b|\bfits\b|\bepileptic\s+fit\b",
+    r"\bmirgi\s+ka\s+daura\b|\bdaure\s+par\s+rahe\b|\bdaura\s+para\b|\bjhatke\s+lag\s+rahe\b",
+    # 7. Heart Attack / Cardiac Arrest
+    r"\bheart\s+attack\b|\bcardiac\s+arrest\b|\bheart\s+stopped\b",
+    r"\bdil\s+ka\s+daura\b|\bdil\s+ka\s+attack\b|\bdil\s+band\b",
+    # 8. Poisoning / Overdose
+    r"\boverdose\b|\bpoisoning\b|\bswallowed\s+poison\b|\btoxic\s+ingestion\b",
+    r"\bzehar\b|\bzehrila\b|\bpoison\b",
+    # 9. Suicide / Self-Harm
+    r"\bsuicid|\bkill\s+myself\b|\bend\s+my\s+life\b|\bhurt\s+myself\b",
+    r"\bkhudkushi\b|\bjaan\s+dena\b",
+]
 
 _CARDIO = [
     r"chest pain",
@@ -64,6 +100,14 @@ _CARDIO = [
     r"high blood pressure",
     r"hypertension",
     r"angina",
+    # Roman Urdu
+    r"seene\s+me(?:in)?\s+dard",
+    r"dil\s+ki\s+dharkan",
+    r"dil\s+me(?:in)?\s+dard",
+    r"dil\s+ka\s+masla",
+    r"dil\s+ki\s+takleef",
+    r"blood\s+pressure",
+    r"bp\s+high",
 ]
 _DERM = [
     r"\brash\b",
@@ -75,6 +119,17 @@ _DERM = [
     r"hives",
     r"mole",
     r"hair loss",
+    # Roman Urdu
+    r"kharish",
+    r"khujli",
+    r"daane",
+    r"dane",
+    r"jild",
+    r"jild\s+ka\s+masla",
+    r"chehre\s+par\s+daane",
+    r"skin\s+allergy",
+    r"surkhi",
+    r"chhaley",
 ]
 _ENT = [
     r"\bear\b",
@@ -88,6 +143,17 @@ _ENT = [
     r"tonsil",
     r"\bcough\b",
     r"\bcold\b",
+    # Roman Urdu
+    r"gala\s+kharab",
+    r"galay\s+me(?:in)?\s+dard",
+    r"gala\s+paka",
+    r"khansi",
+    r"kaan\s+me(?:in)?\s+dard",
+    r"naak\s+band",
+    r"zukam",
+    r"nazla",
+    r"nazla\s+zukam",
+    r"bukhar\s+aur\s+gala",
 ]
 
 
@@ -99,22 +165,19 @@ class TriageResult:
     reason: str
 
 
-def _has_any(text: str, patterns: list[str]) -> bool:
-    return any(re.search(p, text, flags=re.IGNORECASE) for p in patterns)
-
-
 def is_emergency(text: str) -> bool:
     if not text or not text.strip():
         return False
     blob = text.lower()
 
-    if _SEVERE_CHEST.search(blob) and _BREATHING_CRISIS.search(blob):
+    # Rule 1: Chest discomfort + ANY breathing distress triggers emergency (regardless of "severe")
+    if _CHEST_PATTERN.search(blob) and _BREATHING_PATTERN.search(blob):
         return True
-    if _CHEST_PAIN.search(blob) and _BREATHING_CRISIS.search(blob) and "severe" in blob:
+
+    # Rule 2: Standalone acute emergency patterns
+    if any(re.search(p, blob, flags=re.IGNORECASE) for p in _STANDALONE_EMERGENCY_PATTERNS):
         return True
-    if _has_any(blob, _EMERGENCY_PHRASES):
-        # "heart attack" / "can't breathe" / unconscious etc. skip clinic booking
-        return True
+
     return False
 
 
@@ -153,6 +216,14 @@ def urgency_for(text: str, specialty: Optional[str], emergency: bool) -> str:
         "shortness of breath",
         "bleeding",
         "high fever",
+        "shadeed",
+        "bohot zyada",
+        "sakht",
+        "khoon",
+        "tez bukhar",
+        "seene mein dard",
+        "seene me dard",
+        "saans me takleef",
     ]
     if any(m in blob for m in high_markers):
         return "high"

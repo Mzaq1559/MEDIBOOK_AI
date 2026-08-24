@@ -21,3 +21,5 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+# Google Calendar credentials
+google-calendar-credentials.json
