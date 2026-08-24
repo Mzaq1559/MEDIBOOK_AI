@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
@@ -20,13 +21,18 @@ from app.symptom_triage import (
     is_emergency,
     triage,
 )
+from integrations import google_calendar, n8n_webhook, reminders
 
 logger = logging.getLogger("medibook.ai.chatbot")
 
-KARACHI = ZoneInfo("Asia/Karachi")
+try:
+    KARACHI = ZoneInfo("Asia/Karachi")
+except Exception:
+    KARACHI = timezone(timedelta(hours=5))
 
 INTENTS = ("appointment", "symptom", "faq", "reschedule")
 
+SESSION_TTL_SECONDS = 2 * 60 * 60  # 2 hours
 _sessions: dict[str, dict[str, Any]] = {}
 
 LOGIN_REQUIRED_BOOK = (
@@ -44,15 +50,31 @@ MISSING_PATIENT_ID = (
 
 
 def utc_now_iso() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def today_karachi() -> str:
     return datetime.now(KARACHI).date().isoformat()
 
 
+def _cleanup_expired_sessions() -> None:
+    """Evict sessions that have not been updated within SESSION_TTL_SECONDS."""
+    now = time.time()
+    expired = [
+        conv_id
+        for conv_id, s in _sessions.items()
+        if now - float(s.get("last_accessed", 0)) > SESSION_TTL_SECONDS
+    ]
+    for conv_id in expired:
+        _sessions.pop(conv_id, None)
+
+
 def get_session(conversation_id: str) -> Optional[dict[str, Any]]:
-    return _sessions.get(conversation_id)
+    _cleanup_expired_sessions()
+    session = _sessions.get(conversation_id)
+    if session:
+        session["last_accessed"] = time.time()
+    return session
 
 
 def _trim_history(messages: list[MessageItem]) -> list[MessageItem]:
@@ -70,6 +92,7 @@ def _new_session(conversation_id: str, patient_id: Optional[str]) -> dict[str, A
         "messages": [],
         "created_at": now,
         "updated_at": now,
+        "last_accessed": time.time(),
         "status": "ongoing",
         "appointment_booked": None,
         "state": "idle",
@@ -95,10 +118,12 @@ def _append(session: dict[str, Any], role: str, text: str) -> None:
     )
     session["messages"] = _trim_history(session["messages"])
     session["updated_at"] = utc_now_iso()
+    session["last_accessed"] = time.time()
+
 
 
 NLU_SYSTEM = """You are NLU for MediBook AI, a clinic virtual receptionist in Pakistan.
-Classify the latest user message.
+Classify the latest user message in English or Roman Urdu / Urdu.
 
 Return JSON only:
 {
@@ -113,12 +138,12 @@ Return JSON only:
 }
 
 Rules:
-- intent appointment: user wants to book or continue booking.
-- intent symptom: user describes health symptoms/concerns.
-- intent faq: hours, fees, location, general clinic questions.
-- intent reschedule: change an existing appointment.
-- confirms true for yes/confirm/go ahead/book it.
-- declines true for no/cancel/stop.
+- intent appointment: user wants to book or continue booking (e.g. "I want an appointment", "doctor se milna hai", "appointment leni hai", "booking karni hai").
+- intent symptom: user describes health symptoms/concerns (e.g. "chest pain", "seene mein dard hai", "gala kharab hai", "kharish ho rahi hai").
+- intent faq: hours, fees, location, general clinic questions (e.g. "clinic hours", "timings kya hain", "fees kitni hai").
+- intent reschedule: change an existing appointment (e.g. "reschedule appointment", "waqt tabdeel karna hai", "time change karna hai").
+- confirms true for yes/confirm/go ahead/book it/haan/ji haan/theek hai/bilkul/kar do.
+- declines true for no/cancel/stop/nahi/na/mat karo/rehne do.
 - Extract doctor_name, date, symptoms, appointment_id when present.
 - Do not diagnose. Do not give medical advice.
 """
@@ -128,8 +153,18 @@ def _keyword_nlu(user_message: str, session: dict[str, Any]) -> Optional[dict[st
     """Cheap routing for obvious utterances so we do not call Groq unnecessarily."""
     blob = user_message.lower().strip()
     state = session.get("state")
-    confirm = bool(re.search(r"\b(yes|yeah|yep|y|confirm|book it|go ahead|please book)\b", blob))
-    decline = bool(re.search(r"^(no|nope|cancel|stop)\b", blob))
+    confirm = bool(
+        re.search(
+            r"\b(yes|yeah|yep|y|confirm|book it|go ahead|please book|haan|ji haan|theek hai|sahi hai|bilkul|kar do|kar dein)\b",
+            blob,
+        )
+    )
+    decline = bool(
+        re.search(
+            r"\b(no|nope|cancel|stop|never mind|dont|don't|nahi|na|mat karo|rehne do|chhor do)\b",
+            blob,
+        )
+    )
     if state in ("await_confirm", "reschedule_await_confirm") and (confirm or decline):
         return {
             "intent": "appointment" if state == "await_confirm" else "reschedule",
@@ -141,8 +176,46 @@ def _keyword_nlu(user_message: str, session: dict[str, Any]) -> Optional[dict[st
             "declines": decline,
             "faq_topic": None,
         }
+
+    # Reschedule intent keywords (English + Roman Urdu)
+    if any(
+        phrase in blob
+        for phrase in (
+            "reschedule",
+            "change time",
+            "change appointment",
+            "change date",
+            "waqt tabdeel",
+            "time badal",
+            "tareekh badal",
+            "tabdeel karna",
+        )
+    ):
+        return {
+            "intent": "reschedule",
+            "doctor_name": None,
+            "date": None,
+            "symptoms": None,
+            "appointment_id": None,
+            "confirms": False,
+            "declines": False,
+            "faq_topic": None,
+        }
+
+    # FAQ hours (English + Roman Urdu)
     if state in ("idle", "faq", "booked") and any(
-        w in blob for w in ("hour", "timing", "open", "close", "weekend")
+        w in blob
+        for w in (
+            "hour",
+            "timing",
+            "open",
+            "close",
+            "weekend",
+            "auqaat",
+            "kab khulta",
+            "khula hai",
+            "band hota",
+        )
     ):
         return {
             "intent": "faq",
@@ -154,8 +227,21 @@ def _keyword_nlu(user_message: str, session: dict[str, Any]) -> Optional[dict[st
             "declines": False,
             "faq_topic": "hours",
         }
+
+    # FAQ fees (English + Roman Urdu)
     if state in ("idle", "faq", "booked") and any(
-        w in blob for w in ("fee", "cost", "price", "charge", "consult")
+        w in blob
+        for w in (
+            "fee",
+            "cost",
+            "price",
+            "charge",
+            "consult",
+            "fees",
+            "kitne paise",
+            "kitna kharcha",
+            "charges",
+        )
     ):
         return {
             "intent": "faq",
@@ -167,6 +253,31 @@ def _keyword_nlu(user_message: str, session: dict[str, Any]) -> Optional[dict[st
             "declines": False,
             "faq_topic": "fees",
         }
+
+    # Booking intent keywords (English + Roman Urdu)
+    if state in ("idle", "faq", "booked") and any(
+        phrase in blob
+        for phrase in (
+            "doctor se milna",
+            "doctor ko dikhana",
+            "appointment leni",
+            "booking karni",
+            "checkup karwana",
+            "book appointment",
+            "want appointment",
+        )
+    ):
+        return {
+            "intent": "appointment",
+            "doctor_name": None,
+            "date": None,
+            "symptoms": None,
+            "appointment_id": None,
+            "confirms": False,
+            "declines": False,
+            "faq_topic": None,
+        }
+
     return None
 
 
@@ -185,19 +296,24 @@ def detect_intent_and_entities(
     history_blob = "\n".join(
         f"{m.role}: {m.message}" for m in history[-8:]
     )
-    parsed = groq_client.complete_json(
-        [
-            {"role": "system", "content": NLU_SYSTEM},
-            {
-                "role": "user",
-                "content": (
-                    f"language={language}\n"
-                    f"conversation:\n{history_blob}\n"
-                    f"latest_user_message: {user_message}"
-                ),
-            },
-        ]
-    )
+    try:
+        parsed = groq_client.complete_json(
+            [
+                {"role": "system", "content": NLU_SYSTEM},
+                {
+                    "role": "user",
+                    "content": (
+                        f"language={language}\n"
+                        f"conversation:\n{history_blob}\n"
+                        f"latest_user_message: {user_message}"
+                    ),
+                },
+            ]
+        )
+    except Exception as exc:
+        logger.warning("NLU LLM call failed, falling back safely: %s", exc)
+        parsed = {"intent": "appointment"}
+
     intent = str(parsed.get("intent") or "appointment").lower().strip()
     if intent not in INTENTS:
         intent = "appointment"
@@ -216,13 +332,25 @@ def detect_intent_and_entities(
 def _looks_like_confirm(text: str, nlu: dict[str, Any]) -> bool:
     if nlu.get("confirms"):
         return True
-    return bool(re.search(r"\b(yes|yeah|yep|confirm|book it|go ahead|please book)\b", text, re.I))
+    return bool(
+        re.search(
+            r"\b(yes|yeah|yep|confirm|book it|go ahead|please book|haan|ji haan|theek hai|sahi hai|bilkul|kar do|kar dein)\b",
+            text,
+            re.I,
+        )
+    )
 
 
 def _looks_like_decline(text: str, nlu: dict[str, Any]) -> bool:
     if nlu.get("declines"):
         return True
-    return bool(re.search(r"\b(no|nope|cancel|stop|never mind|dont|don't)\b", text, re.I))
+    return bool(
+        re.search(
+            r"\b(no|nope|cancel|stop|never mind|dont|don't|nahi|na|mat karo|rehne do|chhor do)\b",
+            text,
+            re.I,
+        )
+    )
 
 
 def _extract_appointment_id(text: str, nlu: dict[str, Any]) -> Optional[str]:
@@ -340,30 +468,61 @@ def _format_slots(doctors: list[dict[str, Any]]) -> tuple[str, list[OptionItem],
     return body, options, candidates
 
 
-def _match_doctor_and_slot(text: str, nlu: dict[str, Any], candidates: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+def _match_doctor_and_slot(
+    text: str,
+    nlu: dict[str, Any],
+    candidates: list[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
     if not candidates:
         return None
-    blob = text.lower()
+    blob = text.lower().strip()
     doctor_hint = (nlu.get("doctor_name") or "").lower()
+    doctor_id_hint = str(nlu.get("doctor_id") or nlu.get("option_id") or "").lower().strip()
 
     chosen = None
-    if doctor_hint:
+
+    # 1. Doctor ID / Option ID matching as FIRST check
+    if doctor_id_hint:
+        for c in candidates:
+            cid = str(c.get("doctor_id") or "").lower()
+            if cid and (doctor_id_hint == cid or doctor_id_hint == f"doc-{cid}" or cid in doctor_id_hint):
+                chosen = c
+                break
+
+    if chosen is None:
+        for i, c in enumerate(candidates, 1):
+            cid = str(c.get("doctor_id") or "").lower()
+            if cid and (cid in blob or f"doc-{cid}" in blob):
+                chosen = c
+                break
+            if f"doc-{i}" in blob:
+                chosen = c
+                break
+
+    # 2. Fall back to name-parsing only if no ID matched
+    if chosen is None and doctor_hint:
         for c in candidates:
             if doctor_hint in (c.get("name") or "").lower():
                 chosen = c
                 break
+
     if chosen is None:
+        clean_blob = blob.replace("dr.", "").strip()
         for c in candidates:
             name = (c.get("name") or "").lower()
-            last = name.replace("dr.", "").strip().split()
-            if name and name in blob:
+            clean_name = name.replace("dr.", "").strip()
+            if name in blob or (clean_blob and clean_blob in clean_name):
                 chosen = c
                 break
-            if last and last[-1] in blob:
+            name_parts = [p for p in clean_name.split() if len(p) >= 3]
+            if any(p in blob for p in name_parts):
                 chosen = c
                 break
+
     if chosen is None and len(candidates) == 1:
         chosen = candidates[0]
+
+
     if chosen is None:
         return None
 
@@ -601,10 +760,54 @@ def _confirm_booking(
     except backend_client.BackendError as exc:
         return _booking_error_message(exc), "waiting_for_confirmation", []
 
-    appt_id = created.get("appointment_id")
+    appt_id = created.get("appointment_id") or created.get("id")
     session["appointment_booked"] = str(appt_id) if appt_id else None
     session["status"] = "completed"
     session["state"] = "booked"
+
+    # Fail-safe Google Calendar event creation
+    cal_event_id = None
+    try:
+        cal_payload = {
+            "appointment_id": str(appt_id or ""),
+            "doctor_name": created.get("doctor_name") or doctor.get("name"),
+            "patient_name": created.get("patient_name") or "Patient",
+            "clinic_name": doctor.get("clinic_name") or "Prime Care Clinic",
+            "clinic_address": doctor.get("clinic_address") or "Ground Floor, ABC Plaza, Taxila",
+            "appointment_time": created.get("appointment_time") or timestamp,
+            "duration_minutes": 30,
+            "symptoms_reported": session.get("symptoms_text") or "",
+        }
+        cal_event_id = google_calendar.create_calendar_event(cal_payload)
+        if cal_event_id:
+            session["google_calendar_event_id"] = cal_event_id
+    except Exception as exc:
+        logger.warning("Google Calendar event creation failed (non-blocking): %s", exc)
+
+    # Fail-safe n8n webhook event & automated reminders dispatch
+    try:
+        n8n_payload = {
+            "appointment_id": str(appt_id or ""),
+            "patient_id": str(patient_id or ""),
+            "patient_name": created.get("patient_name") or "Patient",
+            "doctor_id": str(doctor.get("doctor_id") or ""),
+            "doctor_name": created.get("doctor_name") or doctor.get("name"),
+            "appointment_time": created.get("appointment_time") or timestamp,
+            "clinic_id": str(created.get("clinic_id") or ""),
+            "clinic_name": doctor.get("clinic_name") or "Prime Care Clinic",
+            "clinic_address": doctor.get("clinic_address") or "Ground Floor, ABC Plaza, Taxila",
+            "symptoms_reported": session.get("symptoms_text") or "",
+            "urgency_level": session.get("urgency_level") or "normal",
+            "reminder_time_1": created.get("reminder_time_1"),
+            "reminder_time_2": created.get("reminder_time_2"),
+            "google_calendar_event_id": cal_event_id,
+        }
+        n8n_webhook.dispatch_appointment_created(n8n_payload)
+        reminders.trigger_reminder(n8n_payload, reminder_type="24h")
+        reminders.trigger_reminder(n8n_payload, reminder_type="1h")
+    except Exception as exc:
+        logger.warning("n8n webhook / reminder dispatch failed (non-blocking): %s", exc)
+
     return _success_message(created, session), "appointment_booked", []
 
 
@@ -662,12 +865,43 @@ def _handle_reschedule(
                 if exc.status_code in (401, 403):
                     return LOGIN_REQUIRED_RESCHEDULE, "waiting_for_login", []
                 return _booking_error_message(exc), "waiting_for_new_time", []
+
             session["state"] = "idle"
             new_time = updated.get("appointment_time") or session.get("selected_slot_label")
+            new_timestamp = session.get("selected_timestamp") or updated.get("appointment_time")
+
+            # Fail-safe Google Calendar event update
+            cal_event_id = session.get("google_calendar_event_id") or updated.get("google_calendar_event_id")
+            if cal_event_id and new_timestamp:
+                try:
+                    google_calendar.update_calendar_event(cal_event_id, new_timestamp)
+                except Exception as exc:
+                    logger.warning("Google Calendar update failed (non-blocking): %s", exc)
+
+            # Fail-safe n8n webhook reschedule dispatch & reminder recalculations
+            try:
+                reminder_meta = reminders.calculate_reminder_times(new_timestamp) if new_timestamp else {}
+                doc = session.get("selected_doctor") or {}
+                reschedule_payload = {
+                    "appointment_id": str(session.get("reschedule_appointment_id") or ""),
+                    "patient_id": str(session.get("patient_id") or ""),
+                    "doctor_id": str(doc.get("doctor_id") or ""),
+                    "new_appointment_time": new_timestamp,
+                    "previous_appointment_time": session.get("previous_appointment_time"),
+                    "new_reminder_time_1": reminder_meta.get("reminder_time_1"),
+                    "new_reminder_time_2": reminder_meta.get("reminder_time_2"),
+                }
+                n8n_webhook.dispatch_appointment_rescheduled(reschedule_payload)
+            except Exception as exc:
+                logger.warning("n8n reschedule dispatch failed (non-blocking): %s", exc)
+
             return (
                 "Perfect! Your appointment has been rescheduled:\n\n"
                 f"New time: {new_time}\n\n"
-                "New reminders will be sent 24 hours before and 1 hour before.\n\n"
+                "📱 You'll receive:\n"
+                "• WhatsApp reminder 24 hours before\n"
+                "• WhatsApp reminder 1 hour before\n"
+                "• Updated calendar invite (check your email)\n\n"
                 "Confirmed!",
                 "reschedule_complete",
                 [],
@@ -705,8 +939,10 @@ def handle_message(
     language: str,
     authorization: Optional[str],
 ) -> dict[str, Any]:
+    _cleanup_expired_sessions()
     conv_id = conversation_id or f"conv-{uuid.uuid4().hex[:12]}"
     session = _sessions.get(conv_id) or _new_session(conv_id, patient_id)
+    session["last_accessed"] = time.time()
     if patient_id:
         session["patient_id"] = patient_id
 

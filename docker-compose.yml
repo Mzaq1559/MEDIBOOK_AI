@@ -1,5 +1,4 @@
 version: "3.8"
-
 services:
   db:
     image: postgres:15-alpine
@@ -43,5 +42,45 @@ services:
       db:
         condition: service_healthy
 
+  n8n:
+    image: n8nio/n8n
+    container_name: medibook_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://n8n:5678/
+      - GENERIC_TIMEZONE=Asia/Karachi
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: medibook_ai_service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - AI_SERVICE_PORT=8001
+      - AI_SERVICE_HOST=0.0.0.0
+      - BACKEND_API_URL=http://backend:8000/api
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=openai/gpt-oss-120b
+      - CONVERSATION_MAX_HISTORY=20
+      - N8N_WEBHOOK_URL=http://n8n:5678/webhook/medibook-reminder
+      - GOOGLE_CALENDAR_CREDENTIALS_PATH=/app/google-calendar-credentials.json
+      - GOOGLE_CALENDAR_ID=${GOOGLE_CALENDAR_ID}
+    volumes:
+      - ./ai-service/google-calendar-credentials.json:/app/google-calendar-credentials.json
+    depends_on:
+      - backend
+      - n8n
+
 volumes:
   pgdata:
+  n8n_data:
