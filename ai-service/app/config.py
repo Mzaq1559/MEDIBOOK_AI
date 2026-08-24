@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "openai/gpt-oss-120b"
 
+    GOOGLE_CALENDAR_CREDENTIALS_PATH: str = "google-calendar-credentials.json"
+    GOOGLE_CALENDAR_API_KEY: str = ""
+    GOOGLE_CALENDAR_SECRET: str = ""
+    GOOGLE_CALENDAR_ID: str = "primary"
+
+    N8N_URL: str = "http://localhost:1880"
+    N8N_WEBHOOK_URL: str = "http://localhost:1880/webhook"
+
     CONVERSATION_MAX_HISTORY: int = 20
 
     ALLOWED_ORIGINS: str = (
