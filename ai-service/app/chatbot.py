@@ -450,6 +450,8 @@ def _booking_error_message(exc: backend_client.BackendError) -> str:
     if code == "DOUBLE_BOOKING":
         return "You already have an appointment at that time. Would you like a different slot?"
     if code == "NOT_FOUND":
+        if exc.message and ("not found" in exc.message.lower() or "patient" in exc.message.lower() or "doctor" in exc.message.lower()):
+            return f"I could not complete the booking: {exc.message}."
         return "I could not find that doctor or patient record. Please log in as a patient and try again."
     if exc.status_code in (401, 403):
         return LOGIN_REQUIRED_BOOK
