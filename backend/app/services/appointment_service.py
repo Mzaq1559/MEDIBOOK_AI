@@ -201,25 +201,39 @@ def create_appointment(
     user_agent: Optional[str] = None
 ) -> AppointmentCreateResponse:
     """Create a new appointment with full transactional validation."""
-    patient = db.query(Patient).filter(Patient.id == payload.patient_id).first()
+    patient = None
+    if payload.patient_id:
+        patient = db.query(Patient).filter(
+            or_(Patient.id == payload.patient_id, Patient.user_id == payload.patient_id)
+        ).first()
+
+    if not patient and acting_user_id:
+        patient = db.query(Patient).filter(Patient.user_id == acting_user_id).first()
+
     if not patient:
+        target_id = payload.patient_id or acting_user_id
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Patient not found", "error_code": "NOT_FOUND"}
+            detail={"message": f"Patient record not found for patient_id/user_id '{target_id}'", "error_code": "NOT_FOUND"}
         )
 
-    doctor = db.query(Doctor).filter(Doctor.id == payload.doctor_id).first()
+    doctor = None
+    if payload.doctor_id:
+        doctor = db.query(Doctor).filter(
+            or_(Doctor.id == payload.doctor_id, Doctor.user_id == payload.doctor_id)
+        ).first()
+
     if not doctor:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Doctor not found", "error_code": "NOT_FOUND"}
+            detail={"message": f"Doctor record not found for doctor_id/user_id '{payload.doctor_id}'", "error_code": "NOT_FOUND"}
         )
 
     clinic = db.query(Clinic).filter(Clinic.id == doctor.clinic_id).first()
     if not clinic or not clinic.is_active:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Clinic not found or inactive", "error_code": "NOT_FOUND"}
+            detail={"message": f"Clinic not found or inactive for clinic_id '{doctor.clinic_id}'", "error_code": "NOT_FOUND"}
         )
 
     appt_dt = parse_and_validate_time(payload.appointment_time)

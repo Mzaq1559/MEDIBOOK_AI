@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     AI_SERVICE_PORT: int = 8001
     AI_SERVICE_HOST: str = "0.0.0.0"
 
-    DATABASE_URL: str = "postgresql://medibook:password123@localhost:5432/medibook_db"
-    BACKEND_API_URL: str = "http://localhost:8000/api"
+    DATABASE_URL: str = "postgresql://medibook:password123@db:5432/medibook_db"
+    BACKEND_API_URL: str = "http://backend:8000/api"
 
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "openai/gpt-oss-120b"
