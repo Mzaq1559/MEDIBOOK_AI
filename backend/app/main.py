@@ -1,3 +1,4 @@
+import asyncio
 import time
 import logging
 from datetime import datetime
@@ -13,6 +14,7 @@ from app.database import engine, Base
 from app.middleware.security_headers import SecurityHeadersAndTracingMiddleware
 from app.middleware.rate_limiter import limiter, rate_limit_exceeded_handler
 from app.middleware.error_handler import register_exception_handlers
+from app.scheduler import start_scheduler
 from app.routes.auth import router as auth_router
 from app.routes.doctors import router as doctors_router
 from app.routes.patients import router as patients_router
@@ -57,7 +59,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Error during database schema creation: {e}")
 
+    # Start background scheduler for email reminders and calendar sync
+    scheduler_task = asyncio.create_task(start_scheduler())
+
     yield
+
+    # Clean shutdown of background scheduler
+    scheduler_task.cancel()
+    try:
+        await scheduler_task
+    except asyncio.CancelledError:
+        pass
 
 
 # Initialize FastAPI Application
