@@ -8,6 +8,7 @@ env/
 venv/
 ENV/
 .env
+*.env
 .venv
 
 # Testing & Coverage

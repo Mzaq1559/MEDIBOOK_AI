@@ -1,0 +1,114 @@
+databases:
+  - name: medibook-db
+    databaseName: medibook_db
+    user: medibook
+    plan: free
+    region: oregon
+
+services:
+  # ─────────────────────────────────────────────
+  # Backend – FastAPI  (port 10000 via Render's PORT env)
+  # ─────────────────────────────────────────────
+  - type: web
+    name: medibook-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    region: oregon
+    plan: free
+    healthCheckPath: /docs
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: medibook-db
+          property: connectionString
+      - key: DATABASE_POOL_SIZE
+        value: "5"
+      - key: DATABASE_MAX_OVERFLOW
+        value: "10"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "1"
+      - key: GROQ_API_KEY
+        sync: false          # Set this in Render Dashboard → Environment
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: ENVIRONMENT
+        value: production
+      # These will be overridden in the dashboard once URLs are known
+      - key: API_URL
+        value: https://medibook-backend.onrender.com
+      - key: FRONTEND_URL
+        value: https://medibook-frontend.onrender.com
+      - key: ALLOWED_ORIGINS
+        value: https://medibook-frontend.onrender.com
+      - key: SMTP_SERVER
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false          # Set in Render Dashboard
+      - key: SMTP_PASSWORD
+        sync: false          # Set in Render Dashboard
+      - key: LOG_LEVEL
+        value: INFO
+
+  # ─────────────────────────────────────────────
+  # AI Service – FastAPI chat microservice
+  # ─────────────────────────────────────────────
+  - type: web
+    name: medibook-ai-service
+    runtime: docker
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    region: oregon
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: medibook-db
+          property: connectionString
+      - key: BACKEND_API_URL
+        value: https://medibook-backend.onrender.com/api
+      - key: GROQ_API_KEY
+        sync: false          # Set in Render Dashboard
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: AI_SERVICE_PORT
+        value: "10000"
+      - key: AI_SERVICE_HOST
+        value: "0.0.0.0"
+      - key: LOG_LEVEL
+        value: INFO
+
+  # ─────────────────────────────────────────────
+  # Frontend – React/Vite (production build via vite preview)
+  # ─────────────────────────────────────────────
+  - type: web
+    name: medibook-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile.render
+    dockerContext: ./frontend
+    region: oregon
+    plan: free
+    healthCheckPath: /
+    envVars:
+      # These are build-time args passed as Docker ARGs → Vite inlines them
+      - key: VITE_API_URL
+        value: https://medibook-backend.onrender.com/api
+      - key: VITE_CHAT_API_URL
+        value: https://medibook-ai-service.onrender.com/api/chat
+      - key: VITE_PROXY_BACKEND
+        value: https://medibook-backend.onrender.com
+      - key: VITE_PROXY_AI_SERVICE
+        value: https://medibook-ai-service.onrender.com
+      - key: VITE_APP_NAME
+        value: "MediBook AI"
+      - key: VITE_APP_VERSION
+        value: "1.0.0"
