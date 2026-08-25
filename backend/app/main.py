@@ -23,6 +23,7 @@ from app.routes.appointments import router as appointments_router
 from app.routes.analytics import router as analytics_router
 from app.routes.chat import router as chat_router
 from app.routes.users import router as users_router
+from app.routes.prescriptions import router as prescriptions_router
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -115,7 +116,7 @@ app.include_router(appointments_router)
 app.include_router(analytics_router)
 app.include_router(chat_router)
 app.include_router(users_router)
-
+app.include_router(prescriptions_router)
 
 @app.get("/health", tags=["Health"], summary="Service Health Check")
 def health_check():
