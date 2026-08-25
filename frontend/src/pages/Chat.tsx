@@ -1,19 +1,18 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Badge, LoadingSpinner } from '../components/ui';
-
-interface DoctorOption {
-  id: string;
-  name: string;
-  specialization: string;
-  rating: string;
-  reviewCount: number;
-  clinic: string;
-  address: string;
-  fee: string;
-  avatarBg: string;
-  slots: string[];
-}
+import { useAuth } from '../context/AuthContext';
+import {
+  sendChatMessage,
+  parseDoctorOptionsFromMessage,
+  parseBookingSummary,
+  parseConfirmedBooking,
+  formatChatTimestamp,
+  getChatErrorMessage,
+  isValidUuid,
+  type ChatOptionItem,
+  type ParsedDoctorOption,
+} from '../services/chat';
 
 interface ChatMessage {
   id: string;
@@ -21,57 +20,76 @@ interface ChatMessage {
   text?: string;
   timestamp: string;
   isEmergency?: boolean;
-  doctors?: DoctorOption[];
+  requiresLogin?: boolean;
+  doctors?: ParsedDoctorOption[];
+  optionItems?: ChatOptionItem[];
   bookingSummary?: {
-    doctor: DoctorOption;
+    doctor: ParsedDoctorOption;
     selectedSlot: string;
     isConfirmed?: boolean;
   };
 }
 
-const initialDoctorOptions: DoctorOption[] = [
-  {
-    id: 'doc-1',
-    name: 'Dr. Sarah Lin, MD',
-    specialization: 'Internal Medicine & General Physician',
-    rating: '4.9',
-    reviewCount: 142,
-    clinic: 'MediBook Central Care',
-    address: '120 Broadway Ave, Suite 400',
-    fee: '$95',
-    avatarBg: 'bg-primary/10 text-primary',
-    slots: ['Today, 3:30 PM', 'Tomorrow, 10:00 AM', 'Tomorrow, 2:15 PM'],
-  },
-  {
-    id: 'doc-2',
-    name: 'Dr. David Sterling, MD',
-    specialization: 'Pulmonology & Respiratory Specialist',
-    rating: '4.8',
-    reviewCount: 98,
-    clinic: 'Apex Respiratory & Health Clinic',
-    address: '88 Park Plaza, Suite 210',
-    fee: '$130',
-    avatarBg: 'bg-secondaryContainer/50 text-secondary',
-    slots: ['Tomorrow, 11:30 AM', 'Tomorrow, 4:00 PM', 'Friday, 9:00 AM'],
-  },
-];
+function mapApiResponseToBotMessage(
+  response: Awaited<ReturnType<typeof sendChatMessage>>
+): Omit<ChatMessage, 'id' | 'sender'> {
+  const isEmergency = response.next_action === 'emergency_redirect';
+  const requiresLogin = response.next_action === 'waiting_for_login';
+
+  let doctors: ParsedDoctorOption[] | undefined;
+  if (
+    response.next_action === 'waiting_for_doctor_selection' ||
+    response.next_action === 'waiting_for_new_time'
+  ) {
+    const parsed = parseDoctorOptionsFromMessage(response.bot_message, response.options);
+    doctors = parsed.length > 0 ? parsed : undefined;
+  }
+
+  let bookingSummary: ChatMessage['bookingSummary'];
+  if (response.next_action === 'waiting_for_confirmation') {
+    bookingSummary = parseBookingSummary(response.bot_message) ?? undefined;
+  } else if (response.next_action === 'appointment_booked') {
+    bookingSummary = parseConfirmedBooking(response.bot_message) ?? undefined;
+    if (bookingSummary) {
+      bookingSummary.isConfirmed = true;
+    }
+  }
+
+  return {
+    text: response.bot_message,
+    timestamp: formatChatTimestamp(response.timestamp),
+    isEmergency,
+    requiresLogin,
+    doctors,
+    optionItems: response.options.length > 0 ? response.options : undefined,
+    bookingSummary,
+  };
+}
 
 export const Chat: React.FC = () => {
+  const { currentUser } = useAuth();
+  const userName = currentUser?.name?.split(',')[0]?.split(' ')[0] || 'there';
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
-      id: 'msg-1',
+      id: 'msg-welcome',
       sender: 'bot',
-      text: "Hello Sarah! I'm your MediBook AI Health Assistant. Please describe what symptoms or discomfort you are experiencing today, and I'll help assess severity and match you with the right specialist.",
+      text: `Hello ${userName}! I'm your MediBook AI Health Assistant. Please describe what symptoms or discomfort you are experiencing today, and I'll help assess severity and match you with the right specialist.`,
       timestamp: 'Just now',
     },
   ]);
 
   const [inputVal, setInputVal] = useState('');
   const [isBotTyping, setIsBotTyping] = useState(false);
-  const [conversationStep, setConversationStep] = useState<number>(0);
   const [isBookingInProgress, setIsBookingInProgress] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const patientId =
+    currentUser?.userType === 'patient' && currentUser.id && isValidUuid(currentUser.id)
+      ? currentUser.id
+      : null;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -88,133 +106,81 @@ export const Chat: React.FC = () => {
     '🚨 Severe chest pain & shortness of breath',
   ];
 
-  const handleSendMessage = (textToSend?: string) => {
+  const callChatApi = useCallback(
+    async (text: string) => {
+      const isConfirmMessage = /^(yes|confirm|yes,\s*confirm)/i.test(text.trim());
+
+      setIsBotTyping(true);
+      if (isConfirmMessage) {
+        setIsBookingInProgress(true);
+      }
+
+      try {
+        const response = await sendChatMessage({
+          message: text,
+          conversation_id: conversationId,
+          patient_id: patientId,
+        });
+
+        setConversationId(response.conversation_id);
+
+        const botMessage: ChatMessage = {
+          id: `bot-${Date.now()}`,
+          sender: 'bot',
+          ...mapApiResponseToBotMessage(response),
+        };
+
+        setMessages((prev) => [...prev, botMessage]);
+      } catch (error) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `bot-error-${Date.now()}`,
+            sender: 'bot',
+            text: getChatErrorMessage(error),
+            timestamp: formatChatTimestamp(),
+          },
+        ]);
+      } finally {
+        setIsBotTyping(false);
+        setIsBookingInProgress(false);
+      }
+    },
+    [conversationId, patientId]
+  );
+
+  const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputVal).trim();
     if (!text || isBotTyping) return;
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       sender: 'user',
-      text: text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text,
+      timestamp: formatChatTimestamp(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
     if (!textToSend) setInputVal('');
 
-    setIsBotTyping(true);
-
-    // Check emergency trigger
-    const lower = text.toLowerCase();
-    const isEmergency =
-      lower.includes('chest pain') ||
-      lower.includes("can't breathe") ||
-      lower.includes('cannot breathe') ||
-      lower.includes('shortness of breath') ||
-      lower.includes('heart attack') ||
-      lower.includes('stroke') ||
-      lower.includes('severe bleeding');
-
-    setTimeout(() => {
-      setIsBotTyping(false);
-
-      if (isEmergency) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `bot-emergency-${Date.now()}`,
-            sender: 'bot',
-            isEmergency: true,
-            text: 'CRITICAL ALERT: Your symptoms may indicate a medical emergency requiring immediate attention.',
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          },
-        ]);
-        return;
-      }
-
-      if (conversationStep === 0) {
-        // Step 1: Follow up questions
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `bot-${Date.now()}`,
-            sender: 'bot',
-            text: `Thank you for detailing that. To ensure accurate triage, how many days have you noticed this, and do you have any accompanying symptoms like high temperature, dizziness, or fatigue?`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          },
-        ]);
-        setConversationStep(1);
-      } else {
-        // Step 2: Specialist Recommendation with Doctor Option Cards
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `bot-${Date.now()}`,
-            sender: 'bot',
-            text: `Based on your symptoms and clinical triage, an in-person or video consultation with a General Physician or Respiratory Specialist is strongly recommended. Here are verified available doctors with open slots:`,
-            doctors: initialDoctorOptions,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          },
-        ]);
-        setConversationStep(2);
-      }
-    }, 1200);
+    await callChatApi(text);
   };
 
-  const handleSelectDoctorSlot = (doctor: DoctorOption, slot: string) => {
-    // 1. Add User selection bubble
-    const userSelectionMessage: ChatMessage = {
-      id: `user-slot-${Date.now()}`,
-      sender: 'user',
-      text: `Selected ${doctor.name} for ${slot}`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMessages((prev) => [...prev, userSelectionMessage]);
-    setIsBotTyping(true);
-
-    // 2. Bot displays booking summary card
-    setTimeout(() => {
-      setIsBotTyping(false);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `bot-summary-${Date.now()}`,
-          sender: 'bot',
-          text: `Great choice! Here is your appointment summary. Please review and confirm below:`,
-          bookingSummary: {
-            doctor: doctor,
-            selectedSlot: slot,
-            isConfirmed: false,
-          },
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
-    }, 900);
+  const handleSelectDoctorSlot = (doctor: ParsedDoctorOption, slot: string) => {
+    const message = `${doctor.name} at ${slot}`;
+    handleSendMessage(message);
   };
 
-  const handleConfirmBooking = (doctor: DoctorOption, slot: string) => {
-    setIsBookingInProgress(true);
+  const handleOptionClick = (option: ChatOptionItem) => {
+    handleSendMessage(option.text);
+  };
 
-    setTimeout(() => {
-      setIsBookingInProgress(false);
+  const handleConfirmBooking = () => {
+    handleSendMessage('yes, confirm');
+  };
 
-      // Add confirmed success bot message
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `bot-confirmed-${Date.now()}`,
-          sender: 'bot',
-          bookingSummary: {
-            doctor: doctor,
-            selectedSlot: slot,
-            isConfirmed: true,
-          },
-          text: `🎉 Appointment Confirmed! We have reserved your visit with ${doctor.name} on ${slot}. You will receive WhatsApp and SMS reminders 24 hours and 1 hour before your consultation.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
-    }, 1200);
+  const handleChangeBooking = () => {
+    handleSendMessage('No, I would like to pick a different doctor and time.');
   };
 
   return (
@@ -288,7 +254,7 @@ export const Chat: React.FC = () => {
                           Emergency Medical Alert
                         </span>
                       </div>
-                      <p className="text-sm font-semibold text-textPrimary leading-relaxed">
+                      <p className="text-sm font-semibold text-textPrimary leading-relaxed whitespace-pre-line">
                         {msg.text}
                       </p>
                       <p className="text-xs text-textSecondary leading-relaxed">
@@ -305,7 +271,7 @@ export const Chat: React.FC = () => {
                           size="sm"
                           variant="secondary"
                           className="bg-white border-error text-error hover:bg-errorContainer"
-                          onClick={() => alert('Locating emergency rooms near New York, NY: Metro Hospital Emergency Dept (0.8 mi away).')}
+                          onClick={() => alert('Locating emergency rooms near you. Please call emergency services if this is urgent.')}
                         >
                           Find Nearest ER
                         </Button>
@@ -327,13 +293,24 @@ export const Chat: React.FC = () => {
                 <div className="w-full max-w-2xl space-y-3">
                   {/* Bot text bubble */}
                   {msg.text && (
-                    <div className="bg-gradient-to-br from-[#EFF4FF] to-[#E6EEFF] border border-primaryContainer/15 p-4 rounded-2xl rounded-tl-sm text-textPrimary text-sm leading-relaxed shadow-soft-sm">
+                    <div className="bg-gradient-to-br from-[#EFF4FF] to-[#E6EEFF] border border-primaryContainer/15 p-4 rounded-2xl rounded-tl-sm text-textPrimary text-sm leading-relaxed shadow-soft-sm whitespace-pre-line">
                       {msg.text}
                     </div>
                   )}
 
-                  {/* 3. Inline Doctor Option Cards */}
-                  {msg.doctors && (
+                  {/* Login required prompt */}
+                  {msg.requiresLogin && (
+                    <div className="pt-1">
+                      <Link to="/login">
+                        <Button size="sm" variant="primary">
+                          Log in to complete booking
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
+
+                  {/* Inline Doctor Option Cards (parsed from API response) */}
+                  {msg.doctors && msg.doctors.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
                       {msg.doctors.map((doc) => (
                         <div
@@ -353,38 +330,57 @@ export const Chat: React.FC = () => {
                                   <p className="text-[11px] text-textSecondary">{doc.specialization}</p>
                                 </div>
                               </div>
-                              <span className="text-xs font-bold text-primary">{doc.fee}</span>
+                              {doc.fee && <span className="text-xs font-bold text-primary">{doc.fee}</span>}
                             </div>
 
                             <div className="text-[11px] text-textSecondary space-y-0.5 my-2">
-                              <p className="text-secondary font-medium">★ {doc.rating} ({doc.reviewCount} reviews)</p>
-                              <p className="truncate">📍 {doc.clinic}</p>
+                              {doc.clinic && <p className="truncate">📍 {doc.clinic}</p>}
                             </div>
                           </div>
 
-                          <div className="pt-2 border-t border-surfaceContainerHigh">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-textSecondary block mb-1.5">
-                              Select Open Slot:
-                            </span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {doc.slots.map((slot) => (
-                                <button
-                                  key={slot}
-                                  type="button"
-                                  onClick={() => handleSelectDoctorSlot(doc, slot)}
-                                  className="text-[11px] font-semibold bg-surfaceContainer hover:bg-primary hover:text-white text-textPrimary px-2.5 py-1 rounded-pill border border-surfaceContainerHigh transition-all"
-                                >
-                                  {slot}
-                                </button>
-                              ))}
+                          {doc.slots.length > 0 && (
+                            <div className="pt-2 border-t border-surfaceContainerHigh">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-textSecondary block mb-1.5">
+                                Select Open Slot:
+                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {doc.slots.map((slot) => (
+                                  <button
+                                    key={`${doc.id}-${slot}`}
+                                    type="button"
+                                    onClick={() => handleSelectDoctorSlot(doc, slot)}
+                                    disabled={isBotTyping}
+                                    className="text-[11px] font-semibold bg-surfaceContainer hover:bg-primary hover:text-white text-textPrimary px-2.5 py-1 rounded-pill border border-surfaceContainerHigh transition-all disabled:opacity-50"
+                                  >
+                                    {slot}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
 
-                  {/* 4. Booking Confirmation Summary Card */}
+                  {/* Fallback option chips when doctor cards could not be parsed */}
+                  {!msg.doctors?.length && msg.optionItems && msg.optionItems.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {msg.optionItems.map((option) => (
+                        <button
+                          key={option.option_id}
+                          type="button"
+                          onClick={() => handleOptionClick(option)}
+                          disabled={isBotTyping}
+                          className="text-xs font-semibold bg-surfaceContainer hover:bg-primary hover:text-white text-textPrimary px-3 py-1.5 rounded-pill border border-surfaceContainerHigh transition-all disabled:opacity-50"
+                        >
+                          {option.text}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Booking Confirmation Summary Card */}
                   {msg.bookingSummary && (
                     <div className="p-5 bg-white rounded-2xl border-2 border-primary/20 shadow-soft-md space-y-4 animate-fadeIn">
                       <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
@@ -410,7 +406,9 @@ export const Chat: React.FC = () => {
                           <span className="font-bold text-textPrimary text-sm">
                             {msg.bookingSummary.doctor.name}
                           </span>
-                          <p className="text-secondary text-[11px]">{msg.bookingSummary.doctor.specialization}</p>
+                          {msg.bookingSummary.doctor.specialization && (
+                            <p className="text-secondary text-[11px]">{msg.bookingSummary.doctor.specialization}</p>
+                          )}
                         </div>
 
                         <div className="p-3 bg-surfaceContainer rounded-xl">
@@ -418,21 +416,27 @@ export const Chat: React.FC = () => {
                           <span className="font-bold text-textPrimary text-sm">
                             {msg.bookingSummary.selectedSlot}
                           </span>
-                          <p className="text-textSecondary text-[11px]">Duration: 45 Minutes</p>
                         </div>
 
-                        <div className="p-3 bg-surfaceContainer rounded-xl sm:col-span-2 flex items-center justify-between">
-                          <div>
-                            <span className="text-[10px] text-textSecondary uppercase font-bold block">Location</span>
-                            <span className="font-semibold text-textPrimary">
-                              {msg.bookingSummary.doctor.clinic} ({msg.bookingSummary.doctor.address})
-                            </span>
+                        {(msg.bookingSummary.doctor.clinic || msg.bookingSummary.doctor.fee) && (
+                          <div className="p-3 bg-surfaceContainer rounded-xl sm:col-span-2 flex items-center justify-between">
+                            {msg.bookingSummary.doctor.clinic && (
+                              <div>
+                                <span className="text-[10px] text-textSecondary uppercase font-bold block">Location</span>
+                                <span className="font-semibold text-textPrimary">
+                                  {msg.bookingSummary.doctor.clinic}
+                                  {msg.bookingSummary.doctor.address && ` (${msg.bookingSummary.doctor.address})`}
+                                </span>
+                              </div>
+                            )}
+                            {msg.bookingSummary.doctor.fee && (
+                              <div className="text-right">
+                                <span className="text-[10px] text-textSecondary uppercase font-bold block">Consultation Fee</span>
+                                <span className="font-bold text-primary text-sm">{msg.bookingSummary.doctor.fee}</span>
+                              </div>
+                            )}
                           </div>
-                          <div className="text-right">
-                            <span className="text-[10px] text-textSecondary uppercase font-bold block">Consultation Fee</span>
-                            <span className="font-bold text-primary text-sm">{msg.bookingSummary.doctor.fee}</span>
-                          </div>
-                        </div>
+                        )}
                       </div>
 
                       {/* Actions */}
@@ -443,21 +447,16 @@ export const Chat: React.FC = () => {
                             size="md"
                             className="flex-1 justify-center"
                             isLoading={isBookingInProgress}
-                            onClick={() =>
-                              handleConfirmBooking(
-                                msg.bookingSummary!.doctor,
-                                msg.bookingSummary!.selectedSlot
-                              )
-                            }
+                            disabled={isBotTyping}
+                            onClick={handleConfirmBooking}
                           >
                             {isBookingInProgress ? 'Reserving Appointment...' : 'Confirm Booking'}
                           </Button>
                           <Button
                             variant="secondary"
                             size="md"
-                            onClick={() => {
-                              handleSendMessage('I would like to view other available doctors and times.');
-                            }}
+                            disabled={isBotTyping}
+                            onClick={handleChangeBooking}
                           >
                             Change
                           </Button>
@@ -510,7 +509,7 @@ export const Chat: React.FC = () => {
                 type="button"
                 onClick={() => handleSendMessage(symptom)}
                 disabled={isBotTyping}
-                className="text-xs bg-surfaceContainer hover:bg-surfaceContainerHigh text-textPrimary px-3 py-1.5 rounded-pill border border-surfaceContainerHigh transition-all focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="text-xs bg-surfaceContainer hover:bg-surfaceContainerHigh text-textPrimary px-3 py-1.5 rounded-pill border border-surfaceContainerHigh transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
               >
                 {symptom}
               </button>
@@ -533,6 +532,7 @@ export const Chat: React.FC = () => {
           onChange={(e) => setInputVal(e.target.value)}
           placeholder="Describe your symptoms (e.g., severe headache, persistent cough)..."
           className="flex-1 bg-transparent px-4 py-2 text-sm text-textPrimary placeholder:text-textSecondary/60 outline-none"
+          disabled={isBotTyping}
         />
 
         <button

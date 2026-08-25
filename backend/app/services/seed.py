@@ -15,6 +15,59 @@ from app.models.appointment import Appointment
 from app.models.audit_log import AuditLog
 from app.core.security import get_password_hash
 
+TEST_ADMIN_EMAIL = "admin@medibook.com"
+TEST_ADMIN_PASSWORD = "Admin@123"
+TEST_ADMIN_NAME = "Admin User"
+
+
+def seed_test_admin(db: Optional[Session] = None) -> dict:
+    """Ensure the standard test admin account exists (idempotent)."""
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
+
+    try:
+        target_bind = db.get_bind() if db else engine
+        Base.metadata.create_all(bind=target_bind)
+
+        existing = (
+            db.query(User)
+            .filter(User.email == TEST_ADMIN_EMAIL, User.deleted_at.is_(None))
+            .first()
+        )
+        if existing:
+            return {
+                "status": "already_exists",
+                "user_id": str(existing.id),
+                "email": existing.email,
+            }
+
+        admin_user = User(
+            id=uuid.uuid4(),
+            email=TEST_ADMIN_EMAIL,
+            name=TEST_ADMIN_NAME,
+            password_hash=get_password_hash(TEST_ADMIN_PASSWORD),
+            user_type="admin",
+            is_active=True,
+            created_at=datetime.utcnow(),
+        )
+        db.add(admin_user)
+        db.commit()
+        print(f"--> Test admin created: {TEST_ADMIN_EMAIL}")
+        return {
+            "status": "created",
+            "user_id": str(admin_user.id),
+            "email": admin_user.email,
+        }
+    except Exception as e:
+        db.rollback()
+        print(f"Error seeding test admin: {str(e)}")
+        raise e
+    finally:
+        if should_close:
+            db.close()
+
 
 def seed_database(db: Optional[Session] = None) -> dict:
     """Populate database with complete, realistic MediBook demo data."""
@@ -347,4 +400,13 @@ def seed_database(db: Optional[Session] = None) -> dict:
 
 
 if __name__ == "__main__":
-    seed_database()
+    import sys
+
+    from app.services.bulk_seed import seed_bulk_test_data
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--test-admin":
+        seed_test_admin()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--bulk-test-data":
+        seed_bulk_test_data()
+    else:
+        seed_database()

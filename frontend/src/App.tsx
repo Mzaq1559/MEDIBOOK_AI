@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Layout } from './components/layout/Layout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { GuestRoute } from './components/auth/GuestRoute';
 import { LandingPage } from './pages/LandingPage';
 import { ComponentShowcase } from './pages/ComponentShowcase';
 import { Login } from './pages/Login';
@@ -12,19 +13,21 @@ import { Chat } from './pages/Chat';
 import { Appointments } from './pages/Appointments';
 import { DoctorDashboard } from './pages/DoctorDashboard';
 import { Admin } from './pages/Admin';
+import { getDashboardPath } from './utils/authRouting';
 
-// Root route handler: If unauthenticated -> LandingPage; If authenticated -> Role Dashboard
 const RootIndexRoute: React.FC = () => {
-  const { isLoggedIn, currentUser } = useAuth();
+  const { isAuthenticated, isLoading, currentUser } = useAuth();
 
-  if (isLoggedIn) {
-    if (currentUser?.role === 'Doctor') {
-      return <Navigate to="/doctor-dashboard" replace />;
-    }
-    if (currentUser?.role === 'Admin') {
-      return <Navigate to="/admin" replace />;
-    }
-    return <Navigate to="/dashboard" replace />;
+  if (isLoading) {
+    return (
+      <div className="min-h-[calc(100vh-140px)] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (isAuthenticated && currentUser) {
+    return <Navigate to={getDashboardPath(currentUser.userType)} replace />;
   }
 
   return <LandingPage />;
@@ -36,21 +39,31 @@ export function App() {
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
-            {/* Public Root Route */}
             <Route path="/" element={<RootIndexRoute />} />
 
-            {/* Auth Routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            <Route
+              path="/login"
+              element={
+                <GuestRoute>
+                  <Login />
+                </GuestRoute>
+              }
+            />
+            <Route
+              path="/register"
+              element={
+                <GuestRoute>
+                  <Register />
+                </GuestRoute>
+              }
+            />
 
-            {/* Dev Component Showcase Route */}
             <Route path="/showcase" element={<ComponentShowcase />} />
 
-            {/* Protected Routes (Require Authentication) */}
             <Route
               path="/dashboard"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['patient', 'receptionist', 'admin']}>
                   <Dashboard />
                 </ProtectedRoute>
               }
@@ -74,7 +87,7 @@ export function App() {
             <Route
               path="/doctor-dashboard"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['doctor', 'admin']}>
                   <DoctorDashboard />
                 </ProtectedRoute>
               }
@@ -82,13 +95,12 @@ export function App() {
             <Route
               path="/admin"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['admin']}>
                   <Admin />
                 </ProtectedRoute>
               }
             />
 
-            {/* Catch-all route */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
