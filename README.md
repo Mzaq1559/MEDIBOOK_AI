@@ -80,7 +80,7 @@ MediBook AI is a **24/7 AI virtual receptionist** backed by a full clinic manage
 | **Test Data Seeding** | ✅ Fully Working | 3 clinics, 3 doctors, 3 patients, 300+ appointments seeded |
 | **Doctor Dashboard** | 🏗️ Partially Implemented | Architecture wired, login/redirect working, full action testing pending |
 | **WhatsApp Reminders** | 🏗️ Partially Implemented | Scheduling logic computed, delivery pending WhatsApp Business API approval |
-| **Google Calendar** | 🏗️ Partially Implemented | OAuth2 authentication code exists, sync not integrated into booking flow |
+| **Google Calendar & Email** | ✅ Fully Working | Async background scheduler syncs Google Calendar & sends 24h/1h SMTP email reminders (best-effort) |
 | **n8n Automation** | 🏗️ Partially Implemented | Code merged, service container not yet in `docker-compose.yml` |
 | **Prescriptions** | 🏗️ Partially Implemented | Database model exists, no REST endpoints |
 | **Payment Gateway** | ❌ Not in Scope | Planned for future release |
@@ -654,7 +654,7 @@ Covers symptom triage rules, chat API endpoints, and Groq client error handling.
 | Integration | Codebase status |
 |-------------|-----------------|
 | **WhatsApp Business API** | Reminders calculated and stored in DB; outbound sending awaiting API approval |
-| **Google Calendar sync** | OAuth2 helper functions defined; automatic event creation pending integration |
+| **Google Calendar & Email Sync** | Asynchronous background scheduler runs every 60s to sync Google Calendar events & dispatch 24h/1h SMTP email reminders |
 | **n8n workflows** | Workflow handlers merged; service container not yet enabled in Docker Compose |
 | **Prescription Management** | Database models implemented; CRUD endpoints pending |
 
