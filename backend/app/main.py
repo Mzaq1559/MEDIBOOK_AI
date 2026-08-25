@@ -10,7 +10,6 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.database import engine, Base
-from app.services.seed import seed_database, seed_test_admin
 from app.middleware.security_headers import SecurityHeadersAndTracingMiddleware
 from app.middleware.rate_limiter import limiter, rate_limit_exceeded_handler
 from app.middleware.error_handler import register_exception_handlers
@@ -49,16 +48,14 @@ def wait_for_db(max_retries: int = 30, delay: float = 1.0):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Wait for postgres to be ready before initializing SQLAlchemy or seeding
+    # Wait for postgres to be ready before initializing SQLAlchemy
     wait_for_db(max_retries=30, delay=1.0)
 
-    # Initialize tables and seed initial test admin & data
+    # Initialize database tables
     try:
         Base.metadata.create_all(bind=engine)
-        seed_test_admin()
-        seed_database()
     except Exception as e:
-        logger.error(f"Error during database schema creation or seeding: {e}")
+        logger.error(f"Error during database schema creation: {e}")
 
     yield
 
