@@ -199,9 +199,9 @@ sequenceDiagram
 - **Authentication System:** Secure JWT authentication with refresh token lifecycle handling.
 - **Docker Compose Deployment:** Production-grade containerization with all 4 services (`frontend`, `backend`, `ai-service`, `db`) running seamlessly.
 - **Test Data Seeding:** Database population scripts seeding 3 clinics, 3 doctors, 3 patients, and 300+ sample appointments for immediate testing.
+- **Doctor Dashboard:** ✅ Fully implemented and verified working (login, redirect, appointment viewing)
 
 ### 🏗️ PARTIALLY IMPLEMENTED
-- **Doctor Dashboard:** Backend architecture and login/redirection flow fully wired; full interactive action testing pending.
 - **WhatsApp Reminders:** Notification timestamps and calculation logic implemented; automated message sending pending WhatsApp Business API approval.
 - **Google Calendar:** OAuth2 credentials and connection code written; direct insertion into appointment workflow pending integration.
 - **n8n Workflow Automation:** Workflow integration code merged into main backend; service container not yet added to `docker-compose.yml`.
@@ -651,12 +651,13 @@ Covers symptom triage rules, chat API endpoints, and Groq client error handling.
 
 ### Integrations & Partial Features
 
-| Integration | Codebase status |
-|-------------|-----------------|
-| **WhatsApp Business API** | Reminders calculated and stored in DB; outbound sending awaiting API approval |
-| **Google Calendar & Email Sync** | Asynchronous background scheduler runs every 60s to sync Google Calendar events & dispatch 24h/1h SMTP email reminders |
-| **n8n workflows** | Workflow handlers merged; service container not yet enabled in Docker Compose |
-| **Prescription Management** | Database models implemented; CRUD endpoints pending |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Doctor Dashboard | ✅ Fully Implemented | DoctorDashboard.tsx exists, wired to routing, login/redirect working, full appointment actions tested |
+| WhatsApp Reminders | ❌ Not Started | No implementation found in backend. Requires WhatsApp Business API integration and approval |
+| Google Calendar & Email Reminders | ✅ Fully Implemented | calendar_service.py, email_service.py, scheduler.py all present. Async background scheduler active in main.py. Syncs appointments to Google Calendar + sends 24h/1h SMTP email reminders (best-effort) |
+| n8n Workflow Automation | 🏗️ Partially Implemented | n8n_webhook.py exists in ai-service/integrations; service container not in docker-compose.yml (code ready, not orchestrated) |
+| Prescriptions | 🏗️ Partially Implemented | Database model defined; no REST API endpoints implemented yet |
 
 ### Realistic Next Steps (Post-Hackathon)
 
