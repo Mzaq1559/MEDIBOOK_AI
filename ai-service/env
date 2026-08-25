@@ -1,0 +1,14 @@
+AI_SERVICE_PORT=8001
+AI_SERVICE_HOST=0.0.0.0
+
+DATABASE_URL=postgresql://medibook:password123@localhost:5432/medibook_db
+BACKEND_API_URL=http://localhost:8000/api
+
+GROQ_API_KEY=your-groq-api-key-here
+GROQ_MODEL=openai/gpt-oss-120b
+
+CONVERSATION_MAX_HISTORY=20
+GOOGLE_CALENDAR_CREDENTIALS_PATH=google-calendar-credentials.json
+GOOGLE_CALENDAR_ID=medibookai0@gmail.com
+N8N_URL=http://localhost:1880
+N8N_WEBHOOK_URL=http://localhost:1880/webhook
