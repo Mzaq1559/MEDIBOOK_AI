@@ -37,6 +37,7 @@ services:
       - ACCESS_TOKEN_EXPIRE_MINUTES=60
       - REFRESH_TOKEN_EXPIRE_DAYS=1
       - ENVIRONMENT=development
+      - PORT=8000
       - API_URL=http://localhost:8000
       - FRONTEND_URL=http://localhost:3000
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:5173
