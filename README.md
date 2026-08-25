@@ -35,7 +35,7 @@
 
 **Event:** [Alibaba Cloud AI Hackathon Pakistan 2026](https://github.com/Mzaq1559/MEDIBOOK_AI)  
 **Theme:** *AI for Pakistan's Future*  
-**Build window:** August 22–27, 2026 (6 days) · Taxila, Pakistan  
+**Build window:** August 22 – September 4, 2026 (extended build phase) · Taxila, Pakistan  
 **Team size:** 4 members
 
 | Role | Contributor | GitHub |
@@ -44,6 +44,12 @@
 | Backend | Sidra Pervaiz | [@SidraPervaiz1122](https://github.com/SidraPervaiz1122) |
 | Frontend | Aleeza Imran | [@BSCS2455](https://github.com/BSCS2455) |
 | AI Service | Ayesha Sajjad | [@AyeshaSajjad0786](https://github.com/AyeshaSajjad0786) |
+
+---
+
+## Project Status
+
+All core MVP features complete. Prescriptions, n8n, and Google Calendar/Email integrations added post-MVP. Ready for regional technical evaluation (submission deadline: 4 September 2026).
 
 ---
 
@@ -74,15 +80,15 @@ MediBook AI is a **24/7 AI virtual receptionist** backed by a full clinic manage
 | **AI Health Chat (Groq LLM)** | ✅ Fully Working | Symptom triage and natural language interaction working |
 | **Full Patient Booking Flow** | ✅ Fully Working | Symptom → AI recommendation → doctor selection → appointment confirmation → saved to DB |
 | **Admin Login & Dashboard** | ✅ Fully Working | Displays real clinic metrics, doctor rosters, and clinic management |
+| **Doctor Dashboard** | ✅ Fully Implemented | Login/redirect/appointment viewing/status updates all working |
 | **Role-Based Route Guards** | ✅ Fully Working | Patient/Doctor/Admin isolation and redirection active |
 | **Authentication System** | ✅ Fully Working | Secure JWT authentication with refresh token flow |
-| **Docker Compose Deployment** | ✅ Fully Working | All 4 services running (`frontend`, `backend`, `ai-service`, `db`) |
+| **Docker Compose Deployment** | ✅ Fully Working | All 5 services running (`frontend`, `backend`, `ai-service`, `db`, `n8n`) |
 | **Test Data Seeding** | ✅ Fully Working | 3 clinics, 3 doctors, 3 patients, 300+ appointments seeded |
-| **Doctor Dashboard** | 🏗️ Partially Implemented | Architecture wired, login/redirect working, full action testing pending |
-| **WhatsApp Reminders** | 🏗️ Partially Implemented | Scheduling logic computed, delivery pending WhatsApp Business API approval |
-| **Google Calendar & Email** | ✅ Fully Working | Async background scheduler syncs Google Calendar & sends 24h/1h SMTP email reminders (best-effort) |
-| **n8n Automation** | 🏗️ Partially Implemented | Code merged, service container not yet in `docker-compose.yml` |
-| **Prescriptions** | 🏗️ Partially Implemented | Database model exists, no REST endpoints |
+| **Prescriptions** | ✅ Fully Implemented | All 5 CRUD REST API endpoints (GET, POST, PUT, DELETE, LIST) implemented with soft deletes and authorization |
+| **Google Calendar & Email** | ✅ Fully Implemented | calendar_service.py, email_service.py, scheduler.py active. Syncs appointments to Google Calendar + sends 24h/1h SMTP reminders (best-effort) |
+| **n8n Automation** | ✅ Service Running | n8n containerized in docker-compose on port 5678. Webhook code in ai-service/integrations/n8n_webhook.py ready for workflow triggering |
+| **WhatsApp Reminders** | ❌ Not Implemented | Requires WhatsApp Business API approval and setup |
 | **Payment Gateway** | ❌ Not in Scope | Planned for future release |
 | **Multi-Language UI** | ❌ Not in Scope | Planned for future release |
 | **Mobile App** | ❌ Not in Scope | Planned for future release |
@@ -195,19 +201,17 @@ sequenceDiagram
 - **AI Health Chat with Real Groq LLM:** Interactive assistant leveraging Groq LLM for natural language processing and intelligent symptom triage.
 - **Full Patient Booking Flow:** Complete flow: symptom input → AI recommendation → doctor selection → slot confirmation → appointment saved directly to PostgreSQL database.
 - **Admin Login & Dashboard:** Comprehensive dashboard rendering live metrics, doctor schedules, and clinic management controls.
+- **Doctor Dashboard:** ✅ Fully Implemented (login, redirect, appointment viewing, status updates all working).
 - **Role-Based Route Guards:** Robust frontend routing ensuring strict isolation between patient (`/dashboard`), admin (`/admin`), and doctor dashboards.
 - **Authentication System:** Secure JWT authentication with refresh token lifecycle handling.
-- **Docker Compose Deployment:** Production-grade containerization with all 4 services (`frontend`, `backend`, `ai-service`, `db`) running seamlessly.
+- **Docker Compose Deployment:** Production-grade containerization with all 5 services (`frontend`, `backend`, `ai-service`, `db`, `n8n`) running seamlessly.
 - **Test Data Seeding:** Database population scripts seeding 3 clinics, 3 doctors, 3 patients, and 300+ sample appointments for immediate testing.
-- **Doctor Dashboard:** ✅ Fully implemented and verified working (login, redirect, appointment viewing)
+- **Prescriptions:** ✅ Full CRUD REST API implemented and tested (GET, POST, PUT, DELETE, LIST with soft deletes & role-based authorization).
+- **n8n Automation:** ✅ Service containerized and running (webhook dispatcher for appointments on port 5678).
+- **Google Calendar & Email Reminders:** ✅ Async background scheduler active (syncing appointments to Google Calendar + 24h/1h SMTP email reminders).
 
-### 🏗️ PARTIALLY IMPLEMENTED
-- **WhatsApp Reminders:** Notification timestamps and calculation logic implemented; automated message sending pending WhatsApp Business API approval.
-- **Google Calendar:** OAuth2 credentials and connection code written; direct insertion into appointment workflow pending integration.
-- **n8n Workflow Automation:** Workflow integration code merged into main backend; service container not yet added to `docker-compose.yml`.
-- **Prescriptions:** Database models defined in SQLAlchemy; REST API endpoints pending implementation.
-
-### ❌ NOT IN SCOPE
+### ❌ NOT IMPLEMENTED / NOT IN SCOPE
+- **WhatsApp Reminders:** ❌ Not Implemented. Requires WhatsApp Business API approval and setup.
 - **Payment Gateway:** Third-party payment gateway integration.
 - **Multi-Language UI:** Localization and multilingual interface options.
 - **Mobile App:** Native mobile applications for iOS and Android.
@@ -361,6 +365,7 @@ docker compose exec backend python -m app.services.seed --test-admin
 | **Backend Swagger** | http://localhost:8000/docs |
 | **Backend ReDoc** | http://localhost:8000/redoc |
 | **AI Service Swagger** | http://localhost:8001/docs |
+| **n8n Automation** | http://localhost:5678 |
 | **PostgreSQL** | `localhost:5432` (user: `medibook`, db: `medibook_db`) |
 
 ### Demo login credentials
@@ -401,6 +406,7 @@ Full endpoint specifications live in **`docs/MEDIBOOK_AI_COMPLETE_SPECIFICATIONS
 |-------|-----------|-------------|
 | **Auth** | `/api/auth` | Register, login, refresh, logout, `/me` |
 | **Appointments** | `/api/appointments` | CRUD, reschedule, cancel, complete, no-show, feedback |
+| **Prescriptions** | `/api/prescriptions` | All 5 CRUD endpoints (GET, POST, PUT, DELETE, LIST) with soft deletes & auth |
 | **Doctors** | `/api/doctors` | List, detail, availability, schedule update, holidays |
 | **Clinics** | `/api/clinics` | List, detail, create (admin) |
 | **Patients** | `/api/patients` | Profile, update, appointment history |
@@ -630,13 +636,13 @@ Covers symptom triage rules, chat API endpoints, and Groq client error handling.
 | **Admin login & dashboard** | ✅ Verified | Displays real clinic metrics, doctor rosters, and clinic management |
 | **Role-based route guards** | ✅ Verified | Patient/Doctor/Admin isolation and route restrictions working |
 | **Authentication System** | ✅ Verified | JWT authentication with refresh tokens functional |
-| **Docker Compose deployment** | ✅ Verified | All 4 services (`frontend`, `backend`, `ai-service`, `db`) running |
+| **Docker Compose deployment** | ✅ Verified | All 5 services (`frontend`, `backend`, `ai-service`, `db`, `n8n`) running |
 | **Test data seeding** | ✅ Verified | 3 clinics, 3 doctors, 3 patients, 300+ appointments seeded |
-| **Doctor dashboard** | 🏗️ Partial | Architecture wired, login/redirect working, full action testing pending |
-| **WhatsApp reminders** | 🏗️ Partial | Logic computed, outbound delivery pending API approval |
-| **Google Calendar** | 🏗️ Partial | OAuth2 code exists, not integrated into appointment flow |
-| **n8n workflow automation** | 🏗️ Partial | Code merged, service container pending in `docker-compose.yml` |
-| **Prescriptions** | 🏗️ Partial | Database model exists, REST endpoints pending |
+| **Doctor Dashboard** | ✅ Verified | Login/redirect/appointment viewing/status updates all working |
+| **Prescriptions** | ✅ Verified | All 5 CRUD endpoints (GET, POST, PUT, DELETE, LIST) implemented with soft deletes and authorization |
+| **Google Calendar & Email Reminders** | ✅ Verified | calendar_service.py, email_service.py, scheduler.py active. Syncs appointments to Google Calendar + sends 24h/1h SMTP reminders (best-effort) |
+| **n8n Automation** | ✅ Verified | n8n containerized in docker-compose on port 5678. Webhook code in ai-service/integrations/n8n_webhook.py ready for workflow triggering |
+| **WhatsApp Reminders** | ❌ Not Implemented | Requires WhatsApp Business API approval and setup |
 
 ---
 
@@ -649,24 +655,22 @@ Covers symptom triage rules, chat API endpoints, and Groq client error handling.
 - **English-primary** chat — Urdu/English bilingual support planned for post-hackathon
 - **In-memory chat sessions** — conversations reset on AI service container restart
 
-### Integrations & Partial Features
+### Integrations & Feature Status
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Doctor Dashboard | ✅ Fully Implemented | DoctorDashboard.tsx exists, wired to routing, login/redirect working, full appointment actions tested |
-| WhatsApp Reminders | ❌ Not Started | No implementation found in backend. Requires WhatsApp Business API integration and approval |
-| Google Calendar & Email Reminders | ✅ Fully Implemented | calendar_service.py, email_service.py, scheduler.py all present. Async background scheduler active in main.py. Syncs appointments to Google Calendar + sends 24h/1h SMTP email reminders (best-effort) |
-| n8n Workflow Automation | 🏗️ Partially Implemented | n8n_webhook.py exists in ai-service/integrations; service container not in docker-compose.yml (code ready, not orchestrated) |
-| Prescriptions | 🏗️ Partially Implemented | Database model defined; no REST API endpoints implemented yet |
+| Doctor Dashboard | ✅ Fully Implemented | Login/redirect/appointment viewing/status updates all working |
+| Prescriptions | ✅ Fully Implemented | All 5 CRUD endpoints (GET, POST, PUT, DELETE, LIST) implemented with soft deletes and authorization |
+| Google Calendar & Email Reminders | ✅ Fully Implemented | calendar_service.py, email_service.py, scheduler.py active. Syncs appointments to Google Calendar + sends 24h/1h SMTP reminders (best-effort) |
+| n8n Automation | ✅ Service Running | n8n containerized in docker-compose on port 5678. Webhook code in ai-service/integrations/n8n_webhook.py ready for workflow triggering |
+| WhatsApp Reminders | ❌ Not Implemented | Requires WhatsApp Business API approval and setup |
 
 ### Realistic Next Steps (Post-Hackathon)
 
-1. Complete doctor dashboard UI interaction testing (mark complete / no-show actions).
-2. Integrate WhatsApp message sender service using stored reminder timestamps.
-3. Wire Google Calendar sync into the appointment confirmation workflow.
-4. Build prescription REST API endpoints for doctors.
-5. Persist chat session state into PostgreSQL or Redis.
-6. Implement bilingual Urdu/English NLU prompts.
+1. Obtain WhatsApp Business API approval and implement WhatsApp message sender service.
+2. Build custom n8n workflows for complex clinic automation triggers.
+3. Persist chat session state into PostgreSQL or Redis.
+4. Implement bilingual Urdu/English NLU prompts.
 
 ---
 
