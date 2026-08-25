@@ -8,5 +8,5 @@ python-dotenv>=1.0.1
 python-dateutil>=2.9.0
 slowapi>=0.1.9
 pytest>=8.3.0
-tzdata>=2024.1
+tzdata>=2026.3
 google-auth>=2.20.0
