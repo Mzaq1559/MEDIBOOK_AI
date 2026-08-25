@@ -134,3 +134,26 @@ class DoctorHolidayResponse(BaseModel):
     is_holiday: bool
     reason: Optional[str] = None
     message: str = "Doctor marked as unavailable for this date"
+
+
+class DoctorCreate(BaseModel):
+    name: str
+    email: str
+    specialization: str
+    clinic_id: UUID
+    consultation_fee: float = 2000.0
+    max_patients_per_day: int = 20
+    bio: Optional[str] = None
+    is_available: bool = True
+
+
+class DoctorUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    specialization: Optional[str] = None
+    clinic_id: Optional[UUID] = None
+    consultation_fee: Optional[float] = None
+    max_patients_per_day: Optional[int] = None
+    bio: Optional[str] = None
+    is_available: Optional[bool] = None
+

@@ -72,6 +72,7 @@ def list_appointments(
     status: Optional[str] = Query(None, description="Filter by status"),
     date_from: Optional[str] = Query(None, description="Start date/time (ISO format)"),
     date_to: Optional[str] = Query(None, description="End date/time (ISO format)"),
+    date: Optional[str] = Query(None, description="Filter by date ('today' or YYYY-MM-DD)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
@@ -101,6 +102,19 @@ def list_appointments(
         query = query.filter(Appointment.clinic_id == clinic_id)
     if status:
         query = query.filter(Appointment.status == status)
+
+    if date:
+        try:
+            if date.lower() == "today":
+                target_d = datetime.utcnow().date()
+            else:
+                target_d = date_parser.parse(date).date()
+            day_start = datetime.combine(target_d, datetime.min.time())
+            day_end = datetime.combine(target_d, datetime.max.time())
+            query = query.filter(Appointment.appointment_time >= day_start, Appointment.appointment_time <= day_end)
+        except Exception:
+            pass
+
     if date_from:
         try:
             df = date_parser.parse(date_from).replace(tzinfo=None)

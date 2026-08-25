@@ -12,7 +12,7 @@ from app.models.user import User
 from app.core.auth import get_current_user, require_roles
 from app.core.audit import log_audit_event
 from app.schemas.clinic import (
-    ClinicCreate, ClinicListResponse, ClinicListItem,
+    ClinicCreate, ClinicUpdate, ClinicListResponse, ClinicListItem,
     ClinicDetailResponse, ClinicDoctorItem, ClinicHolidayItem
 )
 
@@ -192,3 +192,80 @@ def create_clinic(
         doctors=[],
         holidays=[]
     )
+
+
+@router.put(
+    "/{clinic_id}",
+    response_model=ClinicDetailResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update Clinic Facility",
+    description="Update clinic details, working hours, and operating days (Admin required)."
+)
+def update_clinic(
+    request: Request,
+    clinic_id: uuid.UUID,
+    payload: ClinicUpdate,
+    current_user: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db)
+):
+    clinic = db.query(Clinic).filter(Clinic.id == clinic_id).first()
+    if not clinic:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Clinic not found", "error_code": "NOT_FOUND"}
+        )
+
+    if payload.name is not None:
+        clinic.name = payload.name
+    if payload.address is not None:
+        clinic.address = payload.address
+    if payload.city is not None:
+        clinic.city = payload.city
+    if payload.phone is not None:
+        clinic.phone = payload.phone
+    if payload.email is not None:
+        clinic.email = payload.email
+    if payload.working_hours_start is not None:
+        parts = payload.working_hours_start.split(":")
+        clinic.working_hours_start = time(int(parts[0]), int(parts[1]))
+    if payload.working_hours_end is not None:
+        parts = payload.working_hours_end.split(":")
+        clinic.working_hours_end = time(int(parts[0]), int(parts[1]))
+    if payload.working_days is not None:
+        clinic.working_days = payload.working_days
+    if payload.timezone is not None:
+        clinic.timezone = payload.timezone
+    if payload.is_active is not None:
+        clinic.is_active = payload.is_active
+
+    clinic.updated_at = datetime.utcnow()
+
+    log_audit_event(
+        db=db,
+        action="updated_clinic",
+        table_name="clinics",
+        record_id=clinic.id,
+        user_id=current_user.id,
+        new_values={"name": clinic.name, "city": clinic.city},
+        ip_address=request.client.host if request.client else None
+    )
+
+    db.commit()
+    db.refresh(clinic)
+
+    return ClinicDetailResponse(
+        clinic_id=clinic.id,
+        name=clinic.name,
+        address=clinic.address,
+        city=clinic.city,
+        phone=clinic.phone,
+        email=clinic.email,
+        working_hours_start=clinic.working_hours_start.strftime("%H:%M"),
+        working_hours_end=clinic.working_hours_end.strftime("%H:%M"),
+        working_days=clinic.working_days,
+        timezone=clinic.timezone,
+        is_active=clinic.is_active,
+        doctors=[],
+        holidays=[]
+    )
+
