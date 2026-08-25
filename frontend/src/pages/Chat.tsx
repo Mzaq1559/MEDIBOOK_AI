@@ -87,7 +87,7 @@ export const Chat: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const patientId =
-    currentUser?.role === 'Patient' && currentUser.id && isValidUuid(currentUser.id)
+    currentUser?.userType === 'patient' && currentUser.id && isValidUuid(currentUser.id)
       ? currentUser.id
       : null;
 

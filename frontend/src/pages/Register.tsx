@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Card, Button, Input, ErrorBanner, Badge } from '../components/ui';
+import { Card, Button, Input, ErrorBanner } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
+import { parseApiError } from '../utils/authErrors';
+import { getDashboardPath, mapRegisterRoleToUserType } from '../utils/authRouting';
 
 type UserRole = 'Patient' | 'Doctor';
 
@@ -9,7 +11,6 @@ export const Register: React.FC = () => {
   const navigate = useNavigate();
   const { register } = useAuth();
 
-  // Form State
   const [role, setRole] = useState<UserRole>('Patient');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -17,10 +18,8 @@ export const Register: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // UI & State
   const [isLoading, setIsLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [isDoctorSubmitted, setIsDoctorSubmitted] = useState(false);
   const [errors, setErrors] = useState<{
     fullName?: string;
     email?: string;
@@ -29,45 +28,41 @@ export const Register: React.FC = () => {
   }>({});
 
   const validateForm = () => {
-    const newErrors: {
-      fullName?: string;
-      email?: string;
-      phone?: string;
-      password?: string;
-    } = {};
+    const newErrors: typeof errors = {};
 
-    // Full Name validation
     if (!fullName.trim()) {
       newErrors.fullName = 'Full name is required';
     } else if (fullName.trim().length < 2) {
       newErrors.fullName = 'Please enter your real full name';
     }
 
-    // Email validation
     if (!email.trim()) {
       newErrors.email = 'Email address is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       newErrors.email = 'Please enter a valid email address';
     }
 
-    // Phone validation
     if (!phone.trim()) {
       newErrors.phone = 'Phone number is required';
-    } else if (phone.trim().length < 7) {
-      newErrors.phone = 'Please enter a valid phone number';
+    } else {
+      const digits = phone.replace(/[\s\-+()]/g, '');
+      if (!/^\d{10,15}$/.test(digits)) {
+        newErrors.phone = 'Phone number must contain 10–15 digits';
+      }
     }
 
-    // Password validation
     if (!password) {
       newErrors.password = 'Password is required';
     } else if (password.length < 8) {
       newErrors.password = 'Password must be at least 8 characters';
     } else {
       const hasUppercase = /[A-Z]/.test(password);
+      const hasLowercase = /[a-z]/.test(password);
       const hasNumber = /[0-9]/.test(password);
       const hasSpecial = /[^A-Za-z0-9]/.test(password);
-      if (!hasUppercase || !hasNumber || !hasSpecial) {
-        newErrors.password = 'Password must include at least 1 uppercase letter, 1 number, and 1 special character';
+      if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecial) {
+        newErrors.password =
+          'Password must include uppercase, lowercase, number, and special character';
       }
     }
 
@@ -75,7 +70,7 @@ export const Register: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
 
@@ -85,30 +80,22 @@ export const Register: React.FC = () => {
 
     setIsLoading(true);
 
-    // Simulate account registration
-    setTimeout(() => {
+    try {
+      const user = await register({
+        email: email.trim(),
+        phone: phone.trim(),
+        name: fullName.trim(),
+        password,
+        user_type: mapRegisterRoleToUserType(role),
+      });
+
+      navigate(getDashboardPath(user.userType), { replace: true });
+    } catch (error) {
+      const { message } = parseApiError(error);
+      setSubmitError(message);
+    } finally {
       setIsLoading(false);
-
-      if (email.trim().toLowerCase() === 'existing@fail.com') {
-        setSubmitError('An account with this email address already exists. Please sign in instead.');
-        return;
-      }
-
-      if (role === 'Doctor') {
-        // Doctor signup requires verification approval
-        setIsDoctorSubmitted(true);
-      } else {
-        // Patient signup logs in immediately and goes to dashboard
-        register({
-          id: `PT-${Math.floor(10000 + Math.random() * 90000)}`,
-          name: fullName.trim(),
-          email: email.trim(),
-          phone: phone.trim(),
-          role: 'Patient',
-        });
-        navigate('/dashboard', { replace: true });
-      }
-    }, 1200);
+    }
   };
 
   const roles: { key: UserRole; label: string; icon: string }[] = [
@@ -116,61 +103,6 @@ export const Register: React.FC = () => {
     { key: 'Doctor', label: 'Doctor', icon: '🩺' },
   ];
 
-  // 1. Doctor Application Confirmation Screen
-  if (isDoctorSubmitted) {
-    return (
-      <div className="min-h-[calc(100vh-140px)] flex items-center justify-center px-4 py-10 sm:py-16">
-        <div className="w-full max-w-lg animate-fadeIn">
-          <Card
-            radius="3xl"
-            shadow="md"
-            className="p-8 sm:p-12 text-center bg-white border border-surfaceContainerHigh space-y-6"
-          >
-            <div className="w-16 h-16 rounded-3xl bg-secondaryContainer/50 text-secondary border border-secondary/20 flex items-center justify-center mx-auto shadow-soft-sm text-2xl">
-              🩺
-            </div>
-
-            <div className="inline-flex">
-              <Badge status="success" size="md" withDot>
-                Verification Pending
-              </Badge>
-            </div>
-
-            <div className="space-y-2">
-              <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-textPrimary tracking-tight">
-                Application Submitted!
-              </h1>
-              <p className="text-sm text-textSecondary leading-relaxed max-w-md mx-auto">
-                Thank you, <strong className="text-textPrimary">{fullName}</strong>. Our clinical board will review your credentials and contact you within <span className="font-semibold text-primary">2-3 business days</span>.
-              </p>
-            </div>
-
-            <div className="p-4 bg-surfaceContainer rounded-2xl text-xs text-textSecondary text-left space-y-1">
-              <p>
-                <span className="font-semibold text-textPrimary">Applicant:</span> {fullName}
-              </p>
-              <p>
-                <span className="font-semibold text-textPrimary">Email:</span> {email}
-              </p>
-              <p>
-                <span className="font-semibold text-textPrimary">Status:</span> Medical License & Board Verification in Progress
-              </p>
-            </div>
-
-            <div className="pt-2">
-              <Link to="/login">
-                <Button variant="primary" size="lg" className="w-full justify-center">
-                  Back to Login
-                </Button>
-              </Link>
-            </div>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. Standard Registration Screen
   return (
     <div className="min-h-[calc(100vh-140px)] flex items-center justify-center px-4 py-10 sm:py-16">
       <div className="w-full max-w-lg">
@@ -179,7 +111,6 @@ export const Register: React.FC = () => {
           shadow="md"
           className="p-7 sm:p-10 bg-white border border-surfaceContainerHigh"
         >
-          {/* Brand Header */}
           <div className="text-center mb-7">
             <Link
               to="/"
@@ -203,11 +134,11 @@ export const Register: React.FC = () => {
               Create Account
             </h1>
             <p className="text-sm text-textSecondary mt-1.5 leading-relaxed">
-              Join <span className="font-semibold text-primary">MediBook AI</span> to book appointments, manage health records, and access care.
+              Join <span className="font-semibold text-primary">MediBook AI</span> to book
+              appointments, manage health records, and access care.
             </p>
           </div>
 
-          {/* Role Selector: Patient & Doctor only */}
           <div className="mb-6">
             <label className="block text-xs font-bold uppercase tracking-wider text-textSecondary mb-2.5 text-center">
               Select Account Type
@@ -233,15 +164,14 @@ export const Register: React.FC = () => {
               })}
             </div>
 
-            {/* Doctor Helper Notice */}
             {role === 'Doctor' && (
               <p className="text-[11px] text-secondary bg-secondaryContainer/30 p-2.5 rounded-xl mt-2 text-center border border-secondary/20 animate-fadeIn">
-                ℹ️ <strong>Doctor Notice:</strong> Doctor accounts require clinical verification after signup. You'll get portal access once approved.
+                Doctor accounts are created immediately. Additional credential verification may
+                be required for full portal access.
               </p>
             )}
           </div>
 
-          {/* Error Banner if submission fails */}
           {submitError && (
             <div className="mb-6 animate-fadeIn">
               <ErrorBanner
@@ -252,9 +182,7 @@ export const Register: React.FC = () => {
             </div>
           )}
 
-          {/* Registration Form */}
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            {/* Full Name */}
             <Input
               label={role === 'Doctor' ? 'Full Name & Title' : 'Full Name'}
               placeholder={role === 'Doctor' ? 'e.g. Dr. Jane Sterling, MD' : 'e.g. Sarah Jenkins'}
@@ -276,7 +204,6 @@ export const Register: React.FC = () => {
               }
             />
 
-            {/* Email Address */}
             <Input
               label="Email Address"
               type="email"
@@ -299,7 +226,6 @@ export const Register: React.FC = () => {
               }
             />
 
-            {/* Phone Number */}
             <Input
               label="Phone Number"
               type="tel"
@@ -322,7 +248,6 @@ export const Register: React.FC = () => {
               }
             />
 
-            {/* Password */}
             <Input
               label="Password"
               type={showPassword ? 'text' : 'password'}
@@ -333,7 +258,7 @@ export const Register: React.FC = () => {
                 if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
               }}
               error={errors.password}
-              helperText="Min 8 characters, 1 uppercase, 1 number, 1 special character"
+              helperText="Min 8 characters, uppercase, lowercase, number, and special character"
               required
               leftIcon={
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -377,7 +302,6 @@ export const Register: React.FC = () => {
               }
             />
 
-            {/* Submit Button */}
             <div className="pt-3">
               <Button
                 type="submit"
@@ -386,16 +310,11 @@ export const Register: React.FC = () => {
                 className="w-full justify-center"
                 isLoading={isLoading}
               >
-                {isLoading
-                  ? 'Submitting...'
-                  : role === 'Doctor'
-                  ? 'Submit Doctor Application'
-                  : 'Create Account'}
+                {isLoading ? 'Creating Account...' : 'Create Account'}
               </Button>
             </div>
           </form>
 
-          {/* Footer Link to Login */}
           <div className="mt-8 pt-6 border-t border-surfaceContainerHigh text-center">
             <p className="text-sm text-textSecondary">
               Already have an account?{' '}
