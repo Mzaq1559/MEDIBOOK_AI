@@ -1,6 +1,5 @@
 version: 2
 updates:
-  # Python dependencies (backend)
   - package-ecosystem: "pip"
     directory: "/backend"
     schedule:
@@ -14,7 +13,6 @@ updates:
       - "dependencies"
       - "python"
 
-  # Python dependencies (AI service)
   - package-ecosystem: "pip"
     directory: "/ai-service"
     schedule:
@@ -28,7 +26,6 @@ updates:
       - "dependencies"
       - "python"
 
-  # NPM dependencies (frontend)
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
@@ -42,7 +39,6 @@ updates:
       - "dependencies"
       - "npm"
 
-  # Docker image updates
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -55,4 +51,3 @@ updates:
     labels:
       - "dependencies"
       - "docker"
-```
