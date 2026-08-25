@@ -402,7 +402,11 @@ def seed_database(db: Optional[Session] = None) -> dict:
 if __name__ == "__main__":
     import sys
 
+    from app.services.bulk_seed import seed_bulk_test_data
+
     if len(sys.argv) > 1 and sys.argv[1] == "--test-admin":
         seed_test_admin()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--bulk-test-data":
+        seed_bulk_test_data()
     else:
         seed_database()
