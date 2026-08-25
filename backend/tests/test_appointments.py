@@ -256,3 +256,31 @@ def test_complete_and_feedback_flow(client, seed_data):
     feed_data = feed_res.json()
     assert feed_data["feedback_score"] == 5
     assert feed_data["doctor_rating_updated"] > 0
+
+
+def test_create_appointment_with_user_id(client, seed_data):
+    doc_id = str(seed_data["doctor"].id)
+    # Pass patient user_id instead of patient.id
+    user_id = str(seed_data["patient"].user_id)
+
+    target = date.today() + timedelta(days=7)
+    while target.weekday() >= 5:
+        target += timedelta(days=1)
+    appt_time = f"{target.strftime('%Y-%m-%d')}T14:30:00Z"
+
+    payload = {
+        "doctor_id": doc_id,
+        "patient_id": user_id,
+        "appointment_time": appt_time,
+        "symptoms_reported": "Routine checkup using user_id",
+        "urgency_level": "normal",
+        "appointment_type": "in_person"
+    }
+
+    response = client.post("/api/appointments", json=payload, headers=seed_data["patient_headers"])
+    assert response.status_code == 201
+    data = response.json()
+    assert data["doctor_id"] == doc_id
+    assert data["patient_id"] == str(seed_data["patient"].id)
+    assert data["status"] == "scheduled"
+
