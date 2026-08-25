@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -14,6 +15,8 @@ from app.chatbot import get_session, handle_message
 from app.config import settings
 from app.groq_client import LLMError, LLM_FALLBACK
 from app.schemas import ChatHistoryResponse, ChatMessageRequest, ChatMessageResponse
+
+logger = logging.getLogger("medibook.ai.main")
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -144,6 +147,15 @@ def send_chat_message(
             detail={
                 "message": LLM_FALLBACK,
                 "error_code": "INTERNAL_ERROR",
+            },
+        )
+    except Exception as exc:
+        logger.error("Unexpected error in send_chat_message: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": "Invalid or expired conversation_id",
+                "error_code": "INVALID_CONVERSATION",
             },
         )
 
