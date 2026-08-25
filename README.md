@@ -330,6 +330,8 @@ docker compose build
 docker compose up -d
 ```
 
+Services: PostgreSQL (5432), Backend (8000), AI Service (8001), Frontend (3000), n8n (5678)
+
 Wait for PostgreSQL health checks to pass, then verify:
 
 ```bash
@@ -358,6 +360,11 @@ docker compose exec backend python -m app.services.seed --test-admin
 ```
 
 ### 5. Access the application
+
+- Frontend: http://localhost:3000
+- Backend API docs: http://localhost:8000/docs
+- AI Service: http://localhost:8001
+- n8n: http://localhost:5678
 
 | Service | URL |
 |---------|-----|
@@ -402,17 +409,17 @@ Full endpoint specifications live in **`docs/MEDIBOOK_AI_COMPLETE_SPECIFICATIONS
 
 ### Primary endpoint groups
 
-| Group | Base path | Description |
-|-------|-----------|-------------|
-| **Auth** | `/api/auth` | Register, login, refresh, logout, `/me` |
-| **Appointments** | `/api/appointments` | CRUD, reschedule, cancel, complete, no-show, feedback |
-| **Prescriptions** | `/api/prescriptions` | All 5 CRUD endpoints (GET, POST, PUT, DELETE, LIST) with soft deletes & auth |
-| **Doctors** | `/api/doctors` | List, detail, availability, schedule update, holidays |
-| **Clinics** | `/api/clinics` | List, detail, create (admin) |
-| **Patients** | `/api/patients` | Profile, update, appointment history |
-| **Analytics** | `/api/analytics` | Dashboard metrics, daily summary |
-| **Chat (AI)** | `/api/chat` on **port 8001** | Message, conversation history |
-| **Health** | `/health` | Service health checks |
+| Group | Endpoints | Purpose |
+|-------|-----------|---------|
+| **Auth** | GET/POST `/api/auth` | Register, login, refresh, logout, `/me` |
+| **Appointments** | GET/POST/PUT/DELETE `/api/appointments` | CRUD, reschedule, cancel, complete, no-show, feedback |
+| **Prescriptions** | GET/POST/PUT/DELETE `/prescriptions` | CRUD management |
+| **Doctors** | GET/POST/PUT `/api/doctors` | List, detail, availability, schedule update, holidays |
+| **Clinics** | GET/POST `/api/clinics` | List, detail, create (admin) |
+| **Patients** | GET/POST/PUT `/api/patients` | Profile, update, appointment history |
+| **Analytics** | GET `/api/analytics` | Dashboard metrics, daily summary |
+| **Chat (AI)** | POST `/api/chat` (port 8001) | Message, conversation history |
+| **Health** | GET `/health` | Service health checks |
 
 ---
 
@@ -578,9 +585,11 @@ MEDIBOOK_AI/
 ├── backend/                 # FastAPI clinic management API (auth, appointments, analytics)
 │   ├── app/
 │   │   ├── routes/          # REST endpoint handlers
+│   │   │   └── prescriptions.py  # backend/app/routes/prescriptions.py
 │   │   ├── models/          # SQLAlchemy ORM models
 │   │   ├── services/        # Business logic, seed scripts, availability engine
 │   │   ├── schemas/         # Pydantic request/response models
+│   │   │   └── prescription.py   # backend/app/schemas/prescription.py
 │   │   └── core/            # Auth, security, config, audit
 │   ├── alembic/             # Database migrations
 │   └── tests/               # Pytest suite
@@ -605,6 +614,8 @@ MEDIBOOK_AI/
 ---
 
 ## Testing
+
+Test Prescriptions: http://localhost:8000/docs → try POST /prescriptions
 
 ### Backend tests
 
