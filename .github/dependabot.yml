@@ -1,0 +1,58 @@
+version: 2
+updates:
+  # Python dependencies (backend)
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "Mzaq1559"
+    labels:
+      - "dependencies"
+      - "python"
+
+  # Python dependencies (AI service)
+  - package-ecosystem: "pip"
+    directory: "/ai-service"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "Mzaq1559"
+    labels:
+      - "dependencies"
+      - "python"
+
+  # NPM dependencies (frontend)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "Mzaq1559"
+    labels:
+      - "dependencies"
+      - "npm"
+
+  # Docker image updates
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "Mzaq1559"
+    labels:
+      - "dependencies"
+      - "docker"
+```
