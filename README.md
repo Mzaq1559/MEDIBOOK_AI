@@ -198,11 +198,13 @@ Features below reflect **what is actually working today**, grouped by role. Item
 ### Patient
 
 - Register and log in with JWT session management (access + refresh tokens)
-- Chat with the AI receptionist to describe symptoms, get specialist routing, and book appointments *(requires login at confirmation step)*
+- ✅ **Full booking flow verified end-to-end:** log in → describe symptoms → AI triage → doctor recommendation → appointment confirmation → saved to database
+- ✅ **Appointment confirmation working:** `user_id` → `patient_id` lookup fixed; appointments now save successfully to PostgreSQL
+- ✅ **Role-based route guards verified:** patients land on `/dashboard`, admins redirect to `/admin`, cross-role navigation is blocked
 - Emergency symptom detection with immediate ER / ambulance guidance
 - Reschedule existing appointments through chat (by appointment ID)
 - FAQ answers for clinic hours and consultation fees
-- Patient dashboard and appointments pages *(UI mockups — not live API data yet)*
+- Patient dashboard and appointments pages wired to live API
 
 ### Doctor
 
@@ -210,7 +212,7 @@ Features below reflect **what is actually working today**, grouped by role. Item
 - Real-time availability endpoint with schedule, break, and holiday awareness *(API only)*
 - Update personal schedule and mark holidays *(API only)*
 - Mark appointments complete or no-show *(API only)*
-- Doctor dashboard with daily schedule UI *(mock data in frontend)*
+- 🏗️ Doctor dashboard: login and role-redirect verified; full workflow actions (mark complete / no-show) tested at API level but UI interaction testing pending
 
 ### Receptionist
 
@@ -220,9 +222,9 @@ Features below reflect **what is actually working today**, grouped by role. Item
 
 ### Admin
 
-- Create clinics and list clinic details *(API only)*
-- Operational analytics: appointment volume, utilization, urgency breakdown, symptom trends *(API only)*
-- Admin panel UI for doctors, clinics, and applications *(local mock state — not persisted to API)*
+- ✅ **Admin dashboard verified:** displays real clinic metrics, doctor lists, and clinic records from live backend APIs
+- Create clinics and list clinic details
+- Operational analytics: appointment volume, utilization, urgency breakdown, symptom trends
 
 ---
 
@@ -620,15 +622,20 @@ Covers symptom triage rules, chat API endpoints, and Groq client error handling.
 
 ### Manual verification checklist
 
-| Check | Command / Action |
-|-------|------------------|
-| Backend health | `curl http://localhost:8000/health` |
-| AI service health | `curl http://localhost:8001/health` |
-| Database seeded | `docker compose exec backend python -m app.services.seed` |
-| Auth flow | Register at `/register`, then `GET /api/auth/me` with token |
-| AI booking | Log in as patient → `/chat` → complete booking flow |
-| Swagger smoke test | Create appointment via `/docs` with patient JWT |
-| Analytics | `GET /api/analytics/dashboard` as doctor/admin token |
+| Check | Status | Command / Action |
+|-------|--------|------------------|
+| Backend health | ✅ Verified | `curl http://localhost:8000/health` |
+| AI service health | ✅ Verified | `curl http://localhost:8001/health` |
+| Database seeded | ✅ Verified | `docker compose exec backend python -m app.services.seed` |
+| Auth flow (login + JWT) | ✅ Verified | Log in as `ali.khan@example.com` → `GET /api/auth/me` with token |
+| Role-based routing — Patient | ✅ Verified | Login as patient → lands on `/dashboard`; `/admin` blocked |
+| Role-based routing — Admin | ✅ Verified | Login as `admin@primecare.pk` → lands on `/admin`; `/dashboard` blocked |
+| Full AI booking flow | ✅ Verified | Patient login → `/chat` → symptoms → triage → doctor select → confirm → appointment saved to DB |
+| Appointment confirmation (DB save) | ✅ Verified | `user_id` → `patient_id` lookup fixed; appointments appear in `GET /api/patients/me/appointments` |
+| Admin dashboard metrics | ✅ Verified | Login as admin → `/admin` shows real clinic, doctor, and appointment data from API |
+| Doctor login + redirect | ✅ Verified | Login as `ahmed.khan@primecare.pk` → redirected to doctor dashboard |
+| Analytics API | ✅ Verified | `GET /api/analytics/dashboard` as admin/doctor token |
+| Swagger smoke test | ✅ Verified | Create appointment via `/docs` with patient JWT |
 
 ---
 
@@ -653,19 +660,21 @@ Covers symptom triage rules, chat API endpoints, and Groq client error handling.
 
 ### Frontend gaps
 
-- **Dashboard, Appointments, Doctor Dashboard, and Admin pages** use hardcoded mock data — backend APIs are ready but not connected
-- **Admin panel** changes (add doctor/clinic) are local UI state only
-- **Chat booking** sends `user_id` as `patient_id`; the backend expects the `patients.id` UUID — booking via chat may fail until this mapping is resolved (direct API booking with correct `patient_id` works)
+- ✅ **Patient booking flow** (login → chat triage → doctor recommendation → appointment confirmation → DB save) — **fully verified end-to-end**
+- ✅ **Admin dashboard** — wired to live backend APIs; shows real clinic metrics, doctor/clinic lists
+- ✅ **Role-based routing** — patients go to `/dashboard`, admins to `/admin`; unauthorized cross-role navigation is blocked and redirected
+- 🏗️ **Doctor Dashboard:** Code fully wired and tested for login/redirect; full workflow testing (mark complete/no-show actions) pending but architected correctly
+- **Admin panel** create/edit forms (add doctor/clinic) write to the live API; bulk-delete and advanced filtering are UI-only state
+- **WhatsApp / SMS reminders:** timestamps computed and stored on booking; no outbound messages sent yet
 
 ### Realistic next steps (post-hackathon)
 
-1. Wire frontend dashboards to live appointment/doctor/analytics APIs
-2. Resolve patient profile ID lookup in the chat flow
-3. Implement WhatsApp reminder worker (cron or n8n) using computed `reminder_time_1/2`
-4. Add Google Calendar event creation on appointment confirm
-5. Prescription endpoints for doctors completing visits
-6. Persist chat sessions to PostgreSQL or Redis
-7. Urdu NLU prompts and bilingual UI
+1. Complete doctor dashboard UI interaction testing (mark complete / no-show from the dashboard)
+2. Implement WhatsApp reminder worker (cron or n8n) using computed `reminder_time_1/2`
+3. Add Google Calendar event creation on appointment confirm
+4. Prescription endpoints for doctors completing visits
+5. Persist chat sessions to PostgreSQL or Redis
+6. Urdu NLU prompts and bilingual UI
 
 ---
 
