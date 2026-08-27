@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -133,9 +133,12 @@ def send_chat_message(
                 "error_code": "INVALID_INPUT",
             },
         )
+    
+    conversation_id = payload.conversation_id or str(uuid4())
+
     try:
         result = handle_message(
-            conversation_id=payload.conversation_id,
+            conversation_id=conversation_id,
             patient_id=str(payload.patient_id) if payload.patient_id else None,
             message=payload.message,
             language=payload.language or "english",
