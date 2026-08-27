@@ -151,14 +151,12 @@ def get_doctor_availability(
         )
 
     # Check if date is in the past
-    if parsed_date < date.today() if hasattr(date, 'today') else datetime.now().date():
-        # Compare with today's date
-        today_date = datetime.now().date()
-        if parsed_date < today_date:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"message": "Date cannot be in the past", "error_code": "INVALID_INPUT"}
-            )
+    today_date = datetime.now().date()
+    if parsed_date < today_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Date cannot be in the past", "error_code": "INVALID_INPUT"}
+        )
 
     try:
         return compute_doctor_availability(

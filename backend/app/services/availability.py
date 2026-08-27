@@ -172,7 +172,7 @@ def compute_doctor_availability(
             # Check if in past
             if slot_localized <= now_karachi:
                 is_slot_available = False
-                slot_status = "booked"
+                slot_status = "past"
 
             # Check if during doctor break
             if break_start_t and break_end_t:
