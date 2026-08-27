@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     GOOGLE_CALENDAR_SECRET: str = ""
     GOOGLE_CALENDAR_ID: str = "primary"
 
-    N8N_URL: str = "http://localhost:1880"
-    N8N_WEBHOOK_URL: str = "http://localhost:1880/webhook"
+    N8N_URL: str = "http://n8n:5678"
+    N8N_WEBHOOK_URL: str = "http://n8n:5678/webhook/medibook-reminder"
 
     CONVERSATION_MAX_HISTORY: int = 20
 

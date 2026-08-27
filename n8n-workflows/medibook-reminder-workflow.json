@@ -1,0 +1,292 @@
+{
+  "name": "MediBook AI - Appointment Events & Reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "medibook-reminder",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "medibook-reminder"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.event }}",
+                    "rightValue": "reminder_triggered",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "reminder"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.event }}",
+                    "rightValue": "appointment_created",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "created"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.event }}",
+                    "rightValue": "appointment_rescheduled",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rescheduled"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.event }}",
+                    "rightValue": "appointment_cancelled",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cancelled"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "route-event",
+      "name": "Route by Event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $vars.SMTP_FROM || 'noreply@medibook.ai' }}",
+        "toEmail": "={{ $json.body.data.patient_email }}",
+        "subject": "=MediBook Reminder: Your appointment is {{ $json.body.data.reminder_type === '24h' ? 'tomorrow' : 'in 1 hour' }}",
+        "emailFormat": "html",
+        "message": "=<html>\n<body style=\"font-family: Arial, sans-serif; background: #f4f6f9; padding: 20px;\">\n<div style=\"max-width:600px;margin:0 auto;background:#fff;padding:30px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);\">\n  <div style=\"background:#2563eb;color:#fff;padding:15px;border-radius:6px 6px 0 0;text-align:center;\">\n    <h2 style=\"margin:0;\">MediBook AI — Appointment Reminder</h2>\n  </div>\n  <div style=\"padding:20px 0;\">\n    <p>Dear <strong>{{ $json.body.data.patient_name }}</strong>,</p>\n    <p>This is your <strong>{{ $json.body.data.reminder_type === '24h' ? '24-hour' : '1-hour' }}</strong> reminder for your upcoming appointment.</p>\n    <div style=\"background:#f8fafc;border-left:4px solid #2563eb;padding:15px;margin:15px 0;\">\n      <p style=\"margin:5px 0;\"><strong>Doctor:</strong> Dr. {{ $json.body.data.doctor_name }}</p>\n      <p style=\"margin:5px 0;\"><strong>Date &amp; Time:</strong> {{ $json.body.data.appointment_time }}</p>\n      <p style=\"margin:5px 0;\"><strong>Clinic:</strong> {{ $json.body.data.clinic_name }}</p>\n      <p style=\"margin:5px 0;\"><strong>Address:</strong> {{ $json.body.data.clinic_address }}</p>\n      <p style=\"margin:5px 0;\"><strong>Appointment ID:</strong> {{ $json.body.data.appointment_id }}</p>\n    </div>\n    <p>Please arrive 10 minutes early with your ID and previous medical records.</p>\n  </div>\n  <div style=\"font-size:12px;color:#6b7280;text-align:center;margin-top:30px;border-top:1px solid #e5e7eb;padding-top:15px;\">\n    <p>This is an automated notification from MediBook AI. Please do not reply to this email.</p>\n  </div>\n</div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-reminder-email",
+      "name": "Send Reminder Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [700, 180]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $vars.SMTP_FROM || 'noreply@medibook.ai' }}",
+        "toEmail": "={{ $json.body.data.patient_email }}",
+        "subject": "=✅ Appointment Confirmed — Dr. {{ $json.body.data.doctor_name }}",
+        "emailFormat": "html",
+        "message": "=<html>\n<body style=\"font-family: Arial, sans-serif; background: #f4f6f9; padding: 20px;\">\n<div style=\"max-width:600px;margin:0 auto;background:#fff;padding:30px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);\">\n  <div style=\"background:#16a34a;color:#fff;padding:15px;border-radius:6px 6px 0 0;text-align:center;\">\n    <h2 style=\"margin:0;\">✅ Appointment Confirmed</h2>\n  </div>\n  <div style=\"padding:20px 0;\">\n    <p>Dear <strong>{{ $json.body.data.patient_name }}</strong>,</p>\n    <p>Your appointment has been successfully booked.</p>\n    <div style=\"background:#f8fafc;border-left:4px solid #16a34a;padding:15px;margin:15px 0;\">\n      <p style=\"margin:5px 0;\"><strong>Doctor:</strong> Dr. {{ $json.body.data.doctor_name }}</p>\n      <p style=\"margin:5px 0;\"><strong>Date &amp; Time:</strong> {{ $json.body.data.appointment_time }}</p>\n      <p style=\"margin:5px 0;\"><strong>Clinic:</strong> {{ $json.body.data.clinic_name }}</p>\n      <p style=\"margin:5px 0;\"><strong>Address:</strong> {{ $json.body.data.clinic_address }}</p>\n      <p style=\"margin:5px 0;\"><strong>Appointment ID:</strong> {{ $json.body.data.appointment_id }}</p>\n    </div>\n    <p>You will receive reminders 24 hours and 1 hour before your appointment.</p>\n  </div>\n  <div style=\"font-size:12px;color:#6b7280;text-align:center;margin-top:30px;border-top:1px solid #e5e7eb;padding-top:15px;\">\n    <p>This is an automated notification from MediBook AI.</p>\n  </div>\n</div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-confirmation-email",
+      "name": "Send Confirmation Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [700, 320]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $vars.SMTP_FROM || 'noreply@medibook.ai' }}",
+        "toEmail": "={{ $json.body.data.patient_email }}",
+        "subject": "=📅 Appointment Rescheduled — Dr. {{ $json.body.data.doctor_id }}",
+        "emailFormat": "html",
+        "message": "=<html><body style=\"font-family:Arial,sans-serif;padding:20px;\">\n<div style=\"max-width:600px;margin:0 auto;background:#fff;padding:30px;border-radius:8px;\">\n  <h2 style=\"color:#2563eb;\">Appointment Rescheduled</h2>\n  <p>Your appointment has been rescheduled to: <strong>{{ $json.body.data.new_appointment_time }}</strong></p>\n  <p>Appointment ID: {{ $json.body.data.appointment_id }}</p>\n  <p><em>This is an automated notification from MediBook AI.</em></p>\n</div></body></html>",
+        "options": {}
+      },
+      "id": "send-reschedule-email",
+      "name": "Send Reschedule Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [700, 460]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $vars.SMTP_FROM || 'noreply@medibook.ai' }}",
+        "toEmail": "={{ $json.body.data.patient_email }}",
+        "subject": "=❌ Appointment Cancelled — MediBook AI",
+        "emailFormat": "html",
+        "message": "=<html><body style=\"font-family:Arial,sans-serif;padding:20px;\">\n<div style=\"max-width:600px;margin:0 auto;background:#fff;padding:30px;border-radius:8px;\">\n  <h2 style=\"color:#dc2626;\">Appointment Cancelled</h2>\n  <p>Your appointment (ID: {{ $json.body.data.appointment_id }}) has been cancelled.</p>\n  <p>If this was a mistake, please visit MediBook AI to rebook.</p>\n  <p><em>This is an automated notification from MediBook AI.</em></p>\n</div></body></html>",
+        "options": {}
+      },
+      "id": "send-cancellation-email",
+      "name": "Send Cancellation Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [700, 600]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\", \"event\": \"{{ $('Webhook').item.json.body.event }}\", \"processed\": true }",
+        "options": {}
+      },
+      "id": "respond-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [940, 390]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Route by Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Event": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Reschedule Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Cancellation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder Email": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation Email": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reschedule Email": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Cancellation Email": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "medibook-reminder-v1",
+  "tags": ["medibook", "reminders", "appointments"]
+}

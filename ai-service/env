@@ -10,5 +10,5 @@ GROQ_MODEL=openai/gpt-oss-120b
 CONVERSATION_MAX_HISTORY=20
 GOOGLE_CALENDAR_CREDENTIALS_PATH=google-calendar-credentials.json
 GOOGLE_CALENDAR_ID=medibookai0@gmail.com
-N8N_URL=http://localhost:1880
-N8N_WEBHOOK_URL=http://localhost:1880/webhook
+N8N_URL=http://n8n:5678
+N8N_WEBHOOK_URL=http://n8n:5678/webhook/medibook-reminder
