@@ -62,11 +62,15 @@ services:
       - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
       - AI_SERVICE_PORT=8001
       - AI_SERVICE_HOST=0.0.0.0
+      - N8N_URL=http://n8n:5678
+      - N8N_WEBHOOK_URL=http://n8n:5678/webhook/medibook-reminder
     depends_on:
       db:
         condition: service_healthy
       backend:
         condition: service_started
+      n8n:
+        condition: service_healthy
     networks:
       - medibook
 
@@ -103,6 +107,17 @@ services:
       - N8N_PROTOCOL=http
       - DB_TYPE=sqlite
       - N8N_WEBHOOK_TUNNEL_URL=http://localhost:5678/
+      - N8N_PUSH_BACKEND=websocket
+      - N8N_USER_MANAGEMENT_DISABLED=true
+      - N8N_USER_MANAGEMENT_IS_INSTANCE_OWNER_SET_UP=true
+      - N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN=true
+      - EXECUTIONS_PROCESS=main
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     volumes:
       - n8n_data:/home/node/.n8n
     networks:

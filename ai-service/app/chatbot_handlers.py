@@ -197,8 +197,9 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
                 n8n_p["urgency_level"] = payload["urgency_level"]
                 n8n_p["google_calendar_event_id"] = session.get("google_calendar_event_id")
                 n8n_webhook.dispatch_appointment_created(n8n_p)
-                reminders.trigger_reminder(n8n_p, "24h")
-                reminders.trigger_reminder(n8n_p, "1h")
+                # NOTE: Reminder webhooks (24h, 1h) are triggered by the
+                # backend scheduler (backend/app/scheduler.py) at the correct
+                # time windows before the appointment — NOT immediately on creation.
             except Exception as e:
                 logger.warning(f"N8N sync failed: {e}")
 
