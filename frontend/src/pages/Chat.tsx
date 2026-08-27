@@ -277,7 +277,7 @@ export const Chat: React.FC = () => {
                     <div className="pt-2">
                       <TimeSlotGrid
                         slots={msg.uiData.slots}
-                        onSelect={(ts) => handleAction("Selected Time", ts)}
+                        onSelect={(ts) => handleAction("Selected Time Slot", ts)}
                         disabled={isBotTyping}
                       />
                     </div>

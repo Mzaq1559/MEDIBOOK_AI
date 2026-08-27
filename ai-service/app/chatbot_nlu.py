@@ -136,9 +136,15 @@ def extract_appointment_id(text: str, nlu: dict) -> Optional[str]:
 
 
 def extract_option_id(text: str, nlu: dict) -> Optional[str]:
-    """Extract a UUID option_id from the message or NLU result."""
+    """Extract a UUID or ISO-timestamp option_id from the message or NLU result."""
     if nlu.get("option_id"):
         return str(nlu["option_id"]).strip()
     # Allow clients to send bare UUIDs as doctor/slot selection
     m = re.search(r"\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b", text, re.I)
-    return m.group(1) if m else None
+    if m:
+        return m.group(1)
+    # Also match ISO 8601 timestamps sent by the TimeSlotGrid (e.g. 2026-08-28T09:00:00+05:00)
+    iso = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)?)", text)
+    if iso:
+        return iso.group(1)
+    return None
