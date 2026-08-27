@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from app.schemas import MessageItem, OptionItem
 from app.chatbot_state import get_session, new_session, append_msg, S
@@ -38,14 +39,10 @@ def handle_message(
     language: str,
     authorization: Optional[str],
 ) -> dict[str, Any]:
-    conv_id = conversation_id or f"conv-{uuid.uuid4().hex[:12]}"
-    import uuid # lazy import inside or global
+    conv_id = conversation_id or str(uuid4())
     
     session = get_session(conv_id)
     if not session:
-        import uuid
-        if not conversation_id:
-            conv_id = f"conv-{uuid.uuid4().hex[:12]}"
         session = new_session(conv_id, patient_id)
         
     if patient_id:
