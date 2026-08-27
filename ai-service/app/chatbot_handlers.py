@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Optional
 
 from app import backend_client
@@ -107,6 +108,11 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             return "Session error: missing doctor. Please pick a doctor.", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(session.get("candidate_doctors", []))}
         
         slot_ts = extract_option_id(text, nlu)
+        # Direct ISO-timestamp fallback: frontend sends "Selected Time Slot 2026-08-28T09:00:00+05:00"
+        if not slot_ts:
+            iso_m = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)?)", text)
+            if iso_m:
+                slot_ts = iso_m.group(1)
         slot = find_slot_by_ts(slot_ts, doc) if slot_ts else match_slot_from_text(text, doc)
         if not slot:
             return "Please select a time slot from the list.", "waiting_for_slot_selection", [], {"slots": slots_ui_data(doc)}
@@ -348,10 +354,17 @@ def handle_reschedule(session: dict[str, Any], text: str, nlu: dict, auth: Optio
     if state == S.RESCHEDULE_SLOTS:
         # User is picking a slot
         slot_ts = extract_option_id(text, nlu)
+        # Direct ISO-timestamp fallback for reschedule slot picking
+        if not slot_ts:
+            iso_m = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)?)", text)
+            if iso_m:
+                slot_ts = iso_m.group(1)
         
-        # Did they pick a doctor instead?
-        doc_id = extract_option_id(text, nlu) if not slot_ts else None # same extraction, let's check doc list
-        if doc_id and not slot_ts:
+        # Did they pick a doctor instead (UUID, not a timestamp)?
+        doc_id = None
+        if not slot_ts:
+            doc_id = extract_option_id(text, nlu)
+        if doc_id:
             doc = find_doctor_by_id(doc_id, session.get("candidate_doctors", []))
             if doc:
                 session["selected_doctor"] = doc
