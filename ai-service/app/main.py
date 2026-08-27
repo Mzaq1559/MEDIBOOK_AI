@@ -173,6 +173,7 @@ def send_chat_message(
         bot_message=result["bot_message"],
         next_action=result["next_action"],
         options=result["options"],
+        ui_data=result.get("ui_data"),
         conversation_history=result["conversation_history"],
     )
 

@@ -45,6 +45,7 @@ class ChatMessageResponse(BaseModel):
     next_action: Optional[str] = None
     options: List[OptionItem] = Field(default_factory=list)
     conversation_history: List[MessageItem] = Field(default_factory=list)
+    ui_data: Optional[dict] = None
 
 
 class ChatHistoryResponse(BaseModel):

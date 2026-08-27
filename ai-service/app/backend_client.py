@@ -1,4 +1,4 @@
-"""HTTP client for Person A's backend. JWT is forwarded only in-memory for a request."""
+"""HTTP client for the MediBook backend. JWT is forwarded in-memory per request."""
 
 from __future__ import annotations
 
@@ -105,6 +105,47 @@ def reschedule_appointment(appointment_id: str, appointment_time: str, authoriza
             res = client.put(
                 f"{settings.backend_base}/appointments/{appointment_id}",
                 json={"appointment_time": appointment_time},
+                headers=_headers(authorization),
+            )
+    except httpx.HTTPError:
+        raise BackendError(503, "INTERNAL_ERROR", "Could not reach the booking service. Please try again.")
+    if res.status_code >= 400:
+        raise _parse_error(res)
+    return res.json()
+
+
+def fetch_patient_appointments(
+    patient_id: str,
+    authorization: str,
+    status_filter: str = "scheduled",
+) -> list[dict[str, Any]]:
+    """Fetch a patient's appointments. Returns a list of appointment dicts."""
+    params: dict[str, Any] = {"patient_id": patient_id, "limit": 20}
+    if status_filter:
+        params["status"] = status_filter
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            res = client.get(
+                f"{settings.backend_base}/appointments",
+                params=params,
+                headers=_headers(authorization),
+            )
+        if res.status_code >= 400:
+            logger.warning("Fetch patient appointments failed with HTTP %s", res.status_code)
+            return []
+        data = res.json()
+        return list(data.get("appointments") or [])
+    except httpx.HTTPError:
+        logger.warning("Fetch patient appointments could not reach backend")
+        return []
+
+
+def cancel_appointment(appointment_id: str, authorization: str) -> dict[str, Any]:
+    """Cancel an appointment via DELETE /api/appointments/{id}."""
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            res = client.delete(
+                f"{settings.backend_base}/appointments/{appointment_id}",
                 headers=_headers(authorization),
             )
     except httpx.HTTPError:
