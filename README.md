@@ -11,18 +11,37 @@
 
 ---
 
-## Two Implementations
+## Three Implementations
 
-This project is submitted as **two separate, complete implementations** so judges can evaluate MediBook AI both with and without the RAG layer.
+This project is developed as **three separate, complete implementations**, allowing judges to evaluate MediBook AI's progression from a deterministic baseline to a RAG-enabled system and finally to a fully agentic architecture.
 
-| Version                | Branch                                                                                         | Description                                                                              |
-| ------------------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| **Non-RAG (this branch)** | [`main`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/main)                                       | Core clinic platform with deterministic symptom triage — no retrieval or vector search.  |
-| **RAG-enabled**          | [`feature/rag-vector-db`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/feature/rag-vector-db)     | Everything in this branch, plus a ChromaDB-backed medical RAG layer for grounded triage. |
+| Version                              | Branch                                                                    | Description                                                                                                                                                                                                               |
+| ------------------------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Baseline / Non-RAG (this branch)** | [`main`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/main)               | Core clinic platform with a deterministic conversation flow and symptom triage. No retrieval or vector database is used.                                                                                                  |
+| **RAG-Enabled**                      | [`rag`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/rag)                 | Extends the baseline with a ChromaDB-backed medical RAG pipeline for grounded symptom triage and medical knowledge retrieval.                                                                                             |
+| **Agentic RAG**                      | [`agentic-rag`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/agentic-rag) | Replaces the deterministic conversation flow with a Groq tool-calling agent that can reason over conversations, use clinic and RAG tools, and perform write actions through backend validation and explicit confirmation. |
 
-Bug fixes and improvements made here on `main` are regularly merged into `feature/rag-vector-db`, so the RAG version stays current with this baseline.
+All three branches are **complete, independently runnable implementations**.
 
----
+### Development Flow
+
+```text
+main
+Baseline / Non-RAG
+      │
+      │ Bug fixes & improvements
+      ▼
+rag
+RAG-Enabled
+      │
+      │ Agentic architecture
+      ▼
+agentic-rag
+Agentic RAG
+```
+
+Bug fixes and improvements made to the baseline implementation are regularly merged into `rag`, ensuring that the RAG implementation remains aligned with the latest stable clinic platform. The `agentic-rag` branch builds on the same core platform while introducing the agentic architecture.
+
 
 ## Table of Contents
 
