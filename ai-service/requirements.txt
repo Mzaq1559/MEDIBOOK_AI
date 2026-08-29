@@ -10,3 +10,4 @@ slowapi>=0.1.9
 pytest>=8.3.0
 tzdata>=2024.1
 google-auth>=2.20.0
+chromadb>=0.5.0

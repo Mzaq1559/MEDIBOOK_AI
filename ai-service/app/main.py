@@ -14,6 +14,10 @@ from slowapi.util import get_remote_address
 from app.chatbot import get_session, handle_message
 from app.config import settings
 from app.groq_client import LLMError, LLM_FALLBACK
+from app.rag.config import rag_settings
+from app.rag.embeddings import embedding_status
+from app.rag.metrics import metrics as rag_metrics
+from app.rag.vector_db import health_status as rag_vector_health
 from app.schemas import ChatHistoryResponse, ChatMessageRequest, ChatMessageResponse
 
 logger = logging.getLogger("medibook.ai.main")
@@ -93,6 +97,18 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def startup_rag_index() -> None:
+    if not rag_settings.RAG_ENABLED or not rag_settings.RAG_AUTO_LOAD_ON_STARTUP:
+        return
+    try:
+        from app.rag.knowledge_loader import ensure_knowledge_indexed
+
+        ensure_knowledge_indexed()
+    except Exception as exc:
+        logger.warning("RAG knowledge auto-load failed (service will use fallback): %s", exc)
+
+
 @app.get("/health", tags=["Health"])
 def health_check():
     return {
@@ -110,6 +126,20 @@ def root_index():
         "docs": "/docs",
         "chat": "POST /api/chat/message",
         "history": "GET /api/chat/history/{conversation_id}",
+        "rag_health": "GET /api/rag/health",
+    }
+
+
+@app.get("/api/rag/health", tags=["RAG"])
+def rag_health_check():
+    vector = rag_vector_health()
+    return {
+        "enabled": rag_settings.RAG_ENABLED,
+        "vector_db": vector.get("vector_db", "unknown"),
+        "embedding_model": embedding_status(),
+        "collection": vector.get("collection", rag_settings.RAG_COLLECTION_NAME),
+        "document_count": int(vector.get("document_count", "0")),
+        "metrics": rag_metrics.snapshot(),
     }
 
 

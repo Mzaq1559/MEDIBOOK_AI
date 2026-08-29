@@ -635,7 +635,16 @@ The backend suite covers auth, appointments (including double-booking prevention
 docker compose exec ai-service pytest -v
 ```
 
-Covers symptom triage rules, chat API endpoints, and Groq client error handling.
+Covers symptom triage rules, RAG retrieval/pipeline/safety, chat API integration, and Groq client error handling.
+
+### RAG (Retrieval-Augmented Generation)
+
+Symptom triage uses a grounded RAG pipeline (ChromaDB + sentence-transformers + Groq) when `RAG_ENABLED=true`.
+
+- Architecture: [`docs/RAG_ARCHITECTURE.md`](docs/RAG_ARCHITECTURE.md)
+- Setup & troubleshooting: [`docs/RAG_SETUP.md`](docs/RAG_SETUP.md)
+- Health check: `GET http://localhost:8001/api/rag/health`
+- Rebuild knowledge index: `docker compose exec ai-service python -m app.rag.knowledge_loader --rebuild`
 
 ### Manual verification checklist
 

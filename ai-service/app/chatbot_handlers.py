@@ -18,6 +18,7 @@ from app.chatbot_slots import (
 )
 from app.chatbot_state import S
 from app.schemas import OptionItem
+from app.rag.config import rag_settings
 from app.symptom_triage import EMERGENCY_ALERT, follow_ups_for, is_emergency, triage
 from integrations import google_calendar, n8n_webhook, reminders
 
@@ -27,6 +28,63 @@ LOGIN_REQ_BOOK = "To confirm this appointment you need to be logged in. Please s
 LOGIN_REQ_RESCHEDULE = "To reschedule you need to be logged in. Please sign in, then confirm."
 LOGIN_REQ_CANCEL = "Please log in to cancel appointments."
 LOGIN_REQ_LOOKUP = "Please log in to view your appointments."
+
+
+def _run_symptom_triage(session: dict[str, Any], symptoms_text: str) -> tuple[str, str, dict[str, Any]]:
+    """Run RAG triage when enabled, otherwise use deterministic rules."""
+    if rag_settings.RAG_ENABLED:
+        from app.rag.pipeline import get_rag_pipeline
+
+        rag_result = get_rag_pipeline().triage_symptoms(
+            symptoms_text,
+            conversation_context=symptoms_text,
+            clinic_id=session.get("clinic_id"),
+            request_id=session.get("conversation_id"),
+        )
+        specialty = rag_result.specialty
+        backend_spec = rag_result.backend_specialization
+        session["specialty"] = specialty
+        session["backend_specialization"] = backend_spec
+        session["urgency_level"] = rag_result.urgency_level
+        session["rag_used"] = rag_result.rag_used
+        session["rag_status"] = rag_result.rag_status
+
+        if rag_result.needs_emergency_care:
+            session["state"] = S.EMERGENCY
+            return EMERGENCY_ALERT, "emergency_redirect", {}
+
+        follow_spec = specialty or "General Physician"
+        session["follow_ups"] = follow_ups_for(follow_spec)
+        session["follow_up_index"] = 0
+        session["state"] = S.ASKING_FOLLOWUP
+
+        ui_data: dict[str, Any] = {
+            "triage": {
+                "specialty": specialty,
+                "urgency": rag_result.urgency_level,
+                "confidence": rag_result.confidence,
+                "rag_used": rag_result.rag_used,
+                "rag_status": rag_result.rag_status,
+                "fallback_used": rag_result.fallback_used,
+                "sources": [s.model_dump() for s in rag_result.sources],
+            }
+        }
+        first_question = session["follow_ups"][0]
+        bot = f"{rag_result.bot_message}\n\nLet me ask a few quick questions:\n{first_question}"
+        return bot, "waiting_for_input", ui_data
+
+    result = triage(symptoms_text)
+    session["specialty"] = result.specialty
+    session["backend_specialization"] = result.specialty
+    session["urgency_level"] = result.urgency_level
+    session["follow_ups"] = follow_ups_for(result.specialty)
+    session["follow_up_index"] = 0
+    session["state"] = S.ASKING_FOLLOWUP
+    return (
+        f"Thank you. Let me ask a few quick questions:\n{session['follow_ups'][0]}",
+        "waiting_for_input",
+        {},
+    )
 
 
 def _booking_error(exc: backend_client.BackendError, is_reschedule: bool = False) -> str:
@@ -59,13 +117,8 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         if is_emergency(session["symptoms_text"]):
             session["state"] = S.EMERGENCY
             return EMERGENCY_ALERT, "emergency_redirect", [], {}
-        result = triage(session["symptoms_text"])
-        session["specialty"] = result.specialty
-        session["urgency_level"] = result.urgency_level
-        session["follow_ups"] = follow_ups_for(result.specialty)
-        session["follow_up_index"] = 0
-        session["state"] = S.ASKING_FOLLOWUP
-        return f"Thank you. Let me ask a few quick questions:\n{session['follow_ups'][0]}", "waiting_for_input", [], {}
+        bot, action, ui_data = _run_symptom_triage(session, session["symptoms_text"])
+        return bot, action, [], ui_data
 
     if state == S.ASKING_FOLLOWUP:
         session["symptoms_text"] = f"{session.get('symptoms_text', '')} {text}".strip()
@@ -80,7 +133,7 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             return f"Thanks. {fu[idx]}", "waiting_for_input", [], {}
         
         # Transition to doctor selection
-        spec = session.get("specialty")
+        spec = session.get("backend_specialization") or session.get("specialty")
         docs = backend_client.list_doctors(specialization=spec) or backend_client.list_doctors()
         enriched = fetch_doctor_slots(docs, next_days=3)
         session["candidate_doctors"] = enriched
@@ -215,21 +268,55 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
     return "Let's start over. What are your symptoms?", "waiting_for_symptoms", [], {}
 
 
-def handle_lookup(session: dict[str, Any], text: str, nlu: dict, auth: Optional[str]) -> tuple[str, str, list, dict]:
-    if not auth or not auth.lower().startswith("bearer "):
-        return LOGIN_REQ_LOOKUP, "waiting_for_login", [], {}
+def handle_lookup(session, user_message, backend_client):
+    """Handle appointment lookup"""
+    
     pat_id = session.get("patient_id")
-    if not pat_id:
-        return LOGIN_REQ_LOOKUP, "waiting_for_login", [], {}
+    auth = session.get("jwt_token") or session.get("access_token") or ""
     
-    appts = backend_client.fetch_patient_appointments(pat_id, auth)
-    session["state"] = S.LOOKUP
-    if not appts:
-        return "You have no upcoming appointments.", "show_appointments", [], {"appointments": []}
+    if not pat_id or not auth:
+        return LOGIN_REQ_LOOKUP, "waiting_for_input", [], {}
     
-    formatted = [format_appointment_for_ui(a) for a in appts]
-    return "Here are your upcoming appointments:", "show_appointments", [], {"appointments": formatted}
-
+    try:
+        # Fetch appointments from backend
+        appts = backend_client.fetch_patient_appointments(pat_id, "")
+        
+        # Debug: Print what we got
+        print(f"DEBUG: fetch_patient_appointments returned: {appts}")
+        print(f"DEBUG: Type: {type(appts)}")
+        
+        # Handle different response formats
+        if appts is None:
+            return "You have no upcoming appointments.", "waiting_for_input", [], {"appointments": []}
+        
+        # If it's a dict with 'appointments' key
+        if isinstance(appts, dict):
+            appointment_list = appts.get("appointments", [])
+        # If it's a list directly
+        elif isinstance(appts, list):
+            appointment_list = appts
+        else:
+            print(f"DEBUG: Unexpected response type: {type(appts)}")
+            return "You have no upcoming appointments.", "waiting_for_input", [], {"appointments": []}
+        
+        # Filter for scheduled/upcoming appointments
+        upcoming = [a for a in appointment_list if a.get("status") == "scheduled"]
+        
+        print(f"DEBUG: Found {len(upcoming)} upcoming appointments")
+        
+        if not upcoming:
+            return "You have no upcoming appointments.", "waiting_for_input", [], {"appointments": []}
+        
+        # Format appointments for UI
+        formatted = [format_appointment_for_ui(a) for a in upcoming]
+        
+        session["patient_appointments"] = upcoming
+        
+        return f"You have {len(upcoming)} upcoming appointments:", "show_appointments", [], {"appointments": formatted}
+        
+    except Exception as e:
+        print(f"ERROR in handle_lookup: {str(e)}")
+        return "Error fetching appointments. Please try again.", "waiting_for_input", [], {}
 
 def handle_cancel(session: dict[str, Any], text: str, nlu: dict, auth: Optional[str]) -> tuple[str, str, list, dict]:
     if not auth or not auth.lower().startswith("bearer "):
@@ -241,7 +328,7 @@ def handle_cancel(session: dict[str, Any], text: str, nlu: dict, auth: Optional[
     state = session["state"]
     
     if state not in (S.CANCEL_FETCH, S.CANCEL_PICK, S.CANCEL_CONFIRM):
-        appts = backend_client.fetch_patient_appointments(pat_id, auth)
+        appts = backend_client.fetch_patient_appointments(pat_id, "")
         if not appts:
             session["state"] = S.IDLE
             return "You have no appointments to cancel.", "show_appointments", [], {"appointments": []}
@@ -309,7 +396,7 @@ def handle_reschedule(session: dict[str, Any], text: str, nlu: dict, auth: Optio
             session["picked_appointment_id"] = appt_id
             session["state"] = S.RESCHEDULE_FETCH
         else:
-            appts = backend_client.fetch_patient_appointments(pat_id, auth)
+            appts = backend_client.fetch_patient_appointments(pat_id, "")
             if not appts:
                 session["state"] = S.IDLE
                 return "You have no appointments to reschedule. Would you like to book a new one?", "waiting_for_input", [], {}
