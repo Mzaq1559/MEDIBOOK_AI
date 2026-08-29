@@ -64,6 +64,16 @@ services:
       - AI_SERVICE_HOST=0.0.0.0
       - N8N_URL=http://n8n:5678
       - N8N_WEBHOOK_URL=http://n8n:5678/webhook/medibook-reminder
+      - RAG_ENABLED=${RAG_ENABLED:-true}
+      - RAG_VECTOR_DB_PATH=/app/data/chroma
+      - RAG_COLLECTION_NAME=medical_knowledge
+      - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      - RAG_TOP_K=${RAG_TOP_K:-5}
+      - RAG_MIN_RELEVANCE_SCORE=${RAG_MIN_RELEVANCE_SCORE:-0.35}
+      - RAG_CACHE_ENABLED=${RAG_CACHE_ENABLED:-true}
+      - RAG_AUTO_LOAD_ON_STARTUP=${RAG_AUTO_LOAD_ON_STARTUP:-true}
+    volumes:
+      - chroma_data:/app/data/chroma
     depends_on:
       db:
         condition: service_healthy
@@ -128,6 +138,7 @@ services:
 volumes:
   pgdata:
   n8n_data:
+  chroma_data:
 
 networks:
   medibook:

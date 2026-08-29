@@ -180,7 +180,7 @@ export const Chat: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <Badge status="primary" size="sm">
-            Clinical Triage Model v3.0
+            RAG Clinical Triage
           </Badge>
         </div>
       </div>
@@ -314,6 +314,20 @@ export const Chat: React.FC = () => {
                       onConfirm={() => handleAction('yes, confirm')}
                       onChange={() => handleAction('change')}
                     />
+                  )}
+
+                  {msg.uiData?.triage?.rag_used && (msg.uiData.triage.sources?.length ?? 0) > 0 && (
+                    <div className="bg-surfaceContainer/60 border border-surfaceContainerHigh rounded-xl p-4 text-xs text-textSecondary space-y-2">
+                      <p className="font-semibold text-textPrimary">Based on medical knowledge</p>
+                      <ul className="list-disc pl-4 space-y-1">
+                        {msg.uiData.triage.sources!.map((source) => (
+                          <li key={source.id}>{source.title}</li>
+                        ))}
+                      </ul>
+                      <p>
+                        This information is for general guidance and does not replace professional medical evaluation.
+                      </p>
+                    </div>
                   )}
 
                   <span className="text-[10px] text-textSecondary mt-1 px-1 block">{msg.timestamp}</span>

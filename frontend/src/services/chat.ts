@@ -46,12 +46,29 @@ export interface ParsedRescheduleSummary {
   newSlot: string
 }
 
+export interface TriageSource {
+  id: string
+  title: string
+  type: string
+}
+
+export interface TriageUiData {
+  specialty?: string | null
+  urgency?: string
+  confidence?: string
+  rag_used?: boolean
+  rag_status?: string
+  fallback_used?: boolean
+  sources?: TriageSource[]
+}
+
 export interface ChatUiData {
   doctors?: ParsedDoctorOption[]
   slots?: ParsedSlot[]
   appointments?: ParsedAppointment[]
   booking?: ParsedBookingSummary
   reschedule?: ParsedRescheduleSummary
+  triage?: TriageUiData
 }
 
 export interface ChatMessageResponse {

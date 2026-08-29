@@ -1,0 +1,90 @@
+[
+  {
+    "id": "hypertension_001",
+    "type": "condition",
+    "name": "Hypertension",
+    "description": "Persistently elevated blood pressure. Often managed with lifestyle changes and medication under physician supervision.",
+    "common_symptoms": ["headache", "dizziness", "no symptoms"],
+    "risk_factors": ["family history", "high salt intake", "obesity"],
+    "recommended_specialties": ["General Physician", "Cardiologist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "common_cold_001",
+    "type": "condition",
+    "name": "Common cold",
+    "description": "Viral upper respiratory illness with runny nose, congestion, cough, and mild sore throat.",
+    "common_symptoms": ["cough", "sore throat", "nasal congestion", "mild fever"],
+    "risk_factors": ["seasonal exposure", "close contact with sick individuals"],
+    "recommended_specialties": ["General Physician", "ENT Specialist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "asthma_001",
+    "type": "condition",
+    "name": "Asthma",
+    "description": "Chronic airway condition causing wheezing, cough, and episodic shortness of breath.",
+    "common_symptoms": ["wheezing", "shortness of breath", "chest tightness", "cough"],
+    "risk_factors": ["allergies", "family history", "smoke exposure"],
+    "recommended_specialties": ["Pulmonologist", "General Physician"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "gerd_001",
+    "type": "condition",
+    "name": "Acid reflux (GERD)",
+    "description": "Stomach acid flowing back into the esophagus causing heartburn or chest discomfort.",
+    "common_symptoms": ["heartburn", "chest burning", "sour taste", "cough"],
+    "risk_factors": ["large meals", "spicy foods", "lying down after eating"],
+    "recommended_specialties": ["Gastroenterologist", "General Physician"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "migraine_001",
+    "type": "condition",
+    "name": "Migraine",
+    "description": "Recurrent headache episodes that may include nausea, light sensitivity, or visual changes.",
+    "common_symptoms": ["headache", "nausea", "light sensitivity"],
+    "risk_factors": ["stress", "sleep changes", "certain foods"],
+    "recommended_specialties": ["Neurologist", "General Physician"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "uti_001",
+    "type": "condition",
+    "name": "Urinary tract infection",
+    "description": "Infection affecting the bladder or urinary tract, often causing burning urination and urgency.",
+    "common_symptoms": ["burning urination", "frequent urination", "lower abdominal discomfort"],
+    "risk_factors": ["dehydration", "incomplete bladder emptying"],
+    "recommended_specialties": ["General Physician", "Urologist", "Gynecologist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "eczema_001",
+    "type": "condition",
+    "name": "Eczema",
+    "description": "Inflammatory skin condition causing dry, itchy, and sometimes red patches.",
+    "common_symptoms": ["itching", "dry skin", "rash"],
+    "risk_factors": ["allergies", "dry climate", "irritants"],
+    "recommended_specialties": ["Dermatologist", "General Physician"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "anxiety_001",
+    "type": "condition",
+    "name": "Anxiety",
+    "description": "Excessive worry or physical symptoms such as palpitations, restlessness, or tension.",
+    "common_symptoms": ["palpitations", "restlessness", "difficulty sleeping"],
+    "risk_factors": ["stress", "major life changes"],
+    "recommended_specialties": ["Psychiatrist", "General Physician"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  }
+]

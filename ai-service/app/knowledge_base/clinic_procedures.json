@@ -1,0 +1,46 @@
+[
+  {
+    "id": "clinic_policy_hours_001",
+    "type": "clinic_procedure",
+    "clinic_id": null,
+    "title": "Clinic operating hours",
+    "content": "Standard clinic hours are Monday to Friday 9:00 AM to 5:00 PM. Saturday and Sunday are closed unless noted by a specific clinic.",
+    "description": "General clinic hours guidance for appointment scheduling.",
+    "source": "internal_knowledge_base",
+    "version": "1.0",
+    "last_updated": "2026-08-28"
+  },
+  {
+    "id": "clinic_policy_triage_001",
+    "type": "clinic_procedure",
+    "clinic_id": null,
+    "title": "Symptom triage disclaimer",
+    "content": "MediBook AI provides informational triage guidance only. It does not diagnose conditions or replace an in-person medical evaluation.",
+    "description": "Standard triage disclaimer shown during symptom assessment.",
+    "source": "internal_knowledge_base",
+    "version": "1.0",
+    "last_updated": "2026-08-28"
+  },
+  {
+    "id": "clinic_primecare_booking_001",
+    "type": "clinic_procedure",
+    "clinic_id": "11111111-1111-4111-a111-111111111111",
+    "title": "PrimeCare appointment booking",
+    "content": "PrimeCare Hospital appointments are typically 30 minutes. Please arrive 10 minutes early with your ID and any prior reports.",
+    "description": "Clinic-specific booking guidance for PrimeCare Hospital.",
+    "source": "internal_knowledge_base",
+    "version": "1.0",
+    "last_updated": "2026-08-28"
+  },
+  {
+    "id": "clinic_cityhealth_booking_001",
+    "type": "clinic_procedure",
+    "clinic_id": "22222222-2222-4222-a222-222222222222",
+    "title": "City Health Clinic appointment booking",
+    "content": "City Health Clinic accepts walk-ins until 4:30 PM on weekdays. Online bookings are recommended for faster check-in.",
+    "description": "Clinic-specific booking guidance for City Health Clinic.",
+    "source": "internal_knowledge_base",
+    "version": "1.0",
+    "last_updated": "2026-08-28"
+  }
+]

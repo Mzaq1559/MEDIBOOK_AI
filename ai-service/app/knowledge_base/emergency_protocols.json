@@ -1,0 +1,68 @@
+[
+  {
+    "id": "emergency_chest_pain_breathing_001",
+    "type": "emergency_protocol",
+    "name": "Chest pain with breathing difficulty",
+    "description": "Combination of chest pain and difficulty breathing may indicate a life-threatening condition.",
+    "trigger_patterns": ["severe chest pain", "cannot breathe", "shortness of breath with chest pain"],
+    "urgency": "emergency",
+    "recommended_action": "Seek immediate emergency medical attention. Do not wait for a clinic appointment.",
+    "source": "internal_safety_rules",
+    "version": "1.0"
+  },
+  {
+    "id": "emergency_stroke_001",
+    "type": "emergency_protocol",
+    "name": "Stroke-like symptoms",
+    "description": "Sudden face drooping, arm weakness, speech difficulty, or numbness may indicate stroke.",
+    "trigger_patterns": ["face drooping", "slurred speech", "sudden numbness", "stroke"],
+    "urgency": "emergency",
+    "recommended_action": "Call emergency services immediately. Time-critical care is required.",
+    "source": "internal_safety_rules",
+    "version": "1.0"
+  },
+  {
+    "id": "emergency_unconscious_001",
+    "type": "emergency_protocol",
+    "name": "Loss of consciousness",
+    "description": "Unresponsive patient or sudden collapse requires emergency evaluation.",
+    "trigger_patterns": ["unconscious", "passed out", "not waking up", "collapsed"],
+    "urgency": "emergency",
+    "recommended_action": "Call emergency services immediately and ensure the person is safe.",
+    "source": "internal_safety_rules",
+    "version": "1.0"
+  },
+  {
+    "id": "emergency_bleeding_001",
+    "type": "emergency_protocol",
+    "name": "Severe uncontrolled bleeding",
+    "description": "Heavy or non-stop bleeding requires urgent emergency care.",
+    "trigger_patterns": ["heavy bleeding", "gushing blood", "uncontrolled bleeding"],
+    "urgency": "emergency",
+    "recommended_action": "Apply pressure if safe and seek emergency care immediately.",
+    "source": "internal_safety_rules",
+    "version": "1.0"
+  },
+  {
+    "id": "emergency_allergic_001",
+    "type": "emergency_protocol",
+    "name": "Severe allergic reaction",
+    "description": "Allergic reaction with breathing difficulty or facial swelling is an emergency.",
+    "trigger_patterns": ["difficulty breathing with rash", "throat swelling", "anaphylaxis"],
+    "urgency": "emergency",
+    "recommended_action": "Seek emergency care immediately. Do not delay.",
+    "source": "internal_safety_rules",
+    "version": "1.0"
+  },
+  {
+    "id": "emergency_suicide_001",
+    "type": "emergency_protocol",
+    "name": "Suicidal emergency",
+    "description": "Statements about self-harm or suicide require immediate crisis support.",
+    "trigger_patterns": ["suicide", "kill myself", "end my life", "hurt myself"],
+    "urgency": "emergency",
+    "recommended_action": "Contact emergency services or a crisis helpline immediately. You are not alone.",
+    "source": "internal_safety_rules",
+    "version": "1.0"
+  }
+]

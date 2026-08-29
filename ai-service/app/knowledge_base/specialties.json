@@ -1,0 +1,128 @@
+[
+  {
+    "id": "specialty_general_physician_001",
+    "type": "specialty",
+    "name": "General Physician",
+    "description": "Evaluates common illnesses, performs initial assessment, and coordinates referrals when needed.",
+    "recommended_specialties": ["General Physician"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_cardiologist_001",
+    "type": "specialty",
+    "name": "Cardiologist",
+    "description": "Focuses on heart and blood vessel conditions such as chest pain, hypertension, and palpitations.",
+    "recommended_specialties": ["Cardiologist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_pulmonologist_001",
+    "type": "specialty",
+    "name": "Pulmonologist",
+    "description": "Specializes in lung and breathing disorders including asthma, chronic cough, and shortness of breath.",
+    "recommended_specialties": ["Pulmonologist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_ent_001",
+    "type": "specialty",
+    "name": "ENT Specialist",
+    "description": "Treats ear, nose, and throat conditions including sore throat, sinus issues, cough, and ear pain.",
+    "recommended_specialties": ["ENT Specialist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_dermatologist_001",
+    "type": "specialty",
+    "name": "Dermatologist",
+    "description": "Manages skin, hair, and nail conditions including rashes, acne, and eczema.",
+    "recommended_specialties": ["Dermatologist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_gastroenterologist_001",
+    "type": "specialty",
+    "name": "Gastroenterologist",
+    "description": "Evaluates digestive system symptoms such as abdominal pain, nausea, vomiting, and diarrhea.",
+    "recommended_specialties": ["Gastroenterologist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_neurologist_001",
+    "type": "specialty",
+    "name": "Neurologist",
+    "description": "Assesses nervous system symptoms including headache, dizziness, numbness, and vision changes.",
+    "recommended_specialties": ["Neurologist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_orthopedist_001",
+    "type": "specialty",
+    "name": "Orthopedist",
+    "description": "Treats bone, joint, and musculoskeletal pain including back pain and joint injuries.",
+    "recommended_specialties": ["Orthopedist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_urologist_001",
+    "type": "specialty",
+    "name": "Urologist",
+    "description": "Manages urinary tract and male reproductive system conditions.",
+    "recommended_specialties": ["Urologist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_gynecologist_001",
+    "type": "specialty",
+    "name": "Gynecologist",
+    "description": "Provides care for female reproductive health and related urinary symptoms when appropriate.",
+    "recommended_specialties": ["Gynecologist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_ophthalmologist_001",
+    "type": "specialty",
+    "name": "Ophthalmologist",
+    "description": "Evaluates eye conditions and vision problems.",
+    "recommended_specialties": ["Ophthalmologist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_dentist_001",
+    "type": "specialty",
+    "name": "Dentist",
+    "description": "Treats tooth pain, gum disease, and oral health concerns.",
+    "recommended_specialties": ["Dentist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_pediatrician_001",
+    "type": "specialty",
+    "name": "Pediatrician",
+    "description": "Provides medical care for infants, children, and adolescents.",
+    "recommended_specialties": ["Pediatrician"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  },
+  {
+    "id": "specialty_psychiatrist_001",
+    "type": "specialty",
+    "name": "Psychiatrist",
+    "description": "Evaluates mental health conditions including anxiety and mood disorders.",
+    "recommended_specialties": ["Psychiatrist"],
+    "source": "internal_knowledge_base",
+    "version": "1.0"
+  }
+]
