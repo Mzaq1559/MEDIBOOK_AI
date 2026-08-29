@@ -83,3 +83,6 @@ class UserMeResponse(BaseModel):
     avatar_url: Optional[str] = None
     is_active: bool = True
     created_at: datetime
+    # Role-specific profile IDs (patients.id / doctors.id) — different from users.id
+    patient_id: Optional[UUID] = None
+    doctor_id: Optional[UUID] = None

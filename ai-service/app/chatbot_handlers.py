@@ -102,8 +102,53 @@ def _booking_error(exc: backend_client.BackendError, is_reschedule: bool = False
 
 def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Optional[str]) -> tuple[str, str, list, dict]:
     state = session["state"]
+    intent = nlu.get("intent")
+    clean_text = text.lower().strip()
 
+    # 1. Direct Booking Request: bypass symptom triage
+    if intent == "appointment" or clean_text in ("book an appointment", "book appointment", "appointment"):
+        spec = nlu.get("specialty") or session.get("specialty")
+        doc_name = nlu.get("doctor_name")
+        docs = backend_client.list_doctors(specialization=spec) or backend_client.list_doctors()
+        if doc_name:
+            matched = [d for d in docs if doc_name.lower() in d.get("name", "").lower()]
+            if matched:
+                docs = matched
+        enriched = fetch_doctor_slots(docs, next_days=3)
+        session["candidate_doctors"] = enriched
+        session["state"] = S.SHOWING_DOCTORS
+        return "Please select a doctor to book your appointment:", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(enriched)}
+
+    # 2. Off-topic / Hostile input fallback mid-workflow
+    if intent == "other":
+        if state == S.SHOWING_DOCTORS:
+            docs = session.get("candidate_doctors", [])
+            return "I didn't understand that. Please select a doctor from the options below:", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(docs)}
+        if state == S.SHOWING_SLOTS:
+            doc = session.get("selected_doctor")
+            return "I didn't understand that. Please select an available time slot:", "waiting_for_slot_selection", [], {"slots": slots_ui_data(doc) if doc else []}
+        if state == S.AWAIT_CONFIRM:
+            doc = session.get("selected_doctor")
+            ui_booking = {"doctor": doc, "selectedSlot": session.get("selected_slot_label"), "isConfirmed": False}
+            return "I didn't understand that. Please confirm your appointment or click Change.", "waiting_for_confirmation", [], {"booking": ui_booking}
+        if state in (S.ASKING_SYMPTOMS, S.ASKING_FOLLOWUP):
+            return "I didn't understand that — would you like to continue booking an appointment, or describe your symptoms?", "waiting_for_input", [], {}
+
+    # 3. Initial state handling (IDLE, FAQ, LOOKUP)
     if state in (S.IDLE, S.FAQ, S.LOOKUP):
+        if intent == "symptom" and clean_text and clean_text not in ("hi", "hello", "hey"):
+            session["symptoms_text"] = str(nlu.get("symptoms") or text)
+            if is_emergency(session["symptoms_text"]):
+                session["state"] = S.EMERGENCY
+                return EMERGENCY_ALERT, "emergency_redirect", [], {}
+            result = triage(session["symptoms_text"])
+            session["specialty"] = result.specialty
+            session["urgency_level"] = result.urgency_level
+            session["follow_ups"] = follow_ups_for(result.specialty)
+            session["follow_up_index"] = 0
+            session["state"] = S.ASKING_FOLLOWUP
+            return f"Thank you. Let me ask a few quick questions:\n{session['follow_ups'][0]}", "waiting_for_input", [], {}
+
         session["state"] = S.ASKING_SYMPTOMS
         return (
             "Hi! I'm MediBook AI. What brings you in today? Please describe your symptoms.",
@@ -112,6 +157,7 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             {},
         )
 
+    # 4. Active Symptom Triage Flow
     if state == S.ASKING_SYMPTOMS:
         session["symptoms_text"] = str(nlu.get("symptoms") or text)
         if is_emergency(session["symptoms_text"]):
@@ -141,6 +187,7 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         msg = f"Based on your symptoms, I recommend seeing a {spec or 'doctor'}. Please select a doctor:"
         return msg, "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(enriched)}
 
+    # 5. Doctor Selection
     if state == S.SHOWING_DOCTORS:
         doc_id = extract_option_id(text, nlu)
         if not doc_id:
@@ -154,6 +201,7 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         session["state"] = S.SHOWING_SLOTS
         return f"You selected {doc['name']}. Please pick an available time slot:", "waiting_for_slot_selection", [], {"slots": slots_ui_data(doc)}
 
+    # 6. Slot Selection
     if state == S.SHOWING_SLOTS:
         doc = session.get("selected_doctor")
         if not doc:
@@ -161,7 +209,6 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             return "Session error: missing doctor. Please pick a doctor.", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(session.get("candidate_doctors", []))}
         
         slot_ts = extract_option_id(text, nlu)
-        # Direct ISO-timestamp fallback: frontend sends "Selected Time Slot 2026-08-28T09:00:00+05:00"
         if not slot_ts:
             iso_m = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)?)", text)
             if iso_m:
@@ -182,11 +229,11 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         }
         return "Perfect! Please confirm your appointment details.", "waiting_for_confirmation", [], {"booking": ui_booking}
 
+    # 7. Confirmation State
     if state == S.AWAIT_CONFIRM:
         if is_decline(text, nlu) or text.lower().strip() == "change":
             session["state"] = S.SHOWING_DOCTORS
             docs = session.get("candidate_doctors", [])
-            # Refresh availability
             ids = [d["doctor_id"] for d in docs]
             all_d = backend_client.list_doctors()
             filtered = [d for d in all_d if d["doctor_id"] in ids] if ids else all_d
@@ -225,7 +272,6 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             session["state"] = S.BOOKED
             session["status"] = "completed"
             
-            # Integrations
             try:
                 cal_p = {
                     "appointment_id": str(session["appointment_booked"]),
@@ -250,9 +296,6 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
                 n8n_p["urgency_level"] = payload["urgency_level"]
                 n8n_p["google_calendar_event_id"] = session.get("google_calendar_event_id")
                 n8n_webhook.dispatch_appointment_created(n8n_p)
-                # NOTE: Reminder webhooks (24h, 1h) are triggered by the
-                # backend scheduler (backend/app/scheduler.py) at the correct
-                # time windows before the appointment — NOT immediately on creation.
             except Exception as e:
                 logger.warning(f"N8N sync failed: {e}")
 

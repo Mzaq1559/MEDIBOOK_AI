@@ -27,6 +27,8 @@ function mapMeResponse(data: UserMeResponse): AuthUser {
     email: data.email,
     userType: data.user_type,
     avatarUrl: data.avatar_url ?? undefined,
+    patientId: data.patient_id ?? undefined,
+    doctorId: data.doctor_id ?? undefined,
   };
 }
 

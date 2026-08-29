@@ -7,6 +7,10 @@ export interface AuthUser {
   userType: UserType;
   phone?: string;
   avatarUrl?: string;
+  /** patients.id — the FK stored in appointments.patient_id (differs from users.id) */
+  patientId?: string;
+  /** doctors.id — the FK stored in appointments.doctor_id (differs from users.id) */
+  doctorId?: string;
 }
 
 export interface AuthTokens {
@@ -36,6 +40,8 @@ export interface UserMeResponse {
   avatar_url?: string | null;
   is_active: boolean;
   created_at: string;
+  patient_id?: string | null;
+  doctor_id?: string | null;
 }
 
 export interface ApiErrorBody {
