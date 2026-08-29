@@ -65,10 +65,16 @@ export const Chat: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const patientId =
-    currentUser?.userType === 'patient' && currentUser.id && isValidUuid(currentUser.id)
-      ? currentUser.id
-      : null;
+  // Prefer patients.id from the profile; fall back to users.id (backend resolves both)
+  let patientId: string | null = null;
+  if (currentUser?.userType === 'patient') {
+    if (currentUser.patientId) {
+      patientId = currentUser.patientId;
+    } else if (currentUser.id) {
+      console.warn('[Chat] currentUser.patientId is missing on patient user profile. Falling back to currentUser.id (users.id).');
+      patientId = currentUser.id;
+    }
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
