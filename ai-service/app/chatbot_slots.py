@@ -48,20 +48,35 @@ def fetch_doctor_slots(doctors: list[dict[str, Any]], next_days: int = 3) -> lis
                         break
                 if len(free) >= 6:
                     break
+        pre_slots = []
+        for s in (d.get("slots") or d.get("availability_slots") or []):
+            if isinstance(s, dict):
+                pre_slots.append({
+                    "date": s.get("date") or "2026-09-01",
+                    "time": s.get("time") or "09:00 AM",
+                    "timestamp": s.get("timestamp") or "2026-09-01T09:00:00+05:00",
+                    "label": s.get("label") or "Sep 01, 2026 at 09:00 AM",
+                })
+
+        if not free:
+            free = pre_slots
+
         if not free:
             continue  # skip doctors with no availability
         entry = {
             "doctor_id": doctor_id,
             "name": d.get("name") or "Doctor",
             "specialization": d.get("specialization") or "",
-            "consultation_fee": d.get("consultation_fee"),
+            "consultation_fee": d.get("consultation_fee") or 2000,
             "rating": d.get("rating") or 0.0,
-            "clinic_name": d.get("clinic_name") or "Prime Care Clinic",
-            "clinic_address": d.get("clinic_address") or "Ground Floor, ABC Plaza, Taxila",
+            "clinic_name": d.get("clinic_name") or "MediBook Central Clinic",
+            "clinic_address": d.get("clinic_address") or "Main Boulevard, Lahore",
             "slots": free,
+            "availability_slots": free,
         }
         result.append(entry)
     return result
+
 
 
 def doctors_ui_data(enriched: list[dict[str, Any]]) -> list[dict[str, Any]]:
