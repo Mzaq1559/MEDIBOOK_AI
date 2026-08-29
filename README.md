@@ -10,16 +10,19 @@
 
 ---
 
-## Two Implementations
+## Three Implementations
 
-This project is submitted as **two separate, complete implementations** so judges can evaluate MediBook AI both with and without the RAG layer.
+MediBook AI is developed as **three complete, independently runnable implementations**, allowing the evolution from a deterministic baseline to grounded medical RAG and finally to an agentic RAG architecture.
 
-| Version                | Branch                                                                                         | Description                                                                              |
-| ------------------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| **Non-RAG (this branch)** | [`main`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/main)                                       | Core clinic platform with deterministic symptom triage — no retrieval or vector search.  |
-| **RAG-enabled**          | [`feature/rag-vector-db`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/feature/rag-vector-db)     | Everything in this branch, plus a ChromaDB-backed medical RAG layer for grounded triage. |
+| Version | Branch | Description |
+|---|---|---|
+| **Agentic RAG** | [`main`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/main) | The latest implementation. A Groq tool-calling agent reasons over the conversation and uses clinic tools for doctor lookup, availability, appointments, and RAG-grounded medical guidance. All write actions use a backend-enforced propose → confirm → execute flow. |
+| **RAG-enabled** | [`rag`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/rag) | Builds on the baseline with a ChromaDB-backed medical RAG layer for grounded symptom triage while retaining the deterministic conversation state machine. |
+| **Baseline / Non-RAG (this branch) ⭐** | [`baseline`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/baseline) | Original clinic platform with deterministic conversation handling and symptom triage, without retrieval or vector search. |
 
-Bug fixes and improvements made here on `main` are regularly merged into `feature/rag-vector-db`, so the RAG version stays current with this baseline.
+Each branch is a complete, independently runnable system.
+
+**Current branch:** `baseline` — original Non-RAG implementation.
 
 ---
 
