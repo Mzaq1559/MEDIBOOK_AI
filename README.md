@@ -1,111 +1,280 @@
 # MediBook AI
 
-**AI-powered virtual receptionist for small and medium clinics in Pakistan — book appointments, triage symptoms, and manage clinic operations through natural conversation.**
+**AI-powered virtual receptionist for small and medium-sized clinics in Pakistan — combining conversational AI, safe medical RAG, real-time appointment management, and clinic operations in one platform.**
 
-[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react\&logoColor=white)](https://react.dev/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi\&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql\&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker\&logoColor=white)](https://docs.docker.com/compose/)
 [![Groq](https://img.shields.io/badge/LLM-Groq-f55036)](https://groq.com/)
+[![ChromaDB](https://img.shields.io/badge/Vector_DB-ChromaDB-FF6B35)](https://www.trychroma.com/)
 
 ---
 
 ## Table of Contents
 
 1. [Hackathon Context](#hackathon-context)
-2. [Problem Statement](#problem-statement)
-3. [Solution Overview](#solution-overview)
-4. [Architecture Diagram](#architecture-diagram)
-5. [Tech Stack](#tech-stack)
-6. [Key Features](#key-features)
-7. [What You Can Demo Right Now](#what-you-can-demo-right-now)
-8. [Getting Started / Local Setup](#getting-started--local-setup)
-9. [API Documentation](#api-documentation)
-10. [Database Schema](#database-schema)
-11. [AI Chatbot Capabilities](#ai-chatbot-capabilities)
-12. [Project Structure](#project-structure)
-13. [Testing](#testing)
-14. [Known Limitations / Future Work](#known-limitations--future-work)
-15. [Team](#team)
-16. [License](#license)
+2. [Project Status](#project-status)
+3. [Problem Statement](#problem-statement)
+4. [Solution Overview](#solution-overview)
+5. [RAG Architecture](#rag-architecture)
+6. [Safety Architecture](#safety-architecture)
+7. [Architecture Diagram](#architecture-diagram)
+8. [Tech Stack](#tech-stack)
+9. [Key Features](#key-features)
+10. [What You Can Demo Right Now](#what-you-can-demo-right-now)
+11. [Getting Started / Local Setup](#getting-started--local-setup)
+12. [RAG Configuration](#rag-configuration)
+13. [Knowledge Base](#knowledge-base)
+14. [RAG Health & Operations](#rag-health--operations)
+15. [API Documentation](#api-documentation)
+16. [Database Schema](#database-schema)
+17. [AI Chatbot Architecture](#ai-chatbot-architecture)
+18. [Project Structure](#project-structure)
+19. [Testing](#testing)
+20. [Known Limitations / Future Work](#known-limitations--future-work)
+21. [Team](#team)
+22. [License](#license)
 
 ---
 
 ## Hackathon Context
 
-**Event:** [Alibaba Cloud AI Hackathon Pakistan 2026](https://github.com/Mzaq1559/MEDIBOOK_AI)  
-**Theme:** *AI for Pakistan's Future*  
-**Build window:** August 22 – September 4, 2026 (extended build phase) · Taxila, Pakistan  
+**Event:** [Alibaba Cloud AI Hackathon Pakistan 2026](https://github.com/Mzaq1559/MEDIBOOK_AI)
+
+**Theme:** *AI for Pakistan's Future*
+
+**Build window:** August 22 – September 4, 2026 · Taxila, Pakistan
+
 **Team size:** 4 members
 
-| Role | Contributor | GitHub |
-|------|-------------|--------|
-| Project Lead | Muhammad Zulqarnain Abdullah | [@Mzaq1559](https://github.com/Mzaq1559) |
-| Backend | Sidra Pervaiz | [@SidraPervaiz1122](https://github.com/SidraPervaiz1122) |
-| Frontend | Aleeza Imran | [@BSCS2455](https://github.com/BSCS2455) |
-| AI Service | Ayesha Sajjad | [@AyeshaSajjad0786](https://github.com/AyeshaSajjad0786) |
+| Role         | Contributor                  | GitHub                                                   |
+| ------------ | ---------------------------- | -------------------------------------------------------- |
+| Project Lead | Muhammad Zulqarnain Abdullah | [@Mzaq1559](https://github.com/Mzaq1559)                 |
+| Backend      | Sidra Pervaiz                | [@SidraPervaiz1122](https://github.com/SidraPervaiz1122) |
+| Frontend     | Aleeza Imran                 | [@BSCS2455](https://github.com/BSCS2455)                 |
+| AI Service   | Ayesha Sajjad                | [@AyeshaSajjad0786](https://github.com/AyeshaSajjad0786) |
 
 ---
 
 ## Project Status
 
-All core MVP features complete. Prescriptions, n8n, and Google Calendar/Email integrations added post-MVP. Ready for regional technical evaluation (submission deadline: 4 September 2026).
+**MediBook AI's core MVP is operational, with the AI service enhanced by a Retrieval-Augmented Generation (RAG) architecture for grounded symptom triage and medical knowledge retrieval.**
+
+The platform currently includes:
+
+* Patient authentication and dashboard
+* AI conversational assistant
+* Deterministic emergency detection
+* RAG-powered medical knowledge retrieval
+* Grounded symptom triage
+* Specialty routing
+* Real-time doctor lookup
+* Doctor availability
+* Appointment booking
+* Appointment rescheduling
+* Appointment cancellation
+* Admin dashboard
+* Doctor dashboard
+* Prescriptions
+* Google Calendar integration
+* Email reminders
+* n8n automation integration
+* PostgreSQL persistence
+* Docker Compose deployment
+* Automated backend and AI-service tests
+
+RAG is implemented as an **additive layer** around the existing AI service. Operational workflows such as booking, rescheduling, cancellation, doctor lookup, and availability remain controlled by the existing deterministic application logic.
 
 ---
 
-## Problem Statement
+# Problem Statement
 
-Pakistan's small and medium-sized clinics face recurring operational pain points (from our project specification in `docs/MEDIBOOK_AI_COMPLETE_SPECIFICATIONS.txt`):
+Pakistan's small and medium-sized clinics face recurring operational challenges:
 
-- **Manual appointment management** — bookings handled over phone, WhatsApp, or paper with no central system
-- **Double bookings and missed appointments** — no real-time availability checks across doctors and time slots
-- **Receptionist overload** — staff answer the same questions about hours, fees, and availability repeatedly
-- **No availability tracking** — patients arrive without knowing wait times or open slots
-- **No after-hours support** — patients cannot get help when the clinic is closed
-- **High no-show rates** — without automated reminders, scheduled slots go unused
+* **Manual appointment management** — bookings handled through phone calls, WhatsApp, or paper.
+* **Double bookings and missed appointments** — limited real-time availability management.
+* **Receptionist overload** — staff repeatedly answer questions about hours, fees, doctors, and availability.
+* **Limited availability visibility** — patients often do not know which doctors or slots are available.
+* **No after-hours support** — patients cannot interact with the clinic outside working hours.
+* **High no-show rates** — appointments can be missed without automated reminders.
+* **Unstructured symptom descriptions** — patients often do not know which medical specialty to approach.
 
-These constraints hit clinics hardest where a single receptionist juggles walk-ins, phone calls, and record-keeping simultaneously.
-
----
-
-## Solution Overview
-
-MediBook AI is a **24/7 AI virtual receptionist** backed by a full clinic management API. Patients describe symptoms in plain language; the system triages urgency, recommends a specialist, checks live doctor availability, and books appointments with conflict validation.
-
-### Feature Implementation Summary
-
-| Area | Status | Description |
-|------|--------|-------------|
-| **Patient Login & Dashboard** | ✅ Fully Working | Shows real appointment history |
-| **AI Health Chat (Groq LLM)** | ✅ Fully Working | Symptom triage and natural language interaction working |
-| **Full Patient Booking Flow** | ✅ Fully Working | Symptom → AI recommendation → doctor selection → appointment confirmation → saved to DB |
-| **Admin Login & Dashboard** | ✅ Fully Working | Displays real clinic metrics, doctor rosters, and clinic management |
-| **Doctor Dashboard** | ✅ Fully Implemented | Login/redirect/appointment viewing/status updates all working |
-| **Role-Based Route Guards** | ✅ Fully Working | Patient/Doctor/Admin isolation and redirection active |
-| **Authentication System** | ✅ Fully Working | Secure JWT authentication with refresh token flow |
-| **Docker Compose Deployment** | ✅ Fully Working | All 5 services running (`frontend`, `backend`, `ai-service`, `db`, `n8n`) |
-| **Test Data Seeding** | ✅ Fully Working | 3 clinics, 3 doctors, 3 patients, 300+ appointments seeded |
-| **Prescriptions** | ✅ Fully Implemented | All 5 CRUD REST API endpoints (GET, POST, PUT, DELETE, LIST) implemented with soft deletes and authorization |
-| **Google Calendar & Email** | ✅ Fully Implemented | calendar_service.py, email_service.py, scheduler.py active. Syncs appointments to Google Calendar + sends 24h/1h SMTP reminders (best-effort) |
-| **n8n Automation** | ✅ Service Running | n8n containerized in docker-compose on port 5678. Webhook code in ai-service/integrations/n8n_webhook.py ready for workflow triggering |
-| **WhatsApp Reminders** | ❌ Not Implemented | Requires WhatsApp Business API approval and setup |
-| **Payment Gateway** | ❌ Not in Scope | Planned for future release |
-| **Multi-Language UI** | ❌ Not in Scope | Planned for future release |
-| **Mobile App** | ❌ Not in Scope | Planned for future release |
+MediBook AI addresses these problems by combining conversational AI with deterministic clinic business logic and a grounded medical knowledge layer.
 
 ---
 
-## Architecture Diagram
+# Solution Overview
 
-### System architecture
+MediBook AI is a **24/7 AI virtual receptionist and clinic management platform**.
+
+Patients can communicate naturally with the system instead of navigating complex menus.
+
+For symptom-related requests, MediBook AI can:
+
+1. Detect emergency situations using deterministic safety rules.
+2. Identify the user's intent.
+3. Normalize the reported symptoms.
+4. Retrieve relevant medical knowledge from a curated knowledge base.
+5. Ground the LLM response using retrieved context.
+6. Recommend an appropriate medical specialty.
+7. Provide conservative informational triage guidance.
+8. Query real doctor availability through the backend.
+9. Continue into the existing appointment booking flow when appropriate.
+
+For operational requests, the existing chatbot flows remain authoritative.
+
+### Core principle
+
+```text
+Existing MediBook AI
+        +
+Safe Medical RAG
+        =
+Grounded MediBook AI
+```
+
+RAG provides medical context. It does **not** replace the application's emergency rules, business logic, authorization, doctor availability, or appointment validation.
+
+---
+
+# RAG Architecture
+
+The RAG system is isolated inside the existing AI service:
+
+```text
+ai-service/app/rag/
+```
+
+The architecture contains the following components:
+
+| Component             | Responsibility                                  |
+| --------------------- | ----------------------------------------------- |
+| `config.py`           | RAG configuration and environment variables     |
+| `models.py`           | Pydantic models and structured response schemas |
+| `vector_db.py`        | ChromaDB initialization and persistence         |
+| `embeddings.py`       | Sentence-transformer embedding generation       |
+| `retriever.py`        | Medical knowledge retrieval and filtering       |
+| `augmentation.py`     | Grounded prompt construction                    |
+| `generator.py`        | Structured Groq LLM generation                  |
+| `pipeline.py`         | Complete RAG triage orchestration               |
+| `safety.py`           | RAG-specific safety checks                      |
+| `cache.py`            | Safe medical knowledge retrieval caching        |
+| `knowledge_loader.py` | Knowledge-base validation and indexing          |
+
+### RAG request flow
+
+```text
+Patient message
+      │
+      ▼
+Existing Chatbot
+      │
+      ▼
+Intent Classification
+      │
+      ├──────── booking ────────► Existing booking flow
+      │
+      ├──────── reschedule ─────► Existing reschedule flow
+      │
+      ├──────── cancellation ───► Existing cancellation flow
+      │
+      ├──────── lookup ─────────► Existing doctor lookup
+      │
+      └──────── triage ─────────► RAG Pipeline
+                                      │
+                                      ▼
+                              Emergency Detection
+                                      │
+                              ┌───────┴───────┐
+                              │               │
+                           Emergency        Normal
+                              │               │
+                              ▼               ▼
+                       Emergency       Symptom Normalization
+                        Response              │
+                                              ▼
+                                      Query Embedding
+                                              │
+                                              ▼
+                                         ChromaDB
+                                              │
+                                              ▼
+                                    Relevance Filtering
+                                              │
+                                              ▼
+                                      Prompt Augmentation
+                                              │
+                                              ▼
+                                          Groq LLM
+                                              │
+                                              ▼
+                                     Pydantic Validation
+                                              │
+                                              ▼
+                                     Safe Triage Response
+```
+
+---
+
+# Safety Architecture
+
+Medical safety takes priority over generated responses.
+
+The system follows this hierarchy:
+
+```text
+1. Deterministic emergency rules
+2. Existing business logic
+3. RAG medical grounding
+4. LLM generation
+```
+
+### Emergency rules always execute first
+
+For example:
+
+```text
+User:
+"I have severe chest pain and I cannot breathe properly."
+```
+
+The existing emergency detector must identify this as a high-priority emergency before normal RAG generation.
+
+The resulting response should direct the patient toward immediate emergency medical attention rather than recommending a routine clinic appointment.
+
+### RAG cannot downgrade an emergency
+
+The LLM does not control emergency status.
+
+A retrieved document or generated response cannot override a deterministic emergency rule.
+
+### The AI does not diagnose
+
+MediBook AI provides:
+
+* informational triage guidance
+* symptom summaries
+* specialty routing
+* urgency guidance
+* general medical knowledge
+
+It does **not** provide definitive medical diagnoses.
+
+---
+
+# Architecture Diagram
+
+## System Architecture
 
 ```mermaid
 flowchart TB
+
     subgraph Client
         FE["Frontend<br/>React 18 + Vite + TypeScript<br/>Port 3000"]
     end
 
-    subgraph Proxy["Reverse Proxy (Vite dev server)"]
+    subgraph Proxy["Frontend Proxy"]
         P1["/api → Backend"]
         P2["/chat → AI Service"]
     end
@@ -115,598 +284,1100 @@ flowchart TB
         AI["AI Service<br/>FastAPI + Uvicorn<br/>Port 8001"]
     end
 
+    subgraph RAG["AI RAG Layer"]
+        NLU["Intent / NLU"]
+        SAFE["Emergency Rules"]
+        EMB["Embedding Service<br/>Sentence Transformers"]
+        RET["Medical Retriever"]
+        AUG["Prompt Augmentation"]
+        GEN["Structured Generator"]
+    end
+
+    subgraph Vector["Persistent Vector Storage"]
+        CHROMA[("ChromaDB<br/>Medical Knowledge")]
+    end
+
     subgraph Data
         PG[("PostgreSQL 15<br/>Port 5432")]
     end
 
     subgraph External
-        GROQ["Groq LLM API<br/>(NLU / intent detection)"]
+        GROQ["Groq LLM API"]
     end
 
-    subgraph Orchestration
-        DC["Docker Compose"]
-    end
+    FE --> P1
+    FE --> P2
 
-    FE --> Proxy
     P1 --> BE
     P2 --> AI
+
     BE --> PG
+
+    AI --> NLU
+    NLU --> SAFE
+
+    SAFE --> RET
+    RET --> EMB
+    EMB --> CHROMA
+
+    RET --> AUG
+    AUG --> GEN
+    GEN --> GROQ
+
     AI --> BE
-    AI --> GROQ
-    DC -.-> FE
+
+    DC["Docker Compose"] -.-> FE
     DC -.-> BE
     DC -.-> AI
     DC -.-> PG
 ```
 
-The Vite dev server proxies `/api` to the backend and rewrites `/chat` → `/api/chat` on the AI service, so a single frontend port works locally and through dev tunnels.
+The Vite development server proxies backend and AI-service requests so the frontend can operate through a single local development interface.
 
-### Patient books appointment via AI chat
+---
+
+# Patient Symptom Triage Flow
 
 ```mermaid
 sequenceDiagram
+
     actor Patient
-    participant FE as Frontend (React)
-    participant AI as AI Service (8001)
-    participant GROQ as Groq LLM
-    participant BE as Backend API (8000)
+    participant FE as React Frontend
+    participant AI as AI Service
+    participant SAFE as Emergency Rules
+    participant RAG as RAG Pipeline
+    participant CHROMA as ChromaDB
+    participant GROQ as Groq
+    participant BE as Backend
     participant DB as PostgreSQL
 
-    Patient->>FE: Describe symptoms / book appointment
-    FE->>AI: POST /api/chat/message<br/>{message, conversation_id, patient_id}
-    AI->>GROQ: NLU — classify intent & extract entities
-    GROQ-->>AI: {intent, symptoms, confirms, ...}
-    alt Emergency symptoms detected
-        AI-->>FE: Emergency alert (1100 / 15 / ER)
-    else Booking flow
-        AI->>AI: Rule-based symptom triage → specialty
-        AI->>BE: GET /api/doctors?specialization=...
-        BE->>DB: Query available doctors
-        DB-->>BE: Doctor list
-        BE-->>AI: Doctors JSON
-        AI->>BE: GET /api/doctors/{id}/availability
-        BE->>DB: Compute slots (schedules, holidays, bookings)
-        DB-->>BE: Available time slots
-        BE-->>AI: Availability JSON
-        AI-->>FE: Recommended doctors + open slots
-        Patient->>FE: Select doctor & time, confirm
-        FE->>AI: POST /api/chat/message (confirm)
-        AI->>BE: POST /api/appointments (JWT forwarded)
-        BE->>DB: Validate & insert appointment
-        DB-->>BE: Appointment record
-        BE-->>AI: Confirmation + reminder timestamps
-        AI-->>FE: Booking confirmed
+    Patient->>FE: Describe symptoms
+    FE->>AI: POST /api/chat/message
+
+    AI->>AI: Existing intent classification
+    AI->>SAFE: Check deterministic emergency rules
+
+    alt Emergency detected
+        SAFE-->>AI: Emergency
+        AI-->>FE: Emergency response
+    else Normal triage
+        AI->>RAG: triage_symptoms()
+        RAG->>RAG: Normalize symptoms
+        RAG->>CHROMA: Retrieve relevant knowledge
+        CHROMA-->>RAG: Ranked medical documents
+        RAG->>GROQ: Grounded structured prompt
+        GROQ-->>RAG: Structured triage JSON
+        RAG->>RAG: Validate response
+        RAG-->>AI: Safe triage result
+
+        AI->>BE: Query recommended specialty
+        BE->>DB: Find doctors
+        DB-->>BE: Doctors
+        BE-->>AI: Doctors
+
+        AI-->>FE: Triage + doctors + availability
     end
 ```
 
 ---
 
-## Tech Stack
+# Tech Stack
 
-| Layer | Technologies | Version (where pinned) |
-|-------|-------------|------------------------|
-| **Frontend** | React, TypeScript, Vite, Tailwind CSS, React Router, Axios, date-fns, react-icons | React ^18.2, Vite ^5.0, Node 18 (Docker) |
-| **Backend** | FastAPI, Uvicorn, SQLAlchemy, Alembic, Pydantic v2, PyJWT, passlib/bcrypt, SlowAPI | Python 3.12 (Docker), FastAPI ≥0.110 |
-| **AI Service** | FastAPI, Groq SDK, httpx, rule-based triage | Python 3.10 (Docker), Groq SDK ≥0.13 |
-| **Database** | PostgreSQL | 15-alpine |
-| **DevOps** | Docker, Docker Compose | Compose v2+ |
-| **External AI** | Groq API (`GROQ_MODEL`, default `openai/gpt-oss-120b`) | Requires `GROQ_API_KEY` |
-
----
-
-## Key Features
-
-### ✅ FULLY WORKING
-- **Patient Login & Dashboard:** Complete authentication flow, displaying real patient appointment history fetched directly from backend APIs.
-- **AI Health Chat with Real Groq LLM:** Interactive assistant leveraging Groq LLM for natural language processing and intelligent symptom triage.
-- **Full Patient Booking Flow:** Complete flow: symptom input → AI recommendation → doctor selection → slot confirmation → appointment saved directly to PostgreSQL database.
-- **Admin Login & Dashboard:** Comprehensive dashboard rendering live metrics, doctor schedules, and clinic management controls.
-- **Doctor Dashboard:** ✅ Fully Implemented (login, redirect, appointment viewing, status updates all working).
-- **Role-Based Route Guards:** Robust frontend routing ensuring strict isolation between patient (`/dashboard`), admin (`/admin`), and doctor dashboards.
-- **Authentication System:** Secure JWT authentication with refresh token lifecycle handling.
-- **Docker Compose Deployment:** Production-grade containerization with all 5 services (`frontend`, `backend`, `ai-service`, `db`, `n8n`) running seamlessly.
-- **Test Data Seeding:** Database population scripts seeding 3 clinics, 3 doctors, 3 patients, and 300+ sample appointments for immediate testing.
-- **Prescriptions:** ✅ Full CRUD REST API implemented and tested (GET, POST, PUT, DELETE, LIST with soft deletes & role-based authorization).
-- **n8n Automation:** ✅ Service containerized and running (webhook dispatcher for appointments on port 5678).
-- **Google Calendar & Email Reminders:** ✅ Async background scheduler active (syncing appointments to Google Calendar + 24h/1h SMTP email reminders).
-
-### ❌ NOT IMPLEMENTED / NOT IN SCOPE
-- **WhatsApp Reminders:** ❌ Not Implemented. Requires WhatsApp Business API approval and setup.
-- **Payment Gateway:** Third-party payment gateway integration.
-- **Multi-Language UI:** Localization and multilingual interface options.
-- **Mobile App:** Native mobile applications for iOS and Android.
+| Layer               | Technologies                                                  |
+| ------------------- | ------------------------------------------------------------- |
+| **Frontend**        | React 18, TypeScript, Vite, Tailwind CSS, React Router, Axios |
+| **Backend**         | FastAPI, Uvicorn, SQLAlchemy, Alembic, Pydantic v2, JWT       |
+| **AI Service**      | FastAPI, Groq SDK, httpx, deterministic triage, RAG           |
+| **LLM**             | Groq API                                                      |
+| **Embeddings**      | Sentence Transformers                                         |
+| **Vector Database** | ChromaDB                                                      |
+| **Database**        | PostgreSQL 15                                                 |
+| **Caching**         | Lightweight in-process RAG retrieval cache                    |
+| **Deployment**      | Docker + Docker Compose                                       |
+| **Automation**      | n8n                                                           |
+| **Calendar**        | Google Calendar integration                                   |
+| **Notifications**   | SMTP email reminders                                          |
 
 ---
 
-## What You Can Demo Right Now
+# Key Features
 
-You can demonstrate the fully functional MediBook AI platform using the following verified workflows:
+## AI & Medical RAG
 
-### 1. Full Patient Booking Flow & AI Chat
-1. Navigate to `http://localhost:3000/login` and log in as a patient:
-   - **Email:** `ali.khan@example.com`
-   - **Password:** `BulkSeed123!`
-2. Open the **AI Health Chat** (`/chat`).
-3. Enter your symptoms (e.g. *"I have had a severe sore throat and fever for two days"* or *"I am experiencing chest tightness"*).
-4. The AI assistant powered by **Groq LLM** will:
-   - Detect emergency symptoms (if applicable) and direct you to emergency services.
-   - Triage your symptoms to the appropriate medical specialty (e.g., ENT Specialist).
-   - Query live availability and list matching doctors with available time slots.
-5. Select a doctor and time slot, then type `yes` to confirm the booking.
-6. The AI microservice communicates with the backend API to create and validate the appointment in PostgreSQL.
-7. Return to the **Patient Dashboard** (`/dashboard`) to view your newly booked appointment under real appointment history.
+* ✅ Conversational AI assistant
+* ✅ Groq-powered intent classification
+* ✅ Deterministic emergency detection
+* ✅ RAG-powered symptom triage
+* ✅ ChromaDB persistent vector storage
+* ✅ Sentence-transformer embeddings
+* ✅ Curated version-controlled medical knowledge base
+* ✅ Metadata-aware retrieval
+* ✅ Minimum relevance threshold
+* ✅ Structured Pydantic-validated LLM responses
+* ✅ Safe RAG fallback
+* ✅ RAG feature flag
+* ✅ Lightweight circuit breaker
+* ✅ Retrieval caching
+* ✅ RAG health endpoint
+* ✅ Retrieval and generation observability
+* ✅ Grounded medical source references
 
-### 2. Admin Dashboard & Operations
-1. Log in as an administrator at `http://localhost:3000/login`:
-   - **Email:** `admin@medibook.com`
-   - **Password:** `Admin@123`
-2. You will be automatically directed to the **Admin Dashboard** (`/admin`).
-3. View real-time clinic analytics, doctor rosters, clinic records, and overall appointment statistics powered by backend REST endpoints.
+## Clinic Operations
 
-### 3. Doctor Login & Role Isolation
-1. Log in as a doctor:
-   - **Email:** `ahmed.khan@primecare.pk`
-   - **Password:** `BulkSeed123!`
-2. Verify role-based routing as you are redirected to `/doctor/dashboard`.
-3. Test security guards: attempts by non-admin users to access `/admin` or unauthorized routes are automatically blocked and redirected.
+* ✅ Patient authentication
+* ✅ Patient dashboard
+* ✅ Doctor dashboard
+* ✅ Admin dashboard
+* ✅ Doctor lookup
+* ✅ Doctor availability
+* ✅ Appointment booking
+* ✅ Appointment rescheduling
+* ✅ Appointment cancellation
+* ✅ Appointment conflict validation
+* ✅ Prescriptions
+* ✅ Google Calendar synchronization
+* ✅ Email reminders
+* ✅ n8n integration
+
+## Security & Safety
+
+* ✅ JWT authentication
+* ✅ Role-based access control
+* ✅ Deterministic emergency handling
+* ✅ Backend-authoritative appointment creation
+* ✅ Backend-authoritative doctor availability
+* ✅ Clinic-aware RAG metadata
+* ✅ No cross-clinic knowledge retrieval
+* ✅ LLM output validation
+* ✅ No direct appointment creation by the LLM
+* ✅ PHI-conscious logging
 
 ---
 
-## Getting Started / Local Setup
+# What You Can Demo Right Now
 
-### Prerequisites
+## 1. AI Health Chat + RAG Triage
 
-- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) v2+
-- A [Groq API key](https://console.groq.com/) (free tier works for demos)
-- Git
+Log in as a patient and open:
 
-### 1. Clone the repository
+```text
+/chat
+```
+
+Example:
+
+```text
+I've had a sore throat and cough for two days.
+```
+
+The system can:
+
+```text
+User message
+    ↓
+Intent classification
+    ↓
+Emergency check
+    ↓
+RAG retrieval
+    ↓
+Grounded medical response
+    ↓
+Specialty recommendation
+    ↓
+Doctor lookup
+    ↓
+Live availability
+```
+
+The response is informational and does not constitute a diagnosis.
+
+---
+
+## 2. Emergency Detection
+
+Example:
+
+```text
+I have severe chest pain and I cannot breathe properly.
+```
+
+Expected behavior:
+
+```text
+Existing emergency detector
+        ↓
+Emergency response
+        ↓
+No normal appointment recommendation
+        ↓
+RAG cannot downgrade the emergency
+```
+
+---
+
+## 3. Booking
+
+```text
+I want to book an appointment.
+```
+
+Expected:
+
+```text
+Existing booking state machine
+        ↓
+Doctor selection
+        ↓
+Availability
+        ↓
+Confirmation
+        ↓
+Backend appointment creation
+```
+
+RAG does not interfere with the booking flow.
+
+---
+
+## 4. Rescheduling
+
+Existing rescheduling flow remains active.
+
+---
+
+## 5. Cancellation
+
+Existing cancellation flow remains active.
+
+---
+
+## 6. Admin Dashboard
+
+The admin dashboard provides:
+
+* Clinic metrics
+* Doctor rosters
+* Appointment statistics
+* Clinic management functionality
+
+---
+
+## 7. Doctor Dashboard
+
+Doctors can:
+
+* Authenticate
+* View appointments
+* Update appointment status
+* Access their role-specific dashboard
+
+---
+
+# Getting Started / Local Setup
+
+## Prerequisites
+
+* Docker
+* Docker Compose v2+
+* Git
+* Groq API key
+
+## 1. Clone
 
 ```bash
 git clone https://github.com/Mzaq1559/MEDIBOOK_AI.git
 cd MEDIBOOK_AI
 ```
 
-### 2. Configure environment variables
-
-Copy the root example file and set your Groq key:
+## 2. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set at minimum:
+At minimum:
 
 ```env
-GROQ_API_KEY=your-groq-api-key-here
+GROQ_API_KEY=your-groq-api-key
 GROQ_MODEL=openai/gpt-oss-120b
 ```
 
-<details>
-<summary>Full environment variable reference</summary>
-
-**Root / Docker Compose** (`.env` — consumed by `ai-service`):
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `GROQ_API_KEY` | Groq LLM API key | *(required)* |
-| `GROQ_MODEL` | Model ID for NLU | `openai/gpt-oss-120b` |
-
-**Backend** (set in `docker-compose.yml` or `backend/.env`):
-
-| Variable | Purpose |
-|----------|---------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `SECRET_KEY` | JWT signing key (≥32 chars) |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access token TTL |
-| `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token TTL |
-| `ALLOWED_ORIGINS` | CORS allowed origins |
-
-**AI Service** (set in `docker-compose.yml` or `ai-service/.env`):
-
-| Variable | Purpose |
-|----------|---------|
-| `BACKEND_API_URL` | Internal backend base URL (`http://backend:8000/api`) |
-| `AI_SERVICE_PORT` | Service port (8001) |
-| `CONVERSATION_MAX_HISTORY` | Max messages kept in session |
-
-**Frontend** (set in `docker-compose.yml`):
-
-| Variable | Purpose |
-|----------|---------|
-| `VITE_API_URL` | Backend proxy path (`/api`) |
-| `VITE_CHAT_API_URL` | AI service proxy path (`/chat`) |
-| `VITE_PROXY_BACKEND` | Docker-internal backend URL |
-| `VITE_PROXY_AI_SERVICE` | Docker-internal AI service URL |
-
-> `GOOGLE_CALENDAR_*`, `WHATSAPP_*`, and `SMTP_*` variables exist in `backend/.env.example` but are **partially implemented integrations**.
-
-</details>
-
-### 3. Build and start services
+## 3. Build and Start
 
 ```bash
 docker compose build
 docker compose up -d
 ```
 
-Services: PostgreSQL (5432), Backend (8000), AI Service (8001), Frontend (3000), n8n (5678)
+Services:
 
-Wait for PostgreSQL health checks to pass, then verify:
+| Service    | Port |
+| ---------- | ---- |
+| Frontend   | 3000 |
+| Backend    | 8000 |
+| AI Service | 8001 |
+| PostgreSQL | 5432 |
+| n8n        | 5678 |
 
-```bash
-curl http://localhost:8000/health   # backend
-curl http://localhost:8001/health   # ai-service
-```
-
-### 4. Seed demo data
-
-**Standard demo seed** (3 clinics, 3 doctors, 3 patients, 300+ appointments):
-
-```bash
-docker compose exec backend python -m app.services.seed
-```
-
-**Bulk test data** (3 clinics, ~19 doctors, 100–150 patients, 500+ appointments):
+## 4. Verify Services
 
 ```bash
-docker compose exec backend python -m app.services.seed --bulk-test-data
-```
-
-**Minimal test admin only:**
-
-```bash
-docker compose exec backend python -m app.services.seed --test-admin
-```
-
-### 5. Access the application
-
-- Frontend: http://localhost:3000
-- Backend API docs: http://localhost:8000/docs
-- AI Service: http://localhost:8001
-- n8n: http://localhost:5678
-
-| Service | URL |
-|---------|-----|
-| **Frontend** | http://localhost:3000 |
-| **Backend Swagger** | http://localhost:8000/docs |
-| **Backend ReDoc** | http://localhost:8000/redoc |
-| **AI Service Swagger** | http://localhost:8001/docs |
-| **n8n Automation** | http://localhost:5678 |
-| **PostgreSQL** | `localhost:5432` (user: `medibook`, db: `medibook_db`) |
-
-### Demo login credentials
-
-| Role | Email | Password | Details |
-|------|-------|----------|---------|
-| **Admin** | `admin@medibook.com` | `Admin@123` | Main Admin Demo Account |
-| **Patient** | `ali.khan@example.com` | `BulkSeed123!` | Main Patient Demo Account |
-| **Doctor** | `ahmed.khan@primecare.pk` | `BulkSeed123!` | Main Doctor Demo Account |
-
-<details>
-<summary>Additional Seeded Accounts</summary>
-
-| Role | Email | Password |
-|------|-------|----------|
-| Admin (Clinic) | `admin@primecare.pk` | `AdminPass123!` / `BulkSeed123!` |
-| Receptionist | `receptionist@primecare.pk` | `RecepPass123!` / `BulkSeed123!` |
-
-**Bulk Seeded Users:**
-- **Password:** `BulkSeed123!`
-- **Domain:** `@bulkseed.medibook.test`
-- **Examples:** `patient.1@bulkseed.medibook.test`, `doctor.ahmed.khan.1@bulkseed.medibook.test`
-
-</details>
-
----
-
-## API Documentation
-
-Full endpoint specifications live in **`docs/MEDIBOOK_AI_COMPLETE_SPECIFICATIONS.txt`** (Section 4). Interactive documentation is available when services are running:
-
-- Backend: http://localhost:8000/docs
-- AI Service: http://localhost:8001/docs
-
-### Primary endpoint groups
-
-| Group | Endpoints | Purpose |
-|-------|-----------|---------|
-| **Auth** | GET/POST `/api/auth` | Register, login, refresh, logout, `/me` |
-| **Appointments** | GET/POST/PUT/DELETE `/api/appointments` | CRUD, reschedule, cancel, complete, no-show, feedback |
-| **Prescriptions** | GET/POST/PUT/DELETE `/prescriptions` | CRUD management |
-| **Doctors** | GET/POST/PUT `/api/doctors` | List, detail, availability, schedule update, holidays |
-| **Clinics** | GET/POST `/api/clinics` | List, detail, create (admin) |
-| **Patients** | GET/POST/PUT `/api/patients` | Profile, update, appointment history |
-| **Analytics** | GET `/api/analytics` | Dashboard metrics, daily summary |
-| **Chat (AI)** | POST `/api/chat` (port 8001) | Message, conversation history |
-| **Health** | GET `/health` | Service health checks |
-
----
-
-## Database Schema
-
-The complete schema specification is in **`docs/MEDIBOOK_AI_COMPLETE_SPECIFICATIONS.txt`** (Section 3). The Alembic migration `backend/alembic/versions/001_initial_schema.py` creates **9 core tables**.
-
-### Entity-relationship diagram (core tables)
-
-```mermaid
-erDiagram
-    users ||--o| doctors : "user_id"
-    users ||--o| patients : "user_id"
-    clinics ||--o{ doctors : "clinic_id"
-    clinics ||--o{ appointments : "clinic_id"
-    clinics ||--o{ clinic_holidays : "clinic_id"
-    doctors ||--o{ doctor_schedules : "doctor_id"
-    doctors ||--o{ appointments : "doctor_id"
-    doctors ||--o{ prescriptions : "doctor_id"
-    patients ||--o{ appointments : "patient_id"
-    patients ||--o{ prescriptions : "patient_id"
-    appointments ||--o| prescriptions : "appointment_id"
-
-    users {
-        uuid id PK
-        string email UK
-        string phone UK
-        string name
-        string password_hash
-        enum user_type
-        boolean is_active
-        timestamp created_at
-    }
-
-    clinics {
-        uuid id PK
-        string name UK
-        string address
-        string city
-        time working_hours_start
-        time working_hours_end
-        string working_days
-        string timezone
-    }
-
-    doctors {
-        uuid id PK
-        uuid user_id FK
-        uuid clinic_id FK
-        string specialization
-        numeric consultation_fee
-        boolean is_available
-        int max_patients_per_day
-    }
-
-    patients {
-        uuid id PK
-        uuid user_id FK
-        date date_of_birth
-        string gender
-        string preferred_notification
-        string emergency_contact_name
-    }
-
-    appointments {
-        uuid id PK
-        uuid clinic_id FK
-        uuid doctor_id FK
-        uuid patient_id FK
-        datetime appointment_time
-        string status
-        string urgency_level
-        text symptoms_reported
-        string google_calendar_event_id
-        boolean reminder_sent_24h
-        boolean reminder_sent_1h
-    }
-
-    prescriptions {
-        uuid id PK
-        uuid appointment_id FK
-        uuid doctor_id FK
-        uuid patient_id FK
-        text medications
-        text instructions
-        datetime expires_at
-    }
-```
-
-Additional tables: `doctor_schedules`, `clinic_holidays`, `audit_logs`.
-
----
-
-## AI Chatbot Capabilities
-
-The AI microservice (`ai-service/`) handles all chat traffic from the frontend. It combines **Groq LLM NLU** with **deterministic rule-based triage** and **backend API calls** for live booking.
-
-### Supported intents
-
-| Intent | Description |
-|--------|-------------|
-| `appointment` | Full booking flow: symptoms → follow-ups → doctor/slot → confirm |
-| `symptom` | Symptom description triggers triage routing |
-| `faq` | Clinic hours, consultation fees, general questions |
-| `reschedule` | Change an existing appointment by ID |
-
-### NLU pipeline
-
-1. **Keyword pre-routing** — obvious confirmations, hours, and fee queries skip the LLM
-2. **Groq JSON-mode NLU** — extracts intent, doctor name, date, symptoms, appointment ID, confirm/decline flags
-3. **Rule-based triage** (`symptom_triage.py`) — maps symptoms to Cardiologist / Dermatologist / ENT Specialist; detects emergencies
-4. **Backend integration** — fetches doctors, availability, creates/reschedules appointments with the patient's JWT
-
-### Example conversations
-
-<details>
-<summary>Example 1 — Symptom triage and booking</summary>
-
-```
-Patient:  I have had a sore throat and blocked nose for five days.
-Bot:      Thank you. I will route you to the right specialist — I will not diagnose the condition.
-          Let me ask a few quick questions:
-          Which area is bothering you most — ear, nose, or throat?
-Patient:  Mostly nose and throat, no fever.
-Bot:      Thanks. Do you have fever, or is it mainly pain or congestion?
-Patient:  Just congestion.
-Bot:      Based on your symptoms, I recommend seeing a ENT Specialist. This is a routing suggestion only, not a diagnosis.
-          Based on what you described, here are available doctors and times:
-          1. Dr. Zain Ali (ENT Specialist) — Prime Care Clinic Taxila — 2026-08-25 at 09:00, ...
-Patient:  Dr. Zain Ali at 09:00
-Bot:      Perfect! Let me confirm your appointment:
-          Doctor: Dr. Zain Ali (ENT Specialist)
-          Date/Time: 2026-08-25 at 09:00
-          ...
-          Shall I go ahead and book this appointment?
-Patient:  yes
-Bot:      Great! Your appointment is confirmed!
-          Appointment ID: ...
-```
-
-</details>
-
-<details>
-<summary>Example 2 — Emergency detection</summary>
-
-```
-Patient:  I have severe chest pain and I cannot breathe properly.
-Bot:      🚨 EMERGENCY ALERT 🚨
-          This requires IMMEDIATE medical attention. Do NOT wait.
-          PLEASE CALL: 1100 (Emergency) or 15 (Ambulance)
-          Or go to the nearest emergency room immediately!
-          This is a medical emergency - our clinic appointment system is NOT suitable for this situation.
-```
-
-</details>
-
----
-
-## Project Structure
-
-```
-MEDIBOOK_AI/
-├── backend/                 # FastAPI clinic management API (auth, appointments, analytics)
-│   ├── app/
-│   │   ├── routes/          # REST endpoint handlers
-│   │   │   └── prescriptions.py  # backend/app/routes/prescriptions.py
-│   │   ├── models/          # SQLAlchemy ORM models
-│   │   ├── services/        # Business logic, seed scripts, availability engine
-│   │   ├── schemas/         # Pydantic request/response models
-│   │   │   └── prescription.py   # backend/app/schemas/prescription.py
-│   │   └── core/            # Auth, security, config, audit
-│   ├── alembic/             # Database migrations
-│   └── tests/               # Pytest suite
-├── frontend/                # React + Vite SPA
-│   └── src/
-│       ├── pages/           # Route-level views (Dashboard, Admin, Doctor, Chat, Login)
-│       ├── services/        # Axios API clients
-│       └── components/      # Shared UI components & route guards
-├── ai-service/              # AI virtual receptionist microservice (Groq + triage + booking)
-│   ├── app/
-│   │   ├── chatbot.py       # Conversation state machine
-│   │   ├── groq_client.py   # Groq LLM wrapper
-│   │   ├── symptom_triage.py
-│   │   └── backend_client.py
-│   └── tests/               # AI service pytest suite
-├── docs/                    # Hackathon specifications and design docs
-│   └── MEDIBOOK_AI_COMPLETE_SPECIFICATIONS.txt
-├── docker-compose.yml       # Multi-service orchestration
-└── .env.example             # Environment template (Groq key required)
+curl http://localhost:8000/health
+curl http://localhost:8001/health
+curl http://localhost:8001/api/rag/health
 ```
 
 ---
 
-## Testing
+# RAG Configuration
 
-Test Prescriptions: http://localhost:8000/docs → try POST /prescriptions
+RAG is controlled through environment variables.
 
-### Backend tests
-
-```bash
-# Inside the backend container
-docker compose exec backend pytest -v
-
-# With coverage
-docker compose exec backend pytest --cov=app --cov-report=term-missing
+```env
+RAG_ENABLED=true
+RAG_VECTOR_DB_PATH=/app/data/chroma
+RAG_COLLECTION_NAME=medical_knowledge
+RAG_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+RAG_TOP_K=5
+RAG_MIN_RELEVANCE_SCORE=0.35
+RAG_CACHE_ENABLED=true
 ```
 
-The backend suite covers auth, appointments (including double-booking prevention), doctor availability, clinics, patients, analytics, seeding, and error handling. Tests use in-memory SQLite via `tests/conftest.py`.
+### Configuration Reference
 
-### AI service tests
+| Variable                  | Purpose                      | Example                                  |
+| ------------------------- | ---------------------------- | ---------------------------------------- |
+| `RAG_ENABLED`             | Enables/disables RAG         | `true`                                   |
+| `RAG_VECTOR_DB_PATH`      | Persistent ChromaDB location | `/app/data/chroma`                       |
+| `RAG_COLLECTION_NAME`     | Chroma collection            | `medical_knowledge`                      |
+| `RAG_EMBEDDING_MODEL`     | Embedding model              | `sentence-transformers/all-MiniLM-L6-v2` |
+| `RAG_TOP_K`               | Maximum retrieved documents  | `5`                                      |
+| `RAG_MIN_RELEVANCE_SCORE` | Minimum retrieval relevance  | `0.35`                                   |
+| `RAG_CACHE_ENABLED`       | Enables retrieval caching    | `true`                                   |
+
+If:
+
+```env
+RAG_ENABLED=false
+```
+
+the AI service falls back toward the existing non-RAG triage behavior.
+
+This provides a rollback mechanism without disabling the rest of the MediBook platform.
+
+---
+
+# Knowledge Base
+
+The initial medical knowledge base is version-controlled under:
+
+```text
+ai-service/app/knowledge_base/
+```
+
+The knowledge base contains structured information for:
+
+```text
+symptoms
+conditions
+specialties
+emergency protocols
+clinic procedures
+```
+
+Example document:
+
+```json
+{
+  "id": "chest_pain_001",
+  "type": "symptom",
+  "name": "Chest pain",
+  "description": "A symptom involving discomfort, pressure, tightness, or pain in the chest.",
+  "associated_conditions": [],
+  "red_flags": [],
+  "recommended_specialties": [],
+  "triage_level": "high",
+  "source": "internal_knowledge_base",
+  "version": "1.0"
+}
+```
+
+Knowledge records preserve metadata such as:
+
+```text
+id
+type
+name
+specialty
+urgency
+clinic_id
+source
+version
+last_updated
+```
+
+### Important
+
+The knowledge base is intended for **grounded informational triage and routing**.
+
+It should not be interpreted as a replacement for professional medical guidelines, clinical judgment, or emergency services.
+
+Sources displayed to users correspond to actual documents stored in the MediBook knowledge base.
+
+---
+
+# Clinic-Specific Knowledge
+
+The RAG architecture supports clinic-specific knowledge.
+
+Global documents use:
+
+```text
+clinic_id = null
+```
+
+Clinic-specific documents use:
+
+```text
+clinic_id = <clinic identifier>
+```
+
+Retrieval can combine:
+
+```text
+Global medical knowledge
+        +
+Current clinic knowledge
+```
+
+while preventing retrieval of documents belonging to another clinic.
+
+This allows future expansion toward:
+
+```text
+Clinic A
+    ├── Global medical knowledge
+    └── Clinic A procedures
+
+Clinic B
+    ├── Global medical knowledge
+    └── Clinic B procedures
+```
+
+---
+
+# Knowledge Base Management
+
+The knowledge index can be rebuilt using:
+
+```bash
+docker compose exec ai-service python -m app.rag.knowledge_loader --rebuild
+```
+
+The loader:
+
+1. Reads knowledge-base JSON files.
+2. Validates records.
+3. Converts records into searchable documents.
+4. Generates embeddings.
+5. Stores documents and metadata in ChromaDB.
+6. Avoids unnecessary duplicate processing.
+7. Reports loading statistics.
+
+ChromaDB data is persisted so that container restarts do not require rebuilding the entire index.
+
+---
+
+# RAG Health & Operations
+
+Health endpoint:
+
+```text
+GET /api/rag/health
+```
+
+Example:
+
+```json
+{
+  "enabled": true,
+  "vector_db": "healthy",
+  "embedding_model": "loaded",
+  "collection": "medical_knowledge",
+  "document_count": 52
+}
+```
+
+The health endpoint intentionally does not expose sensitive configuration.
+
+### Operational checks
+
+```bash
+curl -s http://localhost:8001/api/rag/health | python3 -m json.tool
+```
+
+Useful Docker commands:
+
+```bash
+docker compose logs -f ai-service
+```
 
 ```bash
 docker compose exec ai-service pytest -v
 ```
 
-Covers symptom triage rules, RAG retrieval/pipeline/safety, chat API integration, and Groq client error handling.
-
-### RAG (Retrieval-Augmented Generation)
-
-Symptom triage uses a grounded RAG pipeline (ChromaDB + sentence-transformers + Groq) when `RAG_ENABLED=true`.
-
-- Architecture: [`docs/RAG_ARCHITECTURE.md`](docs/RAG_ARCHITECTURE.md)
-- Setup & troubleshooting: [`docs/RAG_SETUP.md`](docs/RAG_SETUP.md)
-- Health check: `GET http://localhost:8001/api/rag/health`
-- Rebuild knowledge index: `docker compose exec ai-service python -m app.rag.knowledge_loader --rebuild`
-
-### Manual verification checklist
-
-| Check | Status | Verification Details |
-|-------|--------|----------------------|
-| **Patient login & dashboard** | ✅ Verified | Displays real appointment history from PostgreSQL |
-| **AI Health Chat with real Groq LLM** | ✅ Verified | Symptom triage and NLU conversation operational |
-| **Full patient booking flow** | ✅ Verified | Symptom → AI recommendation → doctor selection → confirmation → saved to DB |
-| **Admin login & dashboard** | ✅ Verified | Displays real clinic metrics, doctor rosters, and clinic management |
-| **Role-based route guards** | ✅ Verified | Patient/Doctor/Admin isolation and route restrictions working |
-| **Authentication System** | ✅ Verified | JWT authentication with refresh tokens functional |
-| **Docker Compose deployment** | ✅ Verified | All 5 services (`frontend`, `backend`, `ai-service`, `db`, `n8n`) running |
-| **Test data seeding** | ✅ Verified | 3 clinics, 3 doctors, 3 patients, 300+ appointments seeded |
-| **Doctor Dashboard** | ✅ Verified | Login/redirect/appointment viewing/status updates all working |
-| **Prescriptions** | ✅ Verified | All 5 CRUD endpoints (GET, POST, PUT, DELETE, LIST) implemented with soft deletes and authorization |
-| **Google Calendar & Email Reminders** | ✅ Verified | calendar_service.py, email_service.py, scheduler.py active. Syncs appointments to Google Calendar + sends 24h/1h SMTP reminders (best-effort) |
-| **n8n Automation** | ✅ Verified | n8n containerized in docker-compose on port 5678. Webhook code in ai-service/integrations/n8n_webhook.py ready for workflow triggering |
-| **WhatsApp Reminders** | ❌ Not Implemented | Requires WhatsApp Business API approval and setup |
+```bash
+docker compose restart ai-service
+```
 
 ---
 
-## Known Limitations / Future Work
+# RAG Failure & Fallback
 
-### Current MVP Scope
+RAG is intentionally designed as an additive layer.
 
-- **Single-clinic focus** in standard seed (bulk seed adds 3 clinics via API only)
-- **Web-first** — responsive web interface, native mobile apps out of scope
-- **English-primary** chat — Urdu/English bilingual support planned for post-hackathon
-- **In-memory chat sessions** — conversations reset on AI service container restart
+Failures in:
 
-### Integrations & Feature Status
+* ChromaDB
+* embedding generation
+* retrieval
+* Groq
+* JSON validation
+* prompt construction
+* timeouts
+* unexpected RAG exceptions
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Doctor Dashboard | ✅ Fully Implemented | Login/redirect/appointment viewing/status updates all working |
-| Prescriptions | ✅ Fully Implemented | All 5 CRUD endpoints (GET, POST, PUT, DELETE, LIST) implemented with soft deletes and authorization |
-| Google Calendar & Email Reminders | ✅ Fully Implemented | calendar_service.py, email_service.py, scheduler.py active. Syncs appointments to Google Calendar + sends 24h/1h SMTP reminders (best-effort) |
-| n8n Automation | ✅ Service Running | n8n containerized in docker-compose on port 5678. Webhook code in ai-service/integrations/n8n_webhook.py ready for workflow triggering |
-| WhatsApp Reminders | ❌ Not Implemented | Requires WhatsApp Business API approval and setup |
+must not make the overall chatbot unavailable.
 
-### Realistic Next Steps (Post-Hackathon)
+The fallback hierarchy is:
 
-1. Obtain WhatsApp Business API approval and implement WhatsApp message sender service.
-2. Build custom n8n workflows for complex clinic automation triggers.
-3. Persist chat session state into PostgreSQL or Redis.
-4. Implement bilingual Urdu/English NLU prompts.
+```text
+RAG failure
+    ↓
+Existing deterministic triage/business logic
+    ↓
+Safe response
+```
+
+Internal logs identify failures such as:
+
+```text
+RAG retrieval failed
+RAG generation failed
+RAG validation failed
+RAG fallback activated
+```
+
+Internal exceptions are never returned directly to patients.
 
 ---
 
-## Team
+# Circuit Breaker
 
-Built in 6 days by a 4-person team for the Alibaba Cloud AI Hackathon Pakistan 2026.
+The RAG subsystem contains a lightweight circuit breaker:
 
-| Name | Role | GitHub | Contributions |
-|------|------|--------|---------------|
-| Muhammad Zulqarnain Abdullah | Project Lead | [@Mzaq1559](https://github.com/Mzaq1559) | Architecture, Docker, seeding, chat integration, repo coordination |
-| Sidra Pervaiz | Backend Developer | [@SidraPervaiz1122](https://github.com/SidraPervaiz1122)| FastAPI backend core, database models, appointment engine, tests |
-| Aleeza Imran | Frontend Developer | [@BSCS2455](https://github.com/BSCS2455) | React UI, design system, page layouts |
-| Ayesha Sajjad | AI & Integrations | [@AyeshaSajjad0786](https://github.com/AyeshaSajjad0786) | AI microservice, Groq NLU, symptom triage, booking conversation flow |
+```text
+CLOSED
+   │
+   │ repeated failures
+   ▼
+OPEN
+   │
+   │ cooldown
+   ▼
+HALF_OPEN
+   │
+   ├── success ──► CLOSED
+   │
+   └── failure ──► OPEN
+```
+
+When RAG repeatedly fails, new RAG requests temporarily use the fallback path.
+
+The circuit breaker does not affect:
+
+* booking
+* rescheduling
+* cancellation
+* doctor lookup
+* availability
+* authentication
+* backend operations
 
 ---
 
-## License
+# API Documentation
 
-No open-source license file is included in this repository. This project is submitted for **Alibaba Cloud AI Hackathon Pakistan 2026** evaluation purposes.
+Interactive API documentation is available when the services are running.
+
+| Service            | Documentation                          |
+| ------------------ | -------------------------------------- |
+| Backend Swagger    | `http://localhost:8000/docs`           |
+| Backend ReDoc      | `http://localhost:8000/redoc`          |
+| AI Service Swagger | `http://localhost:8001/docs`           |
+| RAG Health         | `http://localhost:8001/api/rag/health` |
+
+### Primary Endpoint Groups
+
+| Group         | Purpose                                            |
+| ------------- | -------------------------------------------------- |
+| Auth          | Registration, login, refresh, logout, current user |
+| Appointments  | Booking, rescheduling, cancellation, completion    |
+| Prescriptions | Prescription CRUD                                  |
+| Doctors       | Lookup, details, availability, schedules           |
+| Clinics       | Clinic management                                  |
+| Patients      | Patient profile and appointment history            |
+| Analytics     | Dashboard metrics                                  |
+| Chat          | Conversational AI                                  |
+| RAG Health    | RAG subsystem health                               |
+
+---
+
+# Database Schema
+
+The main application database uses PostgreSQL.
+
+Core entities include:
+
+```text
+users
+clinics
+doctors
+patients
+appointments
+prescriptions
+doctor_schedules
+clinic_holidays
+audit_logs
+```
+
+The relational database remains the source of truth for:
+
+* Users
+* Authentication
+* Doctors
+* Patients
+* Clinics
+* Appointments
+* Availability
+* Prescriptions
+* Authorization
+
+ChromaDB is used only for medical knowledge retrieval.
+
+It does **not** replace PostgreSQL.
+
+---
+
+# AI Chatbot Architecture
+
+The AI service combines:
+
+```text
+Existing Conversation State Machine
++
+Groq NLU
++
+Deterministic Safety Rules
++
+RAG Medical Knowledge
++
+Backend Business Logic
+```
+
+## Intent Routing
+
+| Intent               | Handler                       |
+| -------------------- | ----------------------------- |
+| `appointment`        | Existing booking flow         |
+| `symptom` / `triage` | RAG triage pipeline           |
+| `faq`                | Existing conversational logic |
+| `reschedule`         | Existing rescheduling flow    |
+| `cancel`             | Existing cancellation flow    |
+| `lookup`             | Existing doctor lookup        |
+
+### Critical design rule
+
+**Not every chatbot message goes through RAG.**
+
+Only medical/symptom-oriented requests and appropriate medical knowledge questions use the RAG layer.
+
+Operational requests continue using their existing deterministic flows.
+
+---
+
+# Structured RAG Response
+
+RAG generation uses structured output rather than free-form parsing.
+
+Conceptually:
+
+```json
+{
+  "urgency": "routine",
+  "specialty": "General Physician",
+  "recommendation": "A general physician can evaluate these symptoms.",
+  "reasoning_summary": "The reported symptoms are appropriate for an initial general medical evaluation.",
+  "red_flags": [],
+  "confidence": "medium",
+  "needs_emergency_care": false,
+  "sources": [
+    {
+      "id": "symptom_001",
+      "title": "Symptom Guidance",
+      "type": "symptom"
+    }
+  ]
+}
+```
+
+The response is validated with Pydantic before being returned to the frontend.
+
+The system does not expose internal retrieval scores or embeddings to patients.
+
+---
+
+# Confidence
+
+Confidence is treated as **routing confidence**, not medical diagnostic confidence.
+
+The system can consider measurable signals such as:
+
+```text
+retrieval relevance
++
+intent classification confidence
++
+deterministic rule agreement
++
+structured response validation
+```
+
+The patient should never see claims such as:
+
+```text
+95% diagnosis confidence
+```
+
+because MediBook AI is not a diagnostic system.
+
+---
+
+# Frontend RAG Presentation
+
+The existing chat interface remains intact.
+
+RAG adds optional information such as:
+
+```text
+Medical knowledge used
+
+• Chest pain symptom guidance
+• Shortness of breath guidance
+
+This information is for general guidance and does not replace
+professional medical evaluation.
+```
+
+The frontend does not expose:
+
+* embeddings
+* vector IDs
+* raw Chroma metadata
+* internal retrieval scores
+* internal model diagnostics
+
+---
+
+# Project Structure
+
+```text
+MEDIBOOK_AI/
+│
+├── backend/
+│   ├── app/
+│   │   ├── routes/
+│   │   ├── models/
+│   │   ├── services/
+│   │   ├── schemas/
+│   │   └── core/
+│   ├── alembic/
+│   └── tests/
+│
+├── frontend/
+│   └── src/
+│       ├── pages/
+│       ├── services/
+│       └── components/
+│
+├── ai-service/
+│   ├── app/
+│   │   ├── chatbot.py
+│   │   ├── groq_client.py
+│   │   ├── symptom_triage.py
+│   │   ├── backend_client.py
+│   │   │
+│   │   ├── rag/
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── models.py
+│   │   │   ├── vector_db.py
+│   │   │   ├── embeddings.py
+│   │   │   ├── retriever.py
+│   │   │   ├── augmentation.py
+│   │   │   ├── generator.py
+│   │   │   ├── pipeline.py
+│   │   │   ├── safety.py
+│   │   │   ├── cache.py
+│   │   │   └── knowledge_loader.py
+│   │   │
+│   │   └── knowledge_base/
+│   │       ├── symptoms.json
+│   │       ├── conditions.json
+│   │       ├── specialties.json
+│   │       ├── emergency_protocols.json
+│   │       └── clinic_procedures.json
+│   │
+│   ├── data/
+│   │   └── chroma/
+│   │
+│   └── tests/
+│       ├── test_rag_retriever.py
+│       ├── test_rag_pipeline.py
+│       ├── test_rag_safety.py
+│       └── test_rag_integration.py
+│
+├── docs/
+│   ├── RAG_ARCHITECTURE.md
+│   ├── RAG_SETUP.md
+│   └── MEDIBOOK_AI_COMPLETE_SPECIFICATIONS.txt
+│
+├── docker-compose.yml
+├── .env.example
+└── README.md
+```
+
+---
+
+# Testing
+
+## Backend
+
+```bash
+docker compose exec backend pytest -v
+```
+
+Coverage:
+
+```bash
+docker compose exec backend pytest --cov=app --cov-report=term-missing
+```
+
+Backend tests cover areas including:
+
+* Authentication
+* Appointments
+* Double-booking prevention
+* Doctor availability
+* Clinics
+* Patients
+* Analytics
+* Prescriptions
+* Seeding
+* Error handling
+
+---
+
+## AI Service
+
+```bash
+docker compose exec ai-service pytest -v
+```
+
+The AI test suite covers:
+
+* Existing symptom triage rules
+* Emergency detection
+* Intent classification
+* RAG retrieval
+* Metadata filtering
+* RAG pipeline
+* Structured response validation
+* RAG fallback
+* ChromaDB failures
+* Groq failures
+* Chat API integration
+
+---
+
+## RAG Tests
+
+RAG tests verify:
+
+### Vector database
+
+* Initialization
+* Persistence
+* Document insertion
+* Retrieval
+* Metadata filtering
+* Empty results
+
+### Retriever
+
+* Relevant queries
+* Irrelevant queries
+* Relevance threshold
+* Duplicate removal
+* Clinic filtering
+
+### Pipeline
+
+* Successful retrieval
+* Successful generation
+* Malformed LLM JSON
+* Groq failure
+* ChromaDB failure
+* Fallback behavior
+
+### Safety
+
+Emergency scenarios such as:
+
+```text
+severe chest pain + difficulty breathing
+```
+
+must always trigger the deterministic emergency path.
+
+RAG must never downgrade the emergency.
+
+---
+
+# End-to-End Verification
+
+The following workflows should remain operational:
+
+| Scenario             | Expected Behavior                |
+| -------------------- | -------------------------------- |
+| Normal symptom       | RAG retrieval → grounded triage  |
+| Emergency symptom    | Deterministic emergency response |
+| Booking              | Existing booking flow            |
+| Rescheduling         | Existing rescheduling flow       |
+| Cancellation         | Existing cancellation flow       |
+| Doctor lookup        | Existing backend lookup          |
+| Availability         | Existing availability engine     |
+| RAG unavailable      | Safe fallback                    |
+| Groq unavailable     | Safe fallback                    |
+| ChromaDB unavailable | Safe fallback                    |
+| Container restart    | ChromaDB data persists           |
+
+---
+
+# Observability
+
+RAG operations expose metrics such as:
+
+```text
+rag_requests_total
+rag_success_total
+rag_fallback_total
+rag_errors_total
+rag_retrieval_latency
+rag_generation_latency
+rag_total_latency
+rag_cache_hits
+rag_cache_misses
+rag_documents_count
+```
+
+Where monitoring infrastructure already exists, RAG metrics can be integrated into the existing monitoring stack rather than introducing a separate monitoring system.
+
+Logging should avoid unnecessary patient health information or complete conversation transcripts.
+
+---
+
+# Security
+
+Medical information is handled carefully throughout the architecture.
+
+Key principles:
+
+* Do not log unnecessary PHI.
+* Do not place patient conversations into the medical knowledge cache.
+* Do not use sensitive conversation content as a cache key.
+* Prevent cross-clinic knowledge retrieval.
+* Validate user input.
+* Validate all LLM output.
+* Never trust LLM-generated doctor or specialty identifiers.
+* Verify specialties and doctors against backend data.
+* Never allow LLM output to directly create an appointment.
+* PostgreSQL remains the source of truth for appointments and availability.
+* Existing authorization rules remain authoritative.
+
+The LLM recommends.
+
+The backend decides what is actually possible.
+
+---
+
+# Known Limitations / Future Work
+
+## Current Scope
+
+* **Web-first** — responsive web application; native mobile applications are outside current scope.
+* **English-primary** — Urdu/English bilingual support is planned.
+* **In-memory conversational sessions** — chat sessions currently reset when the AI service restarts.
+* **Medical knowledge scope** — the initial RAG knowledge base focuses on common symptoms, conditions, specialties, emergency indicators, and clinic procedures.
+* **RAG is informational** — it is not intended to provide medical diagnoses.
+
+## Future Improvements
+
+1. Expand and clinically review the medical knowledge base.
+2. Add Urdu/English bilingual medical retrieval.
+3. Persist conversation state using PostgreSQL or Redis.
+4. Add richer clinic-specific knowledge management.
+5. Introduce formal knowledge-base versioning and review workflows.
+6. Improve retrieval evaluation and relevance benchmarking.
+7. Add hybrid lexical + vector retrieval where beneficial.
+8. Obtain WhatsApp Business API approval and implement WhatsApp reminders.
+9. Build advanced n8n workflows.
+10. Develop native mobile applications.
+
+---
+
+# Integrations
+
+| Feature            | Status            | Notes                                        |
+| ------------------ | ----------------- | -------------------------------------------- |
+| Doctor Dashboard   | ✅ Implemented     | Authentication, appointments, status updates |
+| Prescriptions      | ✅ Implemented     | CRUD with authorization and soft deletes     |
+| Google Calendar    | ✅ Implemented     | Appointment synchronization                  |
+| Email Reminders    | ✅ Implemented     | 24h/1h reminder scheduler                    |
+| n8n                | ✅ Integrated      | Containerized automation service             |
+| WhatsApp Reminders | ❌ Not Implemented | Requires WhatsApp Business API               |
+| Payment Gateway    | ❌ Not in Scope    | Future feature                               |
+| Mobile App         | ❌ Not in Scope    | Future feature                               |
+| Multi-language UI  | ❌ Not in Scope    | Planned                                      |
+
+---
+
+# Team
+
+Built by a 4-person team for the **Alibaba Cloud AI Hackathon Pakistan 2026**.
+
+| Name                         | Role               | GitHub                                                   | Contributions                                                                              |
+| ---------------------------- | ------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Muhammad Zulqarnain Abdullah | Project Lead       | [@Mzaq1559](https://github.com/Mzaq1559)                 | Architecture, Docker, seeding, chat integration, RAG integration, repository coordination  |
+| Sidra Pervaiz                | Backend Developer  | [@SidraPervaiz1122](https://github.com/SidraPervaiz1122) | FastAPI backend, database models, appointment engine, authorization, tests                 |
+| Aleeza Imran                 | Frontend Developer | [@BSCS2455](https://github.com/BSCS2455)                 | React UI, design system, page layouts, chat interface                                      |
+| Ayesha Sajjad                | AI & Integrations  | [@AyeshaSajjad0786](https://github.com/AyeshaSajjad0786) | AI microservice, Groq integration, NLU, symptom triage, conversational flows, integrations |
+
+---
+
+# License
+
+No open-source license file is currently included in this repository.
+
+This project is submitted for **Alibaba Cloud AI Hackathon Pakistan 2026** evaluation purposes.
