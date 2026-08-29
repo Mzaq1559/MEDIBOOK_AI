@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.models.patient import Patient
+from app.models.doctor import Doctor
 from app.core.security import get_password_hash, verify_password, validate_password_complexity
 from app.core.auth import create_access_token, create_refresh_token, decode_token, get_current_user
 from app.core.audit import log_audit_event
@@ -234,7 +235,19 @@ def logout_user(current_user: User = Depends(get_current_user)):
     summary="Get Current User Profile",
     description="Retrieve profile details of the currently authenticated user."
 )
-def get_me(current_user: User = Depends(get_current_user)):
+def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Resolve role-specific profile IDs so callers always get the correct FK
+    patient_id = None
+    doctor_id = None
+    if current_user.user_type == "patient":
+        patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
+        if patient:
+            patient_id = patient.id
+    elif current_user.user_type == "doctor":
+        doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+        if doctor:
+            doctor_id = doctor.id
+
     return UserMeResponse(
         user_id=current_user.id,
         email=current_user.email,
@@ -242,5 +255,7 @@ def get_me(current_user: User = Depends(get_current_user)):
         user_type=current_user.user_type,
         avatar_url=current_user.avatar_url,
         is_active=current_user.is_active,
-        created_at=current_user.created_at
+        created_at=current_user.created_at,
+        patient_id=patient_id,
+        doctor_id=doctor_id,
     )
