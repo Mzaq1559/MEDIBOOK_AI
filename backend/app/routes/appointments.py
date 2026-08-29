@@ -97,7 +97,15 @@ def list_appointments(
     if doctor_id:
         query = query.filter(Appointment.doctor_id == doctor_id)
     if patient_id:
-        query = query.filter(Appointment.patient_id == patient_id)
+        # Resolve patient_id: caller may supply patients.id OR users.id (the
+        # chatbot and some frontend paths send users.id).  Resolve through the
+        # Patient table so both work; fall back to the raw UUID if no row
+        # matches, preserving the existing zero-result behaviour for bad IDs.
+        resolved_patient = db.query(Patient).filter(
+            (Patient.id == patient_id) | (Patient.user_id == patient_id)
+        ).first()
+        resolved_patient_id = resolved_patient.id if resolved_patient else patient_id
+        query = query.filter(Appointment.patient_id == resolved_patient_id)
     if clinic_id:
         query = query.filter(Appointment.clinic_id == clinic_id)
     if status_filter:
@@ -129,7 +137,7 @@ def list_appointments(
             pass
 
     total = query.count()
-    appts = query.order_by(Appointment.appointment_time.desc()).offset(offset).limit(limit).all()
+    appts = query.order_by(Appointment.appointment_time.asc()).offset(offset).limit(limit).all()
 
     items: List[AppointmentListItem] = []
     for a in appts:

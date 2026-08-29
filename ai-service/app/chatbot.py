@@ -90,8 +90,14 @@ def handle_message(
         elif intent == "reschedule" or state.startswith("reschedule"):
             bot, action, _, ui_data = handle_reschedule(session, message, nlu, authorization)
             
+        elif intent == "other" and state in (S.IDLE, S.FAQ, S.BOOKED):
+            bot = "I didn't understand that. I can help you book an appointment, answer clinic FAQs, or reschedule/cancel an appointment. How can I help you today?"
+            action = "waiting_for_input"
+            ui_data = {}
+            session["state"] = S.IDLE
+
         else:
-            # intent == "appointment" or "symptom", or state is a booking state
+            # intent in ("appointment", "symptom", "other") or active booking state
             if state in (S.IDLE, S.FAQ, S.BOOKED) and intent in ("appointment", "symptom"):
                 session["state"] = S.IDLE
             bot, action, _, ui_data = handle_new_booking(session, message, nlu, authorization)

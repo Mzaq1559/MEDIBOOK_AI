@@ -33,12 +33,12 @@ export const DoctorDashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      // Get today's appointments for doctor
-      const res = await listAppointments({ date: 'today' });
+      // Fetch all upcoming scheduled appointments (not just today — avoids UTC/PKT date boundary issues)
+      const res = await listAppointments({ status: 'scheduled' });
       setSchedule(res.appointments || []);
     } catch (err: any) {
       console.error('Failed to load doctor schedule:', err);
-      setError(err?.response?.data?.detail?.message || 'Failed to load today schedule.');
+      setError(err?.response?.data?.detail?.message || 'Failed to load upcoming schedule.');
     } finally {
       setLoading(false);
     }
@@ -60,14 +60,14 @@ export const DoctorDashboard: React.FC = () => {
   });
 
   // Calculate stats dynamically
-  const totalToday = schedule.length;
+  const totalUpcoming = schedule.length;
   const completedCount = schedule.filter((s) => s.status.toLowerCase() === 'completed').length;
   const noShowCount = schedule.filter((s) => s.status.toLowerCase() === 'no_show' || s.status.toLowerCase() === 'no-show').length;
   const upcomingCount = schedule.filter(
     (s) => s.status.toLowerCase() === 'scheduled' || s.status.toLowerCase() === 'confirmed' || s.status.toLowerCase() === 'upcoming'
   ).length;
 
-  const utilizationPct = totalToday > 0 ? Math.round(((completedCount + noShowCount) / totalToday) * 100) : 0;
+  const utilizationPct = totalUpcoming > 0 ? Math.round(((completedCount + noShowCount) / totalUpcoming) * 100) : 0;
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -206,7 +206,7 @@ export const DoctorDashboard: React.FC = () => {
             <span className="text-xs text-secondary font-semibold">{doctorSpecialty}</span>
           </div>
           <h1 className="font-heading font-extrabold text-3xl sm:text-4xl text-textPrimary tracking-tight">
-            Today's Schedule
+            Upcoming Schedule
           </h1>
           <p className="text-sm sm:text-base text-textSecondary mt-1 flex items-center gap-2">
             <span>📅 {todayFormatted}</span>
@@ -226,11 +226,11 @@ export const DoctorDashboard: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>Total Today</span>
+            <span>Total Upcoming</span>
             <span>📋</span>
           </div>
           <div className="mt-3">
-            <span className="font-heading font-extrabold text-3xl text-textPrimary">{totalToday}</span>
+            <span className="font-heading font-extrabold text-3xl text-textPrimary">{totalUpcoming}</span>
             <p className="text-[11px] text-textSecondary mt-0.5">Patients booked</p>
           </div>
         </Card>
@@ -293,7 +293,7 @@ export const DoctorDashboard: React.FC = () => {
         {loading ? (
           <Card radius="2xl" shadow="sm" className="p-12 text-center bg-white border border-surfaceContainerHigh">
             <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-xs text-textSecondary font-medium">Fetching today's clinical queue...</p>
+            <p className="text-xs text-textSecondary font-medium">Fetching upcoming clinical queue...</p>
           </Card>
         ) : schedule.length > 0 ? (
           <div className="space-y-4">
@@ -438,7 +438,7 @@ export const DoctorDashboard: React.FC = () => {
           </div>
         ) : (
           <Card radius="2xl" shadow="sm" className="p-10 text-center bg-white border border-surfaceContainerHigh space-y-2">
-            <p className="font-heading font-bold text-base text-textPrimary">No appointments scheduled for today</p>
+            <p className="font-heading font-bold text-base text-textPrimary">No upcoming scheduled appointments</p>
             <p className="text-xs text-textSecondary">Your queue is currently clear.</p>
           </Card>
         )}
