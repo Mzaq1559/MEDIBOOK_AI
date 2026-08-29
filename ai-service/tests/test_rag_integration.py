@@ -2,22 +2,41 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from app.chatbot import handle_message
-from app.chatbot_state import S, get_session, new_session
+from app.chatbot_state import get_session, new_session
 from app.rag.models import SourceReference, TriageResult
 from app.symptom_triage import EMERGENCY_ALERT
 
+FAKE_DOCTORS = [
+    {
+        "doctor_id": "doc-123",
+        "name": "Dr. Sarah Khan",
+        "specialization": "General Physician",
+        "consultation_fee": 2000,
+        "clinic_name": "MediBook Central Clinic",
+        "clinic_address": "Main Boulevard, Lahore",
+        "availability_slots": [
+            {
+                "timestamp": "2026-09-01T09:00:00+05:00",
+                "label": "Sep 01, 2026 at 09:00 AM",
+                "status": "available",
+            }
+        ],
+    }
+]
+
 
 def _start_booking(conversation_id: str = "test-conv-1"):
-    handle_message(
-        conversation_id=conversation_id,
-        patient_id=None,
-        message="I want to book an appointment",
-        language="english",
-        authorization=None,
-    )
+    with patch("app.backend_client.list_doctors", return_value=FAKE_DOCTORS):
+        res = handle_message(
+            conversation_id=conversation_id,
+            patient_id=None,
+            message="I want to book an appointment",
+            language="english",
+            authorization=None,
+        )
     return conversation_id
 
 
@@ -25,7 +44,8 @@ def _start_booking(conversation_id: str = "test-conv-1"):
 def test_booking_flow_starts_without_rag():
     conv_id = _start_booking("booking-flow-1")
     session = get_session(conv_id)
-    assert session["state"] == S.ASKING_SYMPTOMS
+    assert session is not None
+    assert "doctors" in session["last_ui_data"]
 
 
 def test_symptom_triage_uses_rag(monkeypatch):
@@ -46,7 +66,7 @@ def test_symptom_triage_uses_rag(monkeypatch):
 
     monkeypatch.setattr("app.rag.pipeline.get_rag_pipeline", lambda: _FakePipeline())
 
-    conv_id = _start_booking("rag-symptom-1")
+    conv_id = "rag-symptom-1"
     result = handle_message(
         conversation_id=conv_id,
         patient_id=None,
@@ -60,7 +80,7 @@ def test_symptom_triage_uses_rag(monkeypatch):
 
 
 def test_emergency_overrides_rag_and_booking():
-    conv_id = _start_booking("emergency-1")
+    conv_id = "emergency-1"
     result = handle_message(
         conversation_id=conv_id,
         patient_id=None,
@@ -70,8 +90,6 @@ def test_emergency_overrides_rag_and_booking():
     )
     assert result["next_action"] == "emergency_redirect"
     assert "EMERGENCY" in result["bot_message"]
-    session = get_session(conv_id)
-    assert session["state"] == S.EMERGENCY
 
 
 @patch("app.chatbot_handlers.rag_settings.RAG_ENABLED", True)

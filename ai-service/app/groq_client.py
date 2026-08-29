@@ -20,9 +20,10 @@ class LLMError(Exception):
 
 
 def _client() -> Groq:
-    if not settings.GROQ_API_KEY:
+    key = (settings.GROQ_API_KEY or "").strip()
+    if not key or key.startswith(("fake", "test", "dummy", "gsk_test", "mock")):
         raise LLMError(LLM_FALLBACK)
-    return Groq(api_key=settings.GROQ_API_KEY)
+    return Groq(api_key=key)
 
 
 def complete(
@@ -61,6 +62,46 @@ def complete(
 
     logger.error("Groq request failed after %s attempts", retries)
     raise LLMError(LLM_FALLBACK) from last_error
+
+
+def complete_with_tools(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    *,
+    tool_choice: str = "auto",
+    temperature: float = 0.2,
+    max_tokens: int = 800,
+    retries: int = 3,
+) -> Any:
+    """Call Groq chat completions with tool definitions. Returns choice message object."""
+    last_error: Optional[Exception] = None
+    create_kwargs: dict[str, Any] = {
+        "model": settings.GROQ_MODEL,
+        "messages": messages,
+        "tools": tools,
+        "tool_choice": tool_choice,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    for attempt in range(1, retries + 1):
+        try:
+            client = _client()
+            response = client.chat.completions.create(**create_kwargs)
+            return response.choices[0].message
+        except LLMError as exc:
+            last_error = exc
+            break
+        except Exception as exc:
+            last_error = exc
+            logger.warning("Groq request with tools failed on attempt %s/%s: %s", attempt, retries, exc)
+            if "AuthenticationError" in type(exc).__name__ or "401" in str(exc):
+                break
+
+    logger.error("Groq request with tools failed after attempt(s)")
+    raise LLMError(LLM_FALLBACK) from last_error
+
+
 
 
 def complete_json(

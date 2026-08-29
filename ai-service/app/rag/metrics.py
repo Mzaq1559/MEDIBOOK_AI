@@ -18,6 +18,9 @@ class RAGMetrics:
     rag_retrieval_latency_ms: list[float] = field(default_factory=list)
     rag_generation_latency_ms: list[float] = field(default_factory=list)
     rag_total_latency_ms: list[float] = field(default_factory=list)
+    agent_tool_calls_total: int = 0
+    agent_write_confirmations_total: int = 0
+    agent_fallback_total: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def inc(self, name: str, value: int = 1) -> None:
@@ -52,6 +55,9 @@ class RAGMetrics:
                 "rag_retrieval_latency_avg_ms": _avg(self.rag_retrieval_latency_ms),
                 "rag_generation_latency_avg_ms": _avg(self.rag_generation_latency_ms),
                 "rag_total_latency_avg_ms": _avg(self.rag_total_latency_ms),
+                "agent_tool_calls_total": self.agent_tool_calls_total,
+                "agent_write_confirmations_total": self.agent_write_confirmations_total,
+                "agent_fallback_total": self.agent_fallback_total,
             }
 
 
