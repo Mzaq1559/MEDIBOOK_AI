@@ -10,6 +10,19 @@
 
 ---
 
+## Two Implementations
+
+This project is submitted as **two separate, complete implementations** so judges can evaluate MediBook AI both with and without the RAG layer.
+
+| Version                | Branch                                                                                         | Description                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Non-RAG (this branch)** | [`main`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/main)                                       | Core clinic platform with deterministic symptom triage — no retrieval or vector search.  |
+| **RAG-enabled**          | [`feature/rag-vector-db`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/feature/rag-vector-db)     | Everything in this branch, plus a ChromaDB-backed medical RAG layer for grounded triage. |
+
+Bug fixes and improvements made here on `main` are regularly merged into `feature/rag-vector-db`, so the RAG version stays current with this baseline.
+
+---
+
 ## Table of Contents
 
 1. [Hackathon Context](#hackathon-context)
