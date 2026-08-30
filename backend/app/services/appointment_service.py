@@ -23,7 +23,20 @@ from app.schemas.appointment import (
     AppointmentNoShowResponse,
     AppointmentFeedbackResponse
 )
+import logging
 from app.core.audit import log_audit_event
+from app.services.calendar_service import (
+    sync_appointment,
+    update_calendar_appointment,
+    cancel_calendar_appointment
+)
+from app.services.email_service import (
+    send_appointment_confirmation,
+    send_appointment_rescheduled,
+    send_appointment_cancelled
+)
+
+logger = logging.getLogger(__name__)
 
 KARACHI_TZ = pytz.timezone(settings.TIMEZONE)
 
@@ -39,12 +52,13 @@ DAY_ABBR_MAP = {
 
 
 def parse_and_validate_time(time_str: str) -> datetime:
-    """Parse ISO 8601 string and convert to naive UTC/Karachi-normalized datetime."""
+    """Parse ISO 8601 string and convert to naive clinic-local datetime."""
     try:
         dt = date_parser.parse(time_str)
         if dt.tzinfo is not None:
-            # Convert to UTC or strip tz while normalizing
-            dt = dt.astimezone(pytz.utc).replace(tzinfo=None)
+            # Convert to configured clinic timezone and make naive for local time comparisons
+            target_tz = KARACHI_TZ
+            dt = dt.astimezone(target_tz).replace(tzinfo=None)
         return dt
     except Exception:
         raise HTTPException(
@@ -63,8 +77,8 @@ def validate_booking_slot(
     exclude_appointment_id: Optional[uuid.UUID] = None
 ):
     """Validate all clinic, doctor, schedule, overlap, and capacity constraints."""
-    now_utc = datetime.utcnow()
-    if appt_dt <= now_utc:
+    now_clinic = datetime.now(KARACHI_TZ).replace(tzinfo=None)
+    if appt_dt <= now_clinic:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"message": "Appointment time must be in the future", "error_code": "INVALID_TIME"}
@@ -290,6 +304,18 @@ def create_appointment(
     db.commit()
     db.refresh(appt)
 
+    # 1. Trigger immediate Google Calendar synchronization (fail-safe)
+    try:
+        sync_appointment(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Immediate Google Calendar sync failed for appointment {appt.id}: {e}")
+
+    # 2. Trigger immediate Email confirmation (fail-safe)
+    try:
+        send_appointment_confirmation(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Immediate confirmation email delivery failed for appointment {appt.id}: {e}")
+
     doc_name = doctor.user.name if doctor.user else "Doctor"
     reminder_1 = (appt_dt - timedelta(hours=24)).isoformat() + "Z"
     reminder_2 = (appt_dt - timedelta(hours=1)).isoformat() + "Z"
@@ -366,6 +392,18 @@ def reschedule_appointment(
     db.commit()
     db.refresh(appt)
 
+    # 1. Update Google Calendar event (fail-safe)
+    try:
+        update_calendar_appointment(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Google Calendar update failed for appointment {appt.id}: {e}")
+
+    # 2. Send reschedule notification email (fail-safe)
+    try:
+        send_appointment_rescheduled(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Reschedule email delivery failed for appointment {appt.id}: {e}")
+
     reminder_1 = (new_dt - timedelta(hours=24)).isoformat() + "Z"
     reminder_2 = (new_dt - timedelta(hours=1)).isoformat() + "Z"
 
@@ -419,6 +457,18 @@ def cancel_appointment(
 
     db.commit()
     db.refresh(appt)
+
+    # 1. Cancel Google Calendar event (fail-safe)
+    try:
+        cancel_calendar_appointment(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Google Calendar cancellation failed for appointment {appt.id}: {e}")
+
+    # 2. Send cancellation email (fail-safe)
+    try:
+        send_appointment_cancelled(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Cancellation email delivery failed for appointment {appt.id}: {e}")
 
     return AppointmentCancelResponse(
         appointment_id=appt.id,

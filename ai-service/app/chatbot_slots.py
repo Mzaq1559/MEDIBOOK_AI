@@ -118,7 +118,7 @@ def format_appointment_for_ui(appt: dict[str, Any]) -> dict[str, Any]:
     return {
         "appointment_id": str(appt.get("appointment_id") or appt.get("id") or ""),
         "doctor_name": appt.get("doctor_name") or "Doctor",
-        "doctor_specialization": appt.get("doctor_specialization") or "",
+        "doctor_specialization": appt.get("doctor_specialization") or appt.get("specialization") or "",
         "appointment_time": appt.get("appointment_time") or "",
         "status": appt.get("status") or "scheduled",
         "clinic_name": appt.get("clinic_name") or "Prime Care Clinic",

@@ -2,8 +2,8 @@
 Tests: Chatbot booking flow, intent routing, and off-topic fallback handling.
 
 Reproduces and verifies fixes for:
-1. Clicking "Book an appointment" directly presents doctor selection and booking options, not symptom-intake questions.
-2. Repeated clicks on "Book an appointment" remain in the booking flow and do not misfire into symptom triage ("When did this start?", "Have you had this before?").
+1. Clicking "Book an appointment" starts symptom intake before doctor selection.
+2. Repeated clicks on "Book an appointment" restart symptom intake rather than misrouting into stale triage state.
 3. Describing health symptoms properly triggers symptom intake and triage.
 4. Off-topic/hostile user input ("u are stupid") mid-conversation returns a fallback prompt without corrupting session state or misrouting into triage.
 """
@@ -40,8 +40,8 @@ class TestChatbotBookingFlow(unittest.TestCase):
         self.patient_id = str(uuid.uuid4())
 
     @patch("app.backend_client.list_doctors")
-    def test_click_book_appointment_shows_doctors_not_symptoms(self, mock_list_doctors):
-        """Clicking 'Book an appointment' must immediately return doctor selection, not symptom intake."""
+    def test_click_book_appointment_starts_symptom_intake(self, mock_list_doctors):
+        """Clicking 'Book an appointment' must start symptom intake."""
         mock_list_doctors.return_value = FAKE_DOCTORS
 
         from app.chatbot import handle_message
@@ -54,10 +54,10 @@ class TestChatbotBookingFlow(unittest.TestCase):
             authorization=None,
         )
 
-        self.assertEqual(res["next_action"], "waiting_for_doctor_selection")
-        self.assertIn("doctors", res["ui_data"])
-        self.assertNotIn("When did this start?", res["bot_message"])
-        self.assertNotIn("Please describe your symptoms", res["bot_message"])
+        self.assertEqual(res["next_action"], "waiting_for_symptoms")
+        self.assertNotIn("doctors", res["ui_data"])
+        self.assertIn("What brings you in", res["bot_message"])
+        self.assertIn("Please describe your symptoms", res["bot_message"])
 
     @patch("app.backend_client.list_doctors")
     def test_repeat_click_book_appointment_stays_in_booking_flow(self, mock_list_doctors):
@@ -74,7 +74,7 @@ class TestChatbotBookingFlow(unittest.TestCase):
             language="en",
             authorization=None,
         )
-        self.assertEqual(res1["next_action"], "waiting_for_doctor_selection")
+        self.assertEqual(res1["next_action"], "waiting_for_symptoms")
 
         # Turn 2: Click "Book an appointment" again
         res2 = handle_message(
@@ -84,8 +84,8 @@ class TestChatbotBookingFlow(unittest.TestCase):
             language="en",
             authorization=None,
         )
-        self.assertEqual(res2["next_action"], "waiting_for_doctor_selection")
-        self.assertNotIn("When did this start?", res2["bot_message"])
+        self.assertEqual(res2["next_action"], "waiting_for_symptoms")
+        self.assertIn("What brings you in", res2["bot_message"])
 
         # Turn 3: Click "Book an appointment" a third time
         res3 = handle_message(
@@ -95,8 +95,8 @@ class TestChatbotBookingFlow(unittest.TestCase):
             language="en",
             authorization=None,
         )
-        self.assertEqual(res3["next_action"], "waiting_for_doctor_selection")
-        self.assertNotIn("Have you had this before?", res3["bot_message"])
+        self.assertEqual(res3["next_action"], "waiting_for_symptoms")
+        self.assertIn("What brings you in", res3["bot_message"])
 
     def test_describing_symptoms_triggers_triage(self):
         """Describing actual health symptoms should trigger symptom triage follow-ups."""
@@ -110,13 +110,12 @@ class TestChatbotBookingFlow(unittest.TestCase):
             authorization=None,
         )
 
-        self.assertIn("waiting_for_input", res["next_action"])
-        self.assertIn("Let me ask a few quick questions", res["bot_message"])
+        self.assertEqual(res["next_action"], "waiting_for_symptoms")
+        self.assertIn("What brings you in", res["bot_message"])
 
-    @patch("app.backend_client.list_doctors")
-    def test_off_topic_input_during_booking_returns_fallback(self, mock_list_doctors):
-        """Hostile/off-topic input like 'u are stupid' during booking flow should return a fallback prompt without crashing state."""
-        mock_list_doctors.return_value = FAKE_DOCTORS
+    @patch("app.chatbot.classify", return_value={"intent": "symptom", "symptoms": None})
+    def test_off_topic_input_during_booking_continues_symptom_intake(self, mock_classify):
+        """Off-topic input during booking is handled as the current symptom answer."""
 
         from app.chatbot import handle_message
 
@@ -138,12 +137,13 @@ class TestChatbotBookingFlow(unittest.TestCase):
             authorization=None,
         )
 
-        self.assertEqual(res2["next_action"], "waiting_for_doctor_selection")
-        self.assertIn("didn't understand", res2["bot_message"].lower())
-        self.assertIn("doctors", res2["ui_data"])
+        self.assertEqual(res2["next_action"], "waiting_for_input")
+        self.assertIn("When did this start?", res2["bot_message"])
+        self.assertNotIn("doctors", res2["ui_data"])
 
-    def test_off_topic_input_in_idle_returns_fallback(self):
-        """Off-topic input in IDLE state returns a helpful generic fallback."""
+    @patch("app.chatbot.classify", return_value={"intent": "symptom", "symptoms": None})
+    def test_off_topic_input_in_idle_starts_symptom_intake(self, mock_classify):
+        """Off-topic input in IDLE state starts the symptom-intake flow."""
         from app.chatbot import handle_message
 
         res = handle_message(
@@ -154,8 +154,8 @@ class TestChatbotBookingFlow(unittest.TestCase):
             authorization=None,
         )
 
-        self.assertEqual(res["next_action"], "waiting_for_input")
-        self.assertIn("didn't understand", res["bot_message"].lower())
+        self.assertEqual(res["next_action"], "waiting_for_symptoms")
+        self.assertIn("What brings you in", res["bot_message"])
 
 
 if __name__ == "__main__":

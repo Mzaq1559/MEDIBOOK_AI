@@ -104,6 +104,8 @@ def dispatch_appointment_created(
         "appointment_id": str(appointment.get("appointment_id") or appointment.get("id") or ""),
         "patient_id": str(appointment.get("patient_id") or ""),
         "patient_name": appointment.get("patient_name") or "Patient",
+        "patient_email": appointment.get("patient_email") or "",
+        "patient_phone": appointment.get("patient_phone") or "",
         "doctor_id": str(appointment.get("doctor_id") or ""),
         "doctor_name": appointment.get("doctor_name") or "Doctor",
         "appointment_time": appointment.get("appointment_time"),
@@ -131,7 +133,10 @@ def dispatch_appointment_rescheduled(
     payload = {
         "appointment_id": str(appointment.get("appointment_id") or appointment.get("id") or ""),
         "patient_id": str(appointment.get("patient_id") or ""),
+        "patient_name": appointment.get("patient_name") or "Patient",
+        "patient_email": appointment.get("patient_email") or "",
         "doctor_id": str(appointment.get("doctor_id") or ""),
+        "doctor_name": appointment.get("doctor_name") or "Doctor",
         "new_appointment_time": appointment.get("appointment_time") or appointment.get("new_appointment_time"),
         "previous_appointment_time": appointment.get("previous_appointment_time"),
         "new_reminder_time_1": appointment.get("new_reminder_time_1") or appointment.get("reminder_time_1"),
@@ -153,6 +158,8 @@ def dispatch_appointment_cancelled(
     payload = {
         "appointment_id": str(appointment.get("appointment_id") or appointment.get("id") or ""),
         "patient_id": str(appointment.get("patient_id") or ""),
+        "patient_name": appointment.get("patient_name") or "Patient",
+        "patient_email": appointment.get("patient_email") or "",
         "doctor_id": str(appointment.get("doctor_id") or ""),
         "reason": appointment.get("reason") or "Patient request",
     }

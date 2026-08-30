@@ -37,20 +37,28 @@ SCOPES = [
 
 def _resolve_credentials_path() -> Optional[Path]:
     """Find and validate the service account credentials JSON file."""
-    if not settings.GOOGLE_CALENDAR_CREDENTIALS_PATH:
-        return None
-    p = Path(settings.GOOGLE_CALENDAR_CREDENTIALS_PATH)
-    if p.is_file():
-        return p
-    # Try resolving relative to ai-service root
+    candidate_paths = [
+        settings.GOOGLE_CALENDAR_CREDENTIALS_PATH,
+        "credentials.json",
+        "google-calendar-credentials.json",
+        "/app/credentials.json",
+        "/app/google-calendar-credentials.json",
+    ]
+
     base_dir = Path(__file__).resolve().parent.parent
-    candidate = base_dir / settings.GOOGLE_CALENDAR_CREDENTIALS_PATH
-    if candidate.is_file():
-        return candidate
-    # Try resolving relative to project root
-    candidate_root = base_dir.parent / settings.GOOGLE_CALENDAR_CREDENTIALS_PATH
-    if candidate_root.is_file():
-        return candidate_root
+
+    for c in candidate_paths:
+        if not c:
+            continue
+        p = Path(c)
+        if p.is_file():
+            return p
+        candidate = base_dir / c
+        if candidate.is_file():
+            return candidate
+        candidate_root = base_dir.parent / c
+        if candidate_root.is_file():
+            return candidate_root
     return None
 
 
@@ -78,22 +86,20 @@ def _get_service_account_token() -> Optional[str]:
 
 def _is_configured() -> bool:
     """Check if Google Calendar integration credentials are provided."""
-    if _resolve_credentials_path() is not None:
-        return True
-    return bool(settings.GOOGLE_CALENDAR_API_KEY or settings.GOOGLE_CALENDAR_SECRET)
+    return _resolve_credentials_path() is not None
 
 
-def _get_headers() -> dict[str, str]:
-    headers = {
+def _get_headers() -> Optional[dict[str, str]]:
+    """Return authenticated request headers with OAuth 2 service account bearer token."""
+    token = _get_service_account_token()
+    if not token:
+        logger.warning("Failed to obtain OAuth 2 token from Google Service Account. Calendar sync cannot proceed.")
+        return None
+    return {
         "Accept": "application/json",
         "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
     }
-    token = _get_service_account_token()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    elif settings.GOOGLE_CALENDAR_SECRET:
-        headers["Authorization"] = f"Bearer {settings.GOOGLE_CALENDAR_SECRET}"
-    return headers
 
 
 def _compute_end_time(start_time_iso: str, duration_minutes: int = 30) -> str:
@@ -115,12 +121,18 @@ def create_calendar_event(appointment: dict[str, Any]) -> Optional[str]:
     Never raises an exception into the caller.
     """
     if not _is_configured():
-        logger.info(
-            "Google Calendar sync skipped: GOOGLE_CALENDAR_API_KEY / credentials not configured"
-        )
+        logger.info("Google Calendar sync skipped: credentials not found.")
         return None
 
-    calendar_id = settings.GOOGLE_CALENDAR_ID or "primary"
+    headers = _get_headers()
+    if not headers:
+        logger.warning("Google Calendar event creation skipped: unable to obtain OAuth 2 credentials.")
+        return None
+
+    calendar_id = settings.GOOGLE_CALENDAR_ID
+    if not calendar_id:
+        logger.warning("Google Calendar sync skipped: GOOGLE_CALENDAR_ID is not configured.")
+        return None
     doctor_name = appointment.get("doctor_name") or "Doctor"
     patient_name = appointment.get("patient_name") or "Patient"
     clinic_name = appointment.get("clinic_name") or "Prime Care Clinic"
@@ -166,23 +178,20 @@ def create_calendar_event(appointment: dict[str, Any]) -> Optional[str]:
     }
 
     url = f"{CALENDAR_BASE_URL}/{calendar_id}/events"
-    params: dict[str, Any] = {}
-    if settings.GOOGLE_CALENDAR_API_KEY:
-        params["key"] = settings.GOOGLE_CALENDAR_API_KEY
 
     try:
         with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
             res = client.post(
                 url,
                 json=event_payload,
-                params=params,
-                headers=_get_headers(),
+                headers=headers,
             )
             if res.status_code in (200, 201):
                 event_data = res.json()
                 event_id = event_data.get("id")
                 logger.info("Successfully created Google Calendar event: %s", event_id)
                 return str(event_id) if event_id else None
+            
             logger.warning(
                 "Google Calendar API returned status %s: %s",
                 res.status_code,
@@ -205,11 +214,11 @@ def update_calendar_event(
     Never raises an exception into the caller.
     """
     if not event_id or not _is_configured():
-        logger.info(
-            "Google Calendar update skipped (event_id=%s, configured=%s)",
-            event_id,
-            _is_configured(),
-        )
+        return False
+
+    headers = _get_headers()
+    if not headers:
+        logger.warning("Google Calendar update skipped: unable to obtain OAuth 2 credentials.")
         return False
 
     calendar_id = settings.GOOGLE_CALENDAR_ID or "primary"
@@ -227,21 +236,28 @@ def update_calendar_event(
     }
 
     url = f"{CALENDAR_BASE_URL}/{calendar_id}/events/{event_id}"
-    params: dict[str, Any] = {}
-    if settings.GOOGLE_CALENDAR_API_KEY:
-        params["key"] = settings.GOOGLE_CALENDAR_API_KEY
 
     try:
         with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
             res = client.patch(
                 url,
                 json=patch_payload,
-                params=params,
-                headers=_get_headers(),
+                headers=headers,
             )
             if res.status_code in (200, 201):
                 logger.info("Successfully updated Google Calendar event: %s", event_id)
                 return True
+            
+            if res.status_code == 404 and calendar_id != "primary":
+                fallback_res = client.patch(
+                    f"{CALENDAR_BASE_URL}/primary/events/{event_id}",
+                    json=patch_payload,
+                    headers=headers,
+                )
+                if fallback_res.status_code in (200, 201):
+                    logger.info("Successfully updated Google Calendar event on primary fallback: %s", event_id)
+                    return True
+
             logger.warning(
                 "Google Calendar update returned status %s: %s",
                 res.status_code,
@@ -260,29 +276,35 @@ def delete_calendar_event(event_id: str) -> bool:
     Never raises an exception into the caller.
     """
     if not event_id or not _is_configured():
-        logger.info(
-            "Google Calendar cancellation skipped (event_id=%s, configured=%s)",
-            event_id,
-            _is_configured(),
-        )
+        return False
+
+    headers = _get_headers()
+    if not headers:
+        logger.warning("Google Calendar cancellation skipped: unable to obtain OAuth 2 credentials.")
         return False
 
     calendar_id = settings.GOOGLE_CALENDAR_ID or "primary"
     url = f"{CALENDAR_BASE_URL}/{calendar_id}/events/{event_id}"
-    params: dict[str, Any] = {}
-    if settings.GOOGLE_CALENDAR_API_KEY:
-        params["key"] = settings.GOOGLE_CALENDAR_API_KEY
 
     try:
         with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
             res = client.delete(
                 url,
-                params=params,
-                headers=_get_headers(),
+                headers=headers,
             )
             if res.status_code in (200, 204):
                 logger.info("Successfully deleted Google Calendar event: %s", event_id)
                 return True
+
+            if res.status_code == 404 and calendar_id != "primary":
+                fallback_res = client.delete(
+                    f"{CALENDAR_BASE_URL}/primary/events/{event_id}",
+                    headers=headers,
+                )
+                if fallback_res.status_code in (200, 204):
+                    logger.info("Successfully deleted Google Calendar event on primary fallback: %s", event_id)
+                    return True
+
             logger.warning(
                 "Google Calendar delete returned status %s: %s",
                 res.status_code,

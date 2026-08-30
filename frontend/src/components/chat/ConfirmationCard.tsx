@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Badge } from '../ui';
 import { type ParsedBookingSummary } from '../../services/chat';
+import { generateGoogleCalendarUrl } from '../../lib/utils';
 
 interface ConfirmationCardProps {
   booking: ParsedBookingSummary;
@@ -17,6 +18,15 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
   isLoading, 
   disabled 
 }) => {
+  const doctorName = booking.doctor.name.replace(/^Dr\.\s*/i, '');
+  const displayDoctorName = `Dr. ${doctorName}`;
+  const gcalUrl = generateGoogleCalendarUrl({
+    title: `MediBook: ${displayDoctorName}`,
+    startTime: booking.selectedSlot,
+    description: `Doctor: ${displayDoctorName} (${booking.doctor.specialization || 'Consultant'})\nClinic: ${booking.doctor.clinic_name || 'Clinic'}\nAddress: ${booking.doctor.clinic_address || 'Clinic address unavailable'}`,
+    location: `${booking.doctor.clinic_name || ''}, ${booking.doctor.clinic_address || ''}`.trim().replace(/^,\s*/, ''),
+  });
+
   return (
     <div className="p-5 bg-white rounded-2xl border-2 border-primary/20 shadow-soft-md space-y-4 animate-fadeIn">
       <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
@@ -74,7 +84,7 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
         )}
       </div>
 
-      {!booking.isConfirmed && (
+      {!booking.isConfirmed ? (
         <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
           <Button
             variant="primary"
@@ -95,6 +105,20 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           >
             Change
           </Button>
+        </div>
+      ) : (
+        <div className="pt-1">
+          <a
+            href={gcalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-surfaceContainer hover:bg-surfaceContainerHigh border border-surfaceContainerHigh hover:border-primary/40 text-textPrimary font-semibold text-xs rounded-xl shadow-soft-sm transition-all duration-200"
+          >
+            <svg className="w-4 h-4 text-primary shrink-0" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z" />
+            </svg>
+            <span>Add to Google Calendar</span>
+          </a>
         </div>
       )}
     </div>

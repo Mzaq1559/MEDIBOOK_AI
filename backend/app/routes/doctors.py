@@ -74,7 +74,8 @@ def list_doctors(
                 total_appointments=d.total_appointments or 0,
                 languages_spoken=d.languages_spoken,
                 clinic_id=d.clinic_id,
-                clinic_name=d.clinic.name if d.clinic else "Central Clinic"
+                clinic_name=d.clinic.name if d.clinic else "Central Clinic",
+                clinic_address=d.clinic.address if d.clinic else ""
             )
         )
 

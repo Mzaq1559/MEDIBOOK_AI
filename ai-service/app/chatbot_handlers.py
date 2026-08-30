@@ -29,6 +29,70 @@ LOGIN_REQ_CANCEL = "Please log in to cancel appointments."
 LOGIN_REQ_LOOKUP = "Please log in to view your appointments."
 
 
+def _appointment_time_label(appointment: dict[str, Any]) -> str:
+    value = str(appointment.get("appointment_time") or "")
+    match = re.search(r"T(\d{2}:\d{2})", value)
+    return match.group(1) if match else value
+
+
+def _select_appointment_from_text(
+    text: str,
+    appointments: list[dict[str, Any]],
+) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]]]:
+    """Return a unique natural-language match, or all ambiguous matches."""
+    lowered = text.lower()
+    ordinal_map = {
+        "first": 0, "1st": 0, "second": 1, "2nd": 1,
+        "third": 2, "3rd": 2, "fourth": 3, "4th": 3,
+    }
+    number_match = re.search(r"\b([1-9]\d*)\b", lowered)
+    ordinal_match = next((index for word, index in ordinal_map.items() if re.search(rf"\b{re.escape(word)}\b", lowered)), None)
+    selected_index = int(number_match.group(1)) - 1 if number_match else ordinal_match
+    if selected_index is not None:
+        if 0 <= selected_index < len(appointments):
+            return appointments[selected_index], []
+        return None, []
+
+    def normalize_name(value: str) -> set[str]:
+        normalized = re.sub(r"\bdr\.?\b", "", value.lower())
+        return {token for token in re.findall(r"[a-z]+", normalized) if len(token) > 1}
+
+    text_tokens = normalize_name(lowered)
+    doctor_matches = [
+        appointment for appointment in appointments
+        if normalize_name(str(appointment.get("doctor_name") or "Doctor")) <= text_tokens
+    ]
+    if not doctor_matches:
+        if len(appointments) == 1 and "selected appointment" in lowered:
+            return appointments[0], []
+        return None, []
+
+    time_match = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", lowered)
+    if time_match and len(doctor_matches) > 1:
+        hour = int(time_match.group(1))
+        minute = time_match.group(2) or "00"
+        meridiem = (time_match.group(3) or "").lower()
+        if meridiem:
+            hour = hour % 12 + (12 if meridiem == "pm" else 0)
+        rough_time = f"{hour:02d}:{minute}"
+        doctor_matches = [
+            appointment for appointment in doctor_matches
+            if _appointment_time_label(appointment).endswith(rough_time)
+        ]
+
+    if len(doctor_matches) == 1:
+        return doctor_matches[0], []
+    return None, doctor_matches
+
+
+def _appointment_selection_message(appointments: list[dict[str, Any]], action: str) -> str:
+    lines = [
+        f"{index}. {appointment.get('doctor_name') or 'Doctor'} - {_appointment_time_label(appointment)}"
+        for index, appointment in enumerate(appointments, start=1)
+    ]
+    return f"Which appointment would you like to {action}?\n" + "\n".join(lines)
+
+
 def _booking_error(exc: backend_client.BackendError, is_reschedule: bool = False) -> str:
     c = exc.error_code
     if c == "INVALID_TIME":
@@ -44,53 +108,8 @@ def _booking_error(exc: backend_client.BackendError, is_reschedule: bool = False
 
 def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Optional[str]) -> tuple[str, str, list, dict]:
     state = session["state"]
-    intent = nlu.get("intent")
-    clean_text = text.lower().strip()
 
-    # 1. Direct Booking Request: bypass symptom triage
-    if intent == "appointment" or clean_text in ("book an appointment", "book appointment", "appointment"):
-        spec = nlu.get("specialty") or session.get("specialty")
-        doc_name = nlu.get("doctor_name")
-        docs = backend_client.list_doctors(specialization=spec) or backend_client.list_doctors()
-        if doc_name:
-            matched = [d for d in docs if doc_name.lower() in d.get("name", "").lower()]
-            if matched:
-                docs = matched
-        enriched = fetch_doctor_slots(docs, next_days=3)
-        session["candidate_doctors"] = enriched
-        session["state"] = S.SHOWING_DOCTORS
-        return "Please select a doctor to book your appointment:", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(enriched)}
-
-    # 2. Off-topic / Hostile input fallback mid-workflow
-    if intent == "other":
-        if state == S.SHOWING_DOCTORS:
-            docs = session.get("candidate_doctors", [])
-            return "I didn't understand that. Please select a doctor from the options below:", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(docs)}
-        if state == S.SHOWING_SLOTS:
-            doc = session.get("selected_doctor")
-            return "I didn't understand that. Please select an available time slot:", "waiting_for_slot_selection", [], {"slots": slots_ui_data(doc) if doc else []}
-        if state == S.AWAIT_CONFIRM:
-            doc = session.get("selected_doctor")
-            ui_booking = {"doctor": doc, "selectedSlot": session.get("selected_slot_label"), "isConfirmed": False}
-            return "I didn't understand that. Please confirm your appointment or click Change.", "waiting_for_confirmation", [], {"booking": ui_booking}
-        if state in (S.ASKING_SYMPTOMS, S.ASKING_FOLLOWUP):
-            return "I didn't understand that — would you like to continue booking an appointment, or describe your symptoms?", "waiting_for_input", [], {}
-
-    # 3. Initial state handling (IDLE, FAQ, LOOKUP)
     if state in (S.IDLE, S.FAQ, S.LOOKUP):
-        if intent == "symptom" and clean_text and clean_text not in ("hi", "hello", "hey"):
-            session["symptoms_text"] = str(nlu.get("symptoms") or text)
-            if is_emergency(session["symptoms_text"]):
-                session["state"] = S.EMERGENCY
-                return EMERGENCY_ALERT, "emergency_redirect", [], {}
-            result = triage(session["symptoms_text"])
-            session["specialty"] = result.specialty
-            session["urgency_level"] = result.urgency_level
-            session["follow_ups"] = follow_ups_for(result.specialty)
-            session["follow_up_index"] = 0
-            session["state"] = S.ASKING_FOLLOWUP
-            return f"Thank you. Let me ask a few quick questions:\n{session['follow_ups'][0]}", "waiting_for_input", [], {}
-
         session["state"] = S.ASKING_SYMPTOMS
         return (
             "Hi! I'm MediBook AI. What brings you in today? Please describe your symptoms.",
@@ -99,7 +118,6 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             {},
         )
 
-    # 4. Active Symptom Triage Flow
     if state == S.ASKING_SYMPTOMS:
         session["symptoms_text"] = str(nlu.get("symptoms") or text)
         if is_emergency(session["symptoms_text"]):
@@ -127,15 +145,79 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         
         # Transition to doctor selection
         spec = session.get("specialty")
-        docs = backend_client.list_doctors(specialization=spec) or backend_client.list_doctors()
+        if not spec:
+            session["state"] = S.SHOWING_DOCTORS
+            session["awaiting_general_fallback"] = True
+            return (
+                "I'm not sure which specialist fits best. Would you like to see available doctors, "
+                "or describe your symptoms differently?",
+                "waiting_for_input",
+                [],
+                {"doctors": []},
+            )
+        docs = backend_client.list_doctors(specialization=spec)
         enriched = fetch_doctor_slots(docs, next_days=3)
         session["candidate_doctors"] = enriched
         session["state"] = S.SHOWING_DOCTORS
+        if not enriched:
+            session["awaiting_specialty_fallback"] = True
+            return (
+                f"No {spec or 'recommended'} slots are available right now. "
+                "Would you like me to check General Medicine instead?",
+                "waiting_for_doctor_selection",
+                [],
+                {"doctors": []},
+            )
         msg = f"Based on your symptoms, I recommend seeing a {spec or 'doctor'}. Please select a doctor:"
         return msg, "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(enriched)}
 
-    # 5. Doctor Selection
     if state == S.SHOWING_DOCTORS:
+        if session.pop("awaiting_general_fallback", False):
+            if is_confirm(text, nlu):
+                docs = backend_client.list_doctors()
+                enriched = fetch_doctor_slots(docs, next_days=3)
+                session["candidate_doctors"] = enriched
+                return (
+                    "Here are the available doctors. Please select one:",
+                    "waiting_for_doctor_selection",
+                    [],
+                    {"doctors": doctors_ui_data(enriched)},
+                )
+            session["state"] = S.ASKING_SYMPTOMS
+            return (
+                "Please describe your symptoms differently so I can recommend the right specialist.",
+                "waiting_for_symptoms",
+                [],
+                {},
+            )
+        if session.pop("awaiting_specialty_fallback", False):
+            if is_confirm(text, nlu):
+                fallback_specialty = "General Medicine"
+                docs = backend_client.list_doctors(specialization=fallback_specialty)
+                enriched = fetch_doctor_slots(docs, next_days=3)
+                session["candidate_doctors"] = enriched
+                if not enriched:
+                    return (
+                        f"No {fallback_specialty} slots are available right now. Please try again later.",
+                        "waiting_for_doctor_selection",
+                        [],
+                        {"doctors": []},
+                    )
+                return (
+                    "I found these General Medicine doctors. Please select one:",
+                    "waiting_for_doctor_selection",
+                    [],
+                    {"doctors": doctors_ui_data(enriched)},
+                )
+            session["awaiting_specialty_fallback"] = True
+            return (
+                "I will keep your search limited to the recommended specialty. "
+                "Please confirm if you would like me to check General Medicine.",
+                "waiting_for_doctor_selection",
+                [],
+                {"doctors": []},
+            )
+
         doc_id = extract_option_id(text, nlu)
         if not doc_id:
             return "Please select a doctor by clicking one of the cards.", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(session.get("candidate_doctors", []))}
@@ -148,7 +230,6 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         session["state"] = S.SHOWING_SLOTS
         return f"You selected {doc['name']}. Please pick an available time slot:", "waiting_for_slot_selection", [], {"slots": slots_ui_data(doc)}
 
-    # 6. Slot Selection
     if state == S.SHOWING_SLOTS:
         doc = session.get("selected_doctor")
         if not doc:
@@ -156,6 +237,7 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             return "Session error: missing doctor. Please pick a doctor.", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(session.get("candidate_doctors", []))}
         
         slot_ts = extract_option_id(text, nlu)
+        # Direct ISO-timestamp fallback: frontend sends "Selected Time Slot 2026-08-28T09:00:00+05:00"
         if not slot_ts:
             iso_m = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)?)", text)
             if iso_m:
@@ -176,11 +258,11 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         }
         return "Perfect! Please confirm your appointment details.", "waiting_for_confirmation", [], {"booking": ui_booking}
 
-    # 7. Confirmation State
     if state == S.AWAIT_CONFIRM:
         if is_decline(text, nlu) or text.lower().strip() == "change":
             session["state"] = S.SHOWING_DOCTORS
             docs = session.get("candidate_doctors", [])
+            # Refresh availability
             ids = [d["doctor_id"] for d in docs]
             all_d = backend_client.list_doctors()
             filtered = [d for d in all_d if d["doctor_id"] in ids] if ids else all_d
@@ -216,31 +298,58 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
                 return _booking_error(e), "waiting_for_confirmation", [], {"booking": ui}
 
             session["appointment_booked"] = created.get("appointment_id") or created.get("id")
+            if created.get("patient_id"):
+                session["patient_id"] = str(created["patient_id"])
             session["state"] = S.BOOKED
             session["status"] = "completed"
             
+            # Fetch patient profile if not already in session
+            pat_email = session.get("patient_email") or ""
+            pat_name = session.get("patient_name") or "Patient"
+            if not pat_email and auth:
+                try:
+                    user_prof = backend_client.get_current_user(auth)
+                    if user_prof:
+                        pat_email = user_prof.get("email") or ""
+                        pat_name = user_prof.get("name") or pat_name
+                        session["patient_email"] = pat_email
+                        session["patient_name"] = pat_name
+                except Exception:
+                    pass
+
+            cal_p = {
+                "appointment_id": str(session["appointment_booked"]),
+                "doctor_name": doc.get("name") or "Doctor",
+                "patient_name": pat_name,
+                "patient_email": pat_email,
+                "clinic_name": doc.get("clinic_name") or "Prime Care Clinic",
+                "clinic_address": doc.get("clinic_address") or "Ground Floor, ABC Plaza, Taxila",
+                "appointment_time": ts,
+                "duration_minutes": 30,
+                "symptoms_reported": session.get("symptoms_text", "")
+            }
+
+            # 1. Google Calendar synchronization (fail-safe)
             try:
-                cal_p = {
-                    "appointment_id": str(session["appointment_booked"]),
-                    "doctor_name": doc["name"],
-                    "patient_name": "Patient",
-                    "clinic_name": doc["clinic_name"],
-                    "clinic_address": doc["clinic_address"],
-                    "appointment_time": ts,
-                    "duration_minutes": 30,
-                    "symptoms_reported": session.get("symptoms_text", "")
-                }
                 cid = google_calendar.create_calendar_event(cal_p)
-                if cid: session["google_calendar_event_id"] = cid
+                if cid:
+                    session["google_calendar_event_id"] = cid
             except Exception as e:
                 logger.warning(f"Calendar sync failed: {e}")
+
+            # 2. Direct SMTP email confirmation (fail-safe)
+            try:
+                reminders.send_confirmation_email(cal_p)
+            except Exception as e:
+                logger.warning(f"Direct confirmation email delivery failed: {e}")
                 
+            # 3. n8n reminder workflow notification (fail-safe)
             try:
                 n8n_p = cal_p.copy()
                 n8n_p["patient_id"] = pat_id
-                n8n_p["doctor_id"] = doc["doctor_id"]
+                n8n_p["doctor_id"] = doc.get("doctor_id")
                 n8n_p["clinic_id"] = created.get("clinic_id")
-                n8n_p["urgency_level"] = payload["urgency_level"]
+                n8n_p["urgency_level"] = payload.get("urgency_level", "normal")
                 n8n_p["google_calendar_event_id"] = session.get("google_calendar_event_id")
                 n8n_webhook.dispatch_appointment_created(n8n_p)
             except Exception as e:
@@ -292,18 +401,30 @@ def handle_cancel(session: dict[str, Any], text: str, nlu: dict, auth: Optional[
         session["patient_appointments"] = appts
         session["state"] = S.CANCEL_PICK
         formatted = [format_appointment_for_ui(a) for a in appts]
-        return "Which appointment would you like to cancel?", "show_appointments", [], {"appointments": formatted}
+        return _appointment_selection_message(appts, "cancel"), "show_appointments", [], {"appointments": formatted}
     
     if state == S.CANCEL_PICK:
         appt_id = extract_option_id(text, nlu) or extract_appointment_id(text, nlu)
         if not appt_id:
+            selected, ambiguous = _select_appointment_from_text(text, session.get("patient_appointments", []))
+            if ambiguous:
+                times = ", ".join(_appointment_time_label(appointment) for appointment in ambiguous)
+                return (
+                    f"You have {len(ambiguous)} appointments with {ambiguous[0].get('doctor_name') or 'this doctor'} - which one, {times}?",
+                    "show_appointments",
+                    [],
+                    {"appointments": [format_appointment_for_ui(a) for a in ambiguous]},
+                )
+            if selected:
+                appt_id = str(selected.get("appointment_id") or selected.get("id") or "")
+        if not appt_id:
             formatted = [format_appointment_for_ui(a) for a in session.get("patient_appointments", [])]
-            return "Please select an appointment to cancel.", "show_appointments", [], {"appointments": formatted}
+            return _appointment_selection_message(session.get("patient_appointments", []), "cancel"), "show_appointments", [], {"appointments": formatted}
         
         appt = next((a for a in session.get("patient_appointments", []) if str(a.get("id", "")) == appt_id or str(a.get("appointment_id", "")) == appt_id), None)
         if not appt:
             formatted = [format_appointment_for_ui(a) for a in session.get("patient_appointments", [])]
-            return "Invalid selection. Please click an appointment to cancel.", "show_appointments", [], {"appointments": formatted}
+            return "Invalid selection. Please choose a numbered appointment or name a doctor.", "show_appointments", [], {"appointments": formatted}
         
         session["picked_appointment_id"] = appt_id
         session["state"] = S.CANCEL_CONFIRM
@@ -358,17 +479,30 @@ def handle_reschedule(session: dict[str, Any], text: str, nlu: dict, auth: Optio
                 return "You have no appointments to reschedule. Would you like to book a new one?", "waiting_for_input", [], {}
             session["patient_appointments"] = appts
             session["state"] = S.RESCHEDULE_PICK
+            state = S.RESCHEDULE_PICK
             formatted = [format_appointment_for_ui(a) for a in appts]
-            return "Which appointment would you like to reschedule?", "show_appointments", [], {"appointments": formatted}
+            return _appointment_selection_message(appts, "reschedule"), "show_appointments", [], {"appointments": formatted}
 
     if state == S.RESCHEDULE_FETCH or state == S.RESCHEDULE_PICK:
         appt_id = session.get("picked_appointment_id")
         if not appt_id:
             appt_id = extract_option_id(text, nlu) or extract_appointment_id(text, nlu)
+        if not appt_id:
+            selected, ambiguous = _select_appointment_from_text(text, session.get("patient_appointments", []))
+            if ambiguous:
+                times = ", ".join(_appointment_time_label(appointment) for appointment in ambiguous)
+                return (
+                    f"You have {len(ambiguous)} appointments with {ambiguous[0].get('doctor_name') or 'this doctor'} - which one, {times}?",
+                    "show_appointments",
+                    [],
+                    {"appointments": [format_appointment_for_ui(a) for a in ambiguous]},
+                )
+            if selected:
+                appt_id = str(selected.get("appointment_id") or selected.get("id") or "")
         
         if not appt_id:
             formatted = [format_appointment_for_ui(a) for a in session.get("patient_appointments", [])]
-            return "Please select an appointment to reschedule.", "show_appointments", [], {"appointments": formatted}
+            return _appointment_selection_message(session.get("patient_appointments", []), "reschedule"), "show_appointments", [], {"appointments": formatted}
         
         session["picked_appointment_id"] = appt_id
         

@@ -6,6 +6,7 @@ from typing import Any, Optional
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from app import backend_client
 from app.schemas import MessageItem, OptionItem
 from app.chatbot_state import get_session, new_session, append_msg, S
 from app.chatbot_nlu import classify
@@ -16,8 +17,32 @@ from app.chatbot_handlers import (
     handle_cancel,
     handle_lookup
 )
+from app.chatbot_doctor import handle_doctor_message
 
 logger = logging.getLogger("medibook.ai.chatbot")
+
+
+def _reset_patient_workflow(session: dict[str, Any], intent: str) -> None:
+    """Discard appointment-management context when a new top-level intent wins."""
+    session["picked_appointment_id"] = None
+    session["patient_appointments"] = []
+    session["previous_slot_label"] = None
+
+    if intent in {"appointment", "cancel", "reschedule"}:
+        session["selected_doctor"] = None
+        session["selected_slot"] = None
+        session["selected_slot_label"] = None
+        session["selected_timestamp"] = None
+
+    if intent == "appointment":
+        session["candidate_doctors"] = []
+        session["symptoms_text"] = ""
+        session["follow_up_index"] = 0
+        session["follow_ups"] = []
+        session["specialty"] = None
+        session["urgency_level"] = "normal"
+
+    session["state"] = S.IDLE
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -44,9 +69,101 @@ def handle_message(
     session = get_session(conv_id)
     if not session:
         session = new_session(conv_id, patient_id)
-        
+
+    current_user = None
+    if authorization and authorization.lower().startswith("bearer "):
+        current_user = backend_client.get_current_user(authorization)
+        user_type = str((current_user or {}).get("user_type") or "").lower()
+
+        if user_type == "doctor":
+            doctor_candidates = backend_client.list_doctors()
+            matching_doctor = next(
+                (
+                    doctor for doctor in doctor_candidates
+                    if str(doctor.get("user_id") or "").lower() == str((current_user or {}).get("user_id") or "").lower()
+                ),
+                None,
+            )
+            if matching_doctor:
+                now_ts = _utc_now()
+                append_msg(session, "user", message, now_ts)
+                doctor_result = handle_doctor_message(
+                    session=session,
+                    message=message,
+                    authorization=authorization,
+                    doctor_context=matching_doctor,
+                )
+                append_msg(session, "assistant", doctor_result["bot_message"], _utc_now())
+                return {
+                    "conversation_id": conv_id,
+                    "patient_id": session.get("patient_id"),
+                    "timestamp": _utc_now(),
+                    "bot_message": doctor_result["bot_message"],
+                    "next_action": doctor_result["next_action"],
+                    "options": [],
+                    "ui_data": doctor_result.get("ui_data", {}),
+                    "conversation_history": session["messages"],
+                    "status": session.get("status", "ongoing"),
+                    "appointment_booked": session.get("appointment_booked"),
+                    "created_at": _utc_now(),
+                    "updated_at": _utc_now(),
+                }
+
+            bot = "Unable to load your doctor profile — please contact support"
+            action = "doctor_profile_error"
+            ui_data = {}
+            now_ts = _utc_now()
+            append_msg(session, "user", message, now_ts)
+            append_msg(session, "assistant", bot, _utc_now())
+            return {
+                "conversation_id": conv_id,
+                "patient_id": session.get("patient_id"),
+                "timestamp": _utc_now(),
+                "bot_message": bot,
+                "next_action": action,
+                "options": [],
+                "ui_data": ui_data,
+                "conversation_history": session["messages"],
+                "status": session.get("status", "ongoing"),
+                "appointment_booked": session.get("appointment_booked"),
+                "created_at": _utc_now(),
+                "updated_at": _utc_now(),
+            }
+
+        if user_type and user_type != "patient":
+            bot = (
+                "This assistant is for patients booking appointments. "
+                "Please use your dashboard to manage your schedule."
+            )
+            action = "redirect_non_patient"
+            ui_data = {}
+            now_ts = _utc_now()
+            append_msg(session, "user", message, now_ts)
+            append_msg(session, "assistant", bot, _utc_now())
+            return {
+                "conversation_id": conv_id,
+                "patient_id": session.get("patient_id"),
+                "timestamp": _utc_now(),
+                "bot_message": bot,
+                "next_action": action,
+                "options": [],
+                "ui_data": ui_data,
+                "conversation_history": session["messages"],
+                "status": session.get("status", "ongoing"),
+                "appointment_booked": session.get("appointment_booked"),
+                "created_at": _utc_now(),
+                "updated_at": _utc_now(),
+            }
+
     if patient_id:
-        session["patient_id"] = patient_id
+        if session.get("authenticated_user_id") != patient_id:
+            session["authenticated_user_id"] = patient_id
+            canonical_profile = None
+            if authorization and authorization.lower().startswith("bearer "):
+                canonical_profile = backend_client.get_patient_profile(patient_id, authorization)
+            session["patient_id"] = str(
+                (canonical_profile or {}).get("patient_id") or patient_id
+            )
 
     now_ts = _utc_now()
     append_msg(session, "user", message, now_ts)
@@ -66,6 +183,19 @@ def handle_message(
         session["last_intent"] = intent
         
         state = session["state"]
+
+        # A newly classified top-level command takes priority over stale workflow state.
+        lower_message = message.lower().strip()
+        is_selection_message = lower_message.startswith("selected appointment")
+        is_top_level_command = (
+            (intent == "appointment" and any(word in lower_message for word in ("book", "schedule")))
+            or (intent == "cancel" and "cancel" in lower_message)
+            or (intent == "reschedule" and any(word in lower_message for word in ("reschedule", "change time", "change appointment")))
+            or (intent == "lookup" and any(phrase in lower_message for phrase in ("appointment", "booking", "bookings")))
+        )
+        if is_top_level_command and not is_selection_message:
+            _reset_patient_workflow(session, intent)
+            state = session["state"]
         
         # 3. Route to handlers
         if state == S.EMERGENCY:
@@ -81,23 +211,17 @@ def handle_message(
             if state in (S.IDLE, S.BOOKED, S.FAQ):
                 session["state"] = S.FAQ
                 
-        elif intent == "lookup" or state == S.LOOKUP:
-            bot, action, _, ui_data = handle_lookup(session, message, nlu, authorization)
-            
         elif intent == "cancel" or state.startswith("cancel"):
             bot, action, _, ui_data = handle_cancel(session, message, nlu, authorization)
             
         elif intent == "reschedule" or state.startswith("reschedule"):
             bot, action, _, ui_data = handle_reschedule(session, message, nlu, authorization)
-            
-        elif intent == "other" and state in (S.IDLE, S.FAQ, S.BOOKED):
-            bot = "I didn't understand that. I can help you book an appointment, answer clinic FAQs, or reschedule/cancel an appointment. How can I help you today?"
-            action = "waiting_for_input"
-            ui_data = {}
-            session["state"] = S.IDLE
 
+        elif intent == "lookup" or state == S.LOOKUP:
+            bot, action, _, ui_data = handle_lookup(session, message, nlu, authorization)
+            
         else:
-            # intent in ("appointment", "symptom", "other") or active booking state
+            # intent == "appointment" or "symptom", or state is a booking state
             if state in (S.IDLE, S.FAQ, S.BOOKED) and intent in ("appointment", "symptom"):
                 session["state"] = S.IDLE
             bot, action, _, ui_data = handle_new_booking(session, message, nlu, authorization)

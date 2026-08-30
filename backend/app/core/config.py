@@ -32,12 +32,13 @@ class Settings(BaseSettings):
 
     # AI Service Integration
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "mixtral-8x7b-32768"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     # Calendar Integration
     GOOGLE_CALENDAR_API_KEY: str = ""
     GOOGLE_CALENDAR_SECRET: str = ""
     GOOGLE_CALENDAR_SERVICE_ACCOUNT_PATH: str = "./credentials.json"
+    GOOGLE_CALENDAR_ID: str = "primary"
 
     # Notifications
     SMTP_SERVER: str = "smtp.gmail.com"
@@ -46,6 +47,10 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     WHATSAPP_API_TOKEN: str = ""
     WHATSAPP_BUSINESS_ACCOUNT_ID: str = ""
+
+    # n8n Integration
+    N8N_URL: str = "http://n8n:5678"
+    N8N_WEBHOOK_URL: str = "http://n8n:5678/webhook/medibook-reminder"
 
     # Logging & Timezone
     LOG_LEVEL: str = "INFO"

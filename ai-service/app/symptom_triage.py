@@ -14,7 +14,7 @@ EMERGENCY_ALERT = (
     "\n"
     "This requires IMMEDIATE medical attention. Do NOT wait.\n"
     "\n"
-    "PLEASE CALL: 1100 (Emergency) or 15 (Ambulance)\n"
+    "PLEASE CALL: 1122 (Emergency Rescue) or 15 (Ambulance)\n"
     "Or go to the nearest emergency room immediately!\n"
     "\n"
     "This is a medical emergency - our clinic appointment system is NOT suitable for this situation.\n"
@@ -26,13 +26,15 @@ EMERGENCY_ALERT = (
 SPECIALTY_CARDIOLOGY = "Cardiologist"
 SPECIALTY_DERMATOLOGY = "Dermatologist"
 SPECIALTY_ENT = "ENT Specialist"
+SPECIALTY_GENERAL_MEDICINE = "General Medicine"
 
 # Chest discomfort keywords (English & Roman Urdu)
 _CHEST_PATTERN = re.compile(
     r"\b(chest\s+pain|chest\s+tightness|chest\s+pressure|chest\s+heaviness|chest\s+burning|"
     r"pain\s+in\s+(?:my\s+)?chest|pain\s+in\s+(?:the\s+)?chest|"
     r"seene\s+me(?:in)?\s+dard|seene\s+me(?:in)?\s+jalan|seene\s+me(?:in)?\s+dabao|"
-    r"dil\s+me(?:in)?\s+dard|chhati\s+me(?:in)?\s+dard)\b",
+    r"dil\s+me(?:in)?\s+dard|chhati\s+(?:me(?:in)?|ka)\s+dard|"
+    r"seene\s+ka\s+dard)\b",
     re.IGNORECASE,
 )
 
@@ -44,6 +46,117 @@ _BREATHING_PATTERN = re.compile(
     r"suffocating|choking|breathless(?:ness)?|"
     r"saans\s+lene\s+me(?:in)?\s+(?:dushwari|takleef|mushkil)|saans\s+nahi\s+aa\s+rahi|"
     r"saans\s+phool\s+rahi|saans\s+ruk|saans\s+band|dam\s+ghut)\b",
+    re.IGNORECASE,
+)
+
+# Heart-attack warning signs: chest pain spreading to another body area.
+_CHEST_RADIATION_PATTERN = re.compile(
+    r"(?:radiat(?:e|ing|es|ed)|spread(?:ing|s)?|moving|go(?:ing)?|travel(?:ing|ling)|"
+    r"shoot(?:ing|s)?|extend(?:ing|s)?)\s+(?:to|into|toward|towards)\s+"
+    r"(?:my\s+|the\s+)?(?:left|right|both)?\s*(?:arm|arms|jaw|neck|back|shoulder|shoulders)|"
+    r"(?:left|right|both)\s+(?:arm|arms)\s+(?:pain|ache|dard|mein|may|tak)|"
+    r"(?:baazu|bazoo|kandha|gardan|jabray|jabre|peeth)\s*(?:mein|me|tak)?\s+"
+    r"(?:ja\s+raha|ja\s+rahi|phail|phel|dard|takleef)|"
+    r"(?:seene|seena|chhati)\s+(?:ka|mein|me)\s+(?:dard\s+)?"
+    r"(?:baazu|bazoo|kandha|gardan|jabray|jabre|peeth)\s+(?:mein|me|tak)",
+    re.IGNORECASE,
+)
+
+# Worsening chest pain is itself a high-risk escalation, including follow-up answers.
+_CHEST_WORSENING_PATTERN = re.compile(
+    r"(?:chest\s+pain|pain\s+in\s+(?:my\s+|the\s+)?chest|"
+    r"seene\s+me(?:in)?\s+dard|dil\s+me(?:in)?\s+dard|chhati\s+me(?:in)?\s+dard)"
+    r".{0,60}(?:getting\s+worse|worsening|increasing|increased|worse|"
+    r"barh(?:ta|ti| raha| rahi)|zyada\s+kharab|bohot\s+bura|badh(?:ta|ti| raha| rahi))",
+    re.IGNORECASE,
+)
+
+_WORSENING_FOLLOWUP_PATTERN = re.compile(
+    r"(?:getting\s+worse|worsening|increasing|increased|very\s+worse|"
+    r"much\s+worse|barh(?:ta|ti| raha| rahi)|zyada\s+kharab|bohot\s+bura|"
+    r"badh(?:ta|ti| raha| rahi))",
+    re.IGNORECASE,
+)
+
+_SEVERE_ASTHMA_PATTERN = re.compile(
+    r"\b(?:severe|bad|acute)\s+asthma\b|\basthma\b.{0,40}\b(?:can't|cannot|unable|hard|difficulty)\s+breathe\b|"
+    r"\b(?:dam|saans)\s+ghut(?:na|raha|rahi)\b",
+    re.IGNORECASE,
+)
+_CHILD_FEVER_PATTERN = re.compile(
+    r"\b(?:baby|infant|newborn|toddler|child|kid|bacha|bachay|bachi)\b.{0,50}\b(?:high|very\s+high|tez|bohot\s+zyada)\s+fever\b|"
+    r"\b(?:baby|infant|newborn|toddler|child|kid|bacha|bachay|bachi)\b.{0,50}\btez\s+bukhar\b",
+    re.IGNORECASE,
+)
+_PREGNANCY_EMERGENCY_PATTERN = re.compile(
+    r"\b(?:pregnan(?:t|cy)|expecting)\b.{0,60}\b(?:heavy\s+bleeding|severe\s+pain|abdominal\s+pain|water\s+broke|fainted|unconscious)\b|"
+    r"\bhamla\s+hai\b.{0,60}\b(?:khoon|shadeed\s+dard|pet\s+mein\s+dard|behosh|pani)\b",
+    re.IGNORECASE,
+)
+
+# Trauma, injury, allergic, abdominal, meningitis, and diabetic emergencies.
+_BLEEDING_PATTERN = re.compile(
+    r"\bbleed(?:ing|s)?\b|\bbleeding\s+(?:won't|will\s+not|doesn't|does\s+not)\s+stop\b|"
+    r"khoon\s+(?:beh|nikal|ruk\s+nahi)|khoon\s+behta",
+    re.IGNORECASE,
+)
+_FRACTURE_PATTERN = re.compile(
+    r"\b(?:broken|fracture[d]?|bone\s+sticking\s+out|can't\s+move\s+(?:it|my\s+\w+)|cannot\s+move\s+(?:it|my\s+\w+))\b|"
+    r"\b(?:haddi|hadi)\s+(?:toot|tut|bahar)\b|\b(?:haath|pair|taang|baazu)\s+nahi\s+hila",
+    re.IGNORECASE,
+)
+_FALL_INJURY_PATTERN = re.compile(
+    r"\b(?:fell|fall|fallen)\b.{0,50}\b(?:broke|broken|fracture|hurt|injur|cut|bleed)\w*\b|"
+    r"\b(?:gir|giri|gira)\b.{0,50}\b(?:toot|tut|zakhm|chot|khoon)\w*\b",
+    re.IGNORECASE,
+)
+_BURN_PATTERN = re.compile(
+    r"\b(?:severe|deep|serious|bad|third[- ]degree|second[- ]degree)\s+burns?\b|"
+    r"\b(?:burns?|jal(?:an| gaya| gayi))\b.{0,30}\b(?:severe|deep|serious|bad|bohot|shadeed)\b|"
+    r"\b(?:bohot|shadeed|gehri?)\s+(?:jal|jalan)\b",
+    re.IGNORECASE,
+)
+_DEEP_CUT_PATTERN = re.compile(
+    r"\b(?:deep|large|serious|gaping|severe)\s+(?:cut|wound|laceration)\b|"
+    r"\b(?:cut|wound|laceration)\b.{0,40}\b(?:deep|large|gaping|won't\s+stop|bleeding)\b|"
+    r"\b(?:gehra|gehri|bara|bari)\s+(?:zakhm|kat|cut)\b",
+    re.IGNORECASE,
+)
+_HEAD_INJURY_PATTERN = re.compile(
+    r"\b(?:head injury|hit my head|hit to the head|head trauma|head\s+\w*\s*injur)\b|"
+    r"\b(?:sar|sarr)\s+(?:par|pe)\s+(?:chot|lag|zarb)\b",
+    re.IGNORECASE,
+)
+_HEAD_RED_FLAG_PATTERN = re.compile(
+    r"\b(?:confusion|confused|disoriented|vomiting|vomit|passed\s+out|unconscious|fainted|fainting)\b|"
+    r"\b(?:uljhan|behosh|ulti|qay|gash)\b",
+    re.IGNORECASE,
+)
+_ANAPHYLAXIS_EXPOSURE_PATTERN = re.compile(
+    r"\b(?:allerg(?:y|ic)|allergen|after\s+(?:eating|taking|using|an?\s+\w+)|insect\s+sting|bee\s+sting|food)\b|"
+    r"\b(?:allergy|ke\s+baad|khanay\s+ke\s+baad|dawai\s+ke\s+baad)\b",
+    re.IGNORECASE,
+)
+_THROAT_SWELLING_PATTERN = re.compile(
+    r"\b(?:throat|tongue|lips?|face)\s+(?:swelling|swollen|closing|tight)\b|"
+    r"\b(?:gala|zaban|hont|chehra)\s+(?:sooj|suj|band|phool)\w*\b",
+    re.IGNORECASE,
+)
+_SEVERE_ABDOMINAL_PATTERN = re.compile(
+    r"\b(?:severe|intense|excruciating|unbearable|very\s+bad|worst)\s+(?:abdominal|stomach|belly)\s+pain\b|"
+    r"\b(?:abdominal|stomach|belly)\s+pain\b.{0,40}\b(?:severe|intense|unbearable|worsening|getting\s+worse)\b|"
+    r"\b(?:pet|pait)\s+(?:mein|me)\s+(?:shadeed|bohot\s+zyada|sakht|bardasht\s+se\s+bahar)\s+dard\b",
+    re.IGNORECASE,
+)
+_MENINGITIS_PATTERN = re.compile(
+    r"\b(?:stiff|rigid)\s+neck\b|\b(?:gardan)\s+(?:akri|akad|sakht)\b",
+    re.IGNORECASE,
+)
+_FEVER_PATTERN = re.compile(r"\b(?:high|very\s+high)\s+fever\b|\btez\s+bukhar\b|\bbukhar\s+bohot\s+zyada\b", re.IGNORECASE)
+_DIABETES_PATTERN = re.compile(r"\b(?:diabet(?:es|ic)|diabetic|sugar\s+patient|blood\s+sugar)\b|\b(?:diabetes|sugar)\s+ka\s+mareez\b", re.IGNORECASE)
+_DIABETIC_RED_FLAG_PATTERN = re.compile(
+    r"\b(?:confusion|confused|drowsy|unconscious|passed\s+out|fainted|vomiting|vomit|very\s+weak|shaking|sweating)\b|"
+    r"\b(?:uljhan|behosh|ulti|kamzori|kapkapi|paseena)\b",
     re.IGNORECASE,
 )
 
@@ -110,7 +223,7 @@ _CARDIO = [
     r"bp\s+high",
 ]
 _DERM = [
-    r"\brash\b",
+    r"\brashes?\b",
     r"\bacne\b",
     r"\bitch",
     r"skin",
@@ -155,6 +268,20 @@ _ENT = [
     r"nazla\s+zukam",
     r"bukhar\s+aur\s+gala",
 ]
+_GENERAL_MEDICINE = [
+    r"\bheadache[s]?\b", r"\bmigraine[s]?\b", r"\bdizz(?:y|iness)\b", r"\bvertigo\b",
+    r"\bback\s+pain\b", r"\blower\s+back\b", r"\bjoint\s+pain\b", r"\barthritis\b",
+    r"\bstomach\s+(?:ache|pain)\b", r"\bbelly\s+(?:ache|pain)\b", r"\bnausea\b", r"\bdiarrhea\b",
+    r"\bconstipation\b", r"\bfatigue\b", r"\btired(?:ness)?\b", r"\bsleep\s+(?:problem|issue|difficulty)s?\b",
+    r"\binsomnia\b", r"\beye\s+(?:pain|problem|issue)s?\b", r"\bblurred\s+vision\b", r"\bvision\s+problem\b",
+    r"\burinat(?:e|ion|ing)\s+(?:problem|pain|difficulty)\b", r"\bburning\s+(?:when|while)\s+urinating\b",
+    r"\bperiod\s+(?:pain|problem)s?\b", r"\bmenstrual\s+(?:pain|problem)s?\b", r"\bfever\b",
+    # Roman Urdu
+    r"sar\s+(?:mein|me)\s+dard", r"aadha\s+sar\s+dard", r"chakkar", r"kamar\s+(?:mein|me)\s+dard",
+    r"jodon\s+(?:mein|me)\s+dard", r"jodon\s+ka\s+dard", r"pet\s+(?:mein|me)\s+dard",
+    r"matli", r"qabz", r"dast", r"thakan", r"neend\s+ka\s+masla", r"aankh(?:on)?\s+(?:mein|me)\s+dard",
+    r"peshab\s+(?:mein|me)\s+(?:jalan|dard)", r"mahvari\s+ka\s+dard",
+]
 
 
 @dataclass
@@ -174,7 +301,50 @@ def is_emergency(text: str) -> bool:
     if _CHEST_PATTERN.search(blob) and _BREATHING_PATTERN.search(blob):
         return True
 
-    # Rule 2: Standalone acute emergency patterns
+    # Rule 2: Chest pain radiating to the arm, jaw, neck, back, or shoulder.
+    if _CHEST_PATTERN.search(blob) and _CHEST_RADIATION_PATTERN.search(blob):
+        return True
+
+    # Rule 3: Chest pain that is worsening, including a follow-up answer such as "very worse".
+    if _CHEST_WORSENING_PATTERN.search(blob):
+        return True
+    if _CHEST_PATTERN.search(blob) and _WORSENING_FOLLOWUP_PATTERN.search(blob):
+        return True
+
+    # Rule 4: Active bleeding, serious trauma, fractures, burns, and deep wounds.
+    if _BLEEDING_PATTERN.search(blob):
+        return True
+    if _FRACTURE_PATTERN.search(blob) or _FALL_INJURY_PATTERN.search(blob):
+        return True
+    if _BURN_PATTERN.search(blob) or _DEEP_CUT_PATTERN.search(blob):
+        return True
+
+    # Rule 5: Head injury with confusion, vomiting, or altered consciousness.
+    if _HEAD_INJURY_PATTERN.search(blob) and _HEAD_RED_FLAG_PATTERN.search(blob):
+        return True
+
+    # Rule 6: Anaphylaxis warning signs, especially breathing or throat swelling after exposure.
+    if _ANAPHYLAXIS_EXPOSURE_PATTERN.search(blob) and (
+        _BREATHING_PATTERN.search(blob) or _THROAT_SWELLING_PATTERN.search(blob) or
+        re.search(r"\bhives?\b|\burticaria\b|\bchhote\s+daane\b", blob, re.IGNORECASE)
+    ):
+        return True
+
+    # Rule 7: Severe abdominal pain, meningitis signs, and diabetic crises.
+    if _SEVERE_ABDOMINAL_PATTERN.search(blob):
+        return True
+    if _MENINGITIS_PATTERN.search(blob) and _FEVER_PATTERN.search(blob):
+        return True
+    if _DIABETES_PATTERN.search(blob) and _DIABETIC_RED_FLAG_PATTERN.search(blob):
+        return True
+    if _SEVERE_ASTHMA_PATTERN.search(blob):
+        return True
+    if _CHILD_FEVER_PATTERN.search(blob):
+        return True
+    if _PREGNANCY_EMERGENCY_PATTERN.search(blob):
+        return True
+
+    # Rule 8: Standalone acute emergency patterns
     if any(re.search(p, blob, flags=re.IGNORECASE) for p in _STANDALONE_EMERGENCY_PATTERNS):
         return True
 
@@ -189,6 +359,7 @@ def recommend_specialty(text: str) -> Optional[str]:
         SPECIALTY_CARDIOLOGY: sum(1 for p in _CARDIO if re.search(p, blob, re.IGNORECASE)),
         SPECIALTY_DERMATOLOGY: sum(1 for p in _DERM if re.search(p, blob, re.IGNORECASE)),
         SPECIALTY_ENT: sum(1 for p in _ENT if re.search(p, blob, re.IGNORECASE)),
+        SPECIALTY_GENERAL_MEDICINE: sum(1 for p in _GENERAL_MEDICINE if re.search(p, blob, re.IGNORECASE)),
     }
     best = max(scores.values())
     if best <= 0:

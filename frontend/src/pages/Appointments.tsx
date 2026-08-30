@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, Button, Badge } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { getPatientAppointments, cancelAppointment, submitAppointmentFeedback } from '../services/appointments';
+import { generateGoogleCalendarUrl } from '../lib/utils';
 
 type AppointmentStatus = 'Upcoming' | 'Completed' | 'Cancelled' | 'No-show';
 type FilterTab = 'All' | AppointmentStatus;
@@ -303,7 +304,23 @@ export const Appointments: React.FC = () => {
 
                     {/* Actions for Scheduled Appointments */}
                     {isUpcoming && (
-                      <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-start gap-2.5 pt-3 md:pt-0 border-t md:border-t-0 border-surfaceContainerHigh shrink-0">
+                      <div className="flex flex-wrap md:flex-col items-center md:items-end justify-between md:justify-start gap-2.5 pt-3 md:pt-0 border-t md:border-t-0 border-surfaceContainerHigh shrink-0">
+                        <a
+                          href={generateGoogleCalendarUrl({
+                            title: `MediBook: Dr. ${apt.doctor_name}`,
+                            startTime: apt.appointment_time,
+                            description: `Doctor: Dr. ${apt.doctor_name} (${apt.doctor_specialization})\nClinic: ${apt.clinic_name}\nAddress: ${apt.clinic_address}`,
+                            location: `${apt.clinic_name}, ${apt.clinic_address}`,
+                          })}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surfaceContainer hover:bg-surfaceContainerHigh border border-surfaceContainerHigh text-primary text-xs font-semibold rounded-pill transition-all"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z" />
+                          </svg>
+                          <span>Add to Calendar</span>
+                        </a>
                         <Link to="/chat">
                           <Button size="sm" variant="secondary">
                             Reschedule

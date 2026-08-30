@@ -46,6 +46,38 @@ def _headers(authorization: Optional[str] = None) -> dict[str, str]:
     return headers
 
 
+def get_current_user(authorization: str) -> Optional[dict[str, Any]]:
+    """Fetch current user profile via GET /api/auth/me."""
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            res = client.get(
+                f"{settings.backend_base}/auth/me",
+                headers=_headers(authorization),
+            )
+        if res.status_code == 200:
+            return res.json()
+        return None
+    except Exception:
+        return None
+
+
+def get_patient_profile(patient_or_user_id: str, authorization: str) -> Optional[dict[str, Any]]:
+    """Resolve a user ID or patient ID to the canonical patient profile."""
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            res = client.get(
+                f"{settings.backend_base}/patients/{patient_or_user_id}",
+                headers=_headers(authorization),
+            )
+        if res.status_code == 200:
+            return res.json()
+        logger.warning("Patient profile lookup failed with HTTP %s", res.status_code)
+        return None
+    except httpx.HTTPError:
+        logger.warning("Patient profile lookup could not reach backend")
+        return None
+
+
 def list_doctors(specialization: Optional[str] = None) -> list[dict[str, Any]]:
     params: dict[str, Any] = {"limit": 50, "is_available": True}
     if specialization:
@@ -138,6 +170,52 @@ def fetch_patient_appointments(
     except httpx.HTTPError:
         logger.warning("Fetch patient appointments could not reach backend")
         return []
+
+
+def fetch_doctor_appointments(
+    doctor_id: str,
+    authorization: str,
+    date: Optional[str] = None,
+    status_filter: str = "scheduled",
+) -> list[dict[str, Any]]:
+    """Fetch a doctor's appointments using the shared appointments endpoint."""
+    params: dict[str, Any] = {"doctor_id": doctor_id, "limit": 20}
+    if status_filter:
+        params["status"] = status_filter
+    if date:
+        params["date"] = date
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            res = client.get(
+                f"{settings.backend_base}/appointments",
+                params=params,
+                headers=_headers(authorization),
+            )
+        if res.status_code >= 400:
+            logger.warning("Fetch doctor appointments failed with HTTP %s", res.status_code)
+            return []
+        data = res.json()
+        return list(data.get("appointments") or [])
+    except httpx.HTTPError:
+        logger.warning("Fetch doctor appointments could not reach backend")
+        return []
+
+
+def get_appointment_details(appointment_id: str, authorization: str) -> Optional[dict[str, Any]]:
+    """Fetch a single appointment's full details."""
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            res = client.get(
+                f"{settings.backend_base}/appointments/{appointment_id}",
+                headers=_headers(authorization),
+            )
+        if res.status_code >= 400:
+            logger.warning("Get appointment details failed with HTTP %s", res.status_code)
+            return None
+        return res.json()
+    except httpx.HTTPError:
+        logger.warning("Get appointment details could not reach backend")
+        return None
 
 
 def cancel_appointment(appointment_id: str, authorization: str) -> dict[str, Any]:

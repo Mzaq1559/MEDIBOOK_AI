@@ -65,16 +65,10 @@ export const Chat: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Prefer patients.id from the profile; fall back to users.id (backend resolves both)
-  let patientId: string | null = null;
-  if (currentUser?.userType === 'patient') {
-    if (currentUser.patientId) {
-      patientId = currentUser.patientId;
-    } else if (currentUser.id) {
-      console.warn('[Chat] currentUser.patientId is missing on patient user profile. Falling back to currentUser.id (users.id).');
-      patientId = currentUser.id;
-    }
-  }
+  const patientId =
+    currentUser?.userType === 'patient' && currentUser.id && isValidUuid(currentUser.id)
+      ? currentUser.id
+      : null;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -84,12 +78,20 @@ export const Chat: React.FC = () => {
     scrollToBottom();
   }, [messages, isBotTyping]);
 
-  const quickSymptoms = [
-    'Book an appointment',
-    'Cancel my appointment',
-    'Reschedule appointment',
-    'What are my appointments?',
-  ];
+  const isDoctor = currentUser?.userType === 'doctor';
+
+  const quickSymptoms = isDoctor
+    ? [
+        'Show my appointments',
+        'Reschedule a patient\'s appointment',
+        'Cancel a patient\'s appointment',
+      ]
+    : [
+        'Book an appointment',
+        'Cancel my appointment',
+        'Reschedule appointment',
+        'What are my appointments?',
+      ];
 
   const callChatApi = useCallback(
     async (text: string, optionId?: string) => {
@@ -228,8 +230,8 @@ export const Chat: React.FC = () => {
                         {msg.text}
                       </p>
                       <div className="pt-2 flex flex-wrap gap-2.5">
-                        <a href="tel:911" className="inline-flex items-center gap-1.5 bg-error text-white text-xs font-bold px-4 py-2 rounded-pill hover:bg-[#a01616] shadow-soft transition-all">
-                          📞 Call Emergency (911)
+                        <a href="tel:1122" className="inline-flex items-center gap-1.5 bg-error text-white text-xs font-bold px-4 py-2 rounded-pill hover:bg-[#a01616] shadow-soft transition-all">
+                          📞 Call Emergency (1122)
                         </a>
                       </div>
                     </div>

@@ -16,6 +16,10 @@ from app.config import settings
 from app.groq_client import LLMError, LLM_FALLBACK
 from app.schemas import ChatHistoryResponse, ChatMessageRequest, ChatMessageResponse
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger("medibook.ai.main")
 
 limiter = Limiter(key_func=get_remote_address)

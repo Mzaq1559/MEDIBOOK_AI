@@ -19,7 +19,13 @@ class Settings(BaseSettings):
     GOOGLE_CALENDAR_CREDENTIALS_PATH: str = "google-calendar-credentials.json"
     GOOGLE_CALENDAR_API_KEY: str = ""
     GOOGLE_CALENDAR_SECRET: str = ""
-    GOOGLE_CALENDAR_ID: str = "primary"
+    GOOGLE_CALENDAR_ID: str = ""
+
+    SMTP_SERVER: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    FRONTEND_URL: str = "http://localhost:3000"
 
     N8N_URL: str = "http://n8n:5678"
     N8N_WEBHOOK_URL: str = "http://n8n:5678/webhook/medibook-reminder"
