@@ -169,15 +169,20 @@ def login_user(request: Request, payload: LoginRequest, db: Session = Depends(ge
     access_token = create_access_token(user.id, user.email, user.user_type)
     refresh_token = create_refresh_token(user.id, user.email, user.user_type)
 
-    return LoginResponse(
-        user_id=user.id,
-        email=user.email,
-        name=user.name,
-        user_type=user.user_type,
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_in=3600
-    )
+    patient = None
+    if user.user_type == "patient":
+        patient = db.query(Patient).filter(Patient.user_id == user.id).first()
+
+    return {
+        "user_id": str(user.id),
+        "patientId": str(patient.id) if user.user_type == "patient" and patient else None,
+        "email": user.email,
+        "name": user.name,
+        "user_type": user.user_type,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_in": 3600
+    }
 
 
 @router.post(
