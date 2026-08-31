@@ -21,4 +21,4 @@ EXPOSE 10000
 
 # Run Alembic migrations then start the server.
 # PORT env var is automatically set by Render; fallback to 10000.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "alembic upgrade head && python seeds/seed_appointments.py && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]

@@ -78,6 +78,7 @@ def test_what_are_my_appointments_is_plain_text_without_duplicate_cards(_fetch):
     assert res["bot_message"] == PLAIN_LISTING
     assert "**" not in res["bot_message"]
     assert not (res.get("ui_data") or {}).get("appointments")
+    assert not (res.get("ui_data") or {}).get("doctors")
 
 
 @patch("app.backend_client.fetch_patient_appointments", return_value=FAKE_APPOINTMENTS)
@@ -110,6 +111,7 @@ def test_cancel_my_appointment_asks_confirmation_without_markdown(_fetch):
     assert "Doctor: Dr. Ahmed Malik" in res["bot_message"]
     assert "cancel" in res["bot_message"].lower()
     assert not (res.get("ui_data") or {}).get("appointments")
+    assert not (res.get("ui_data") or {}).get("doctors")
 
 
 @patch("app.backend_client.fetch_patient_appointments", return_value=FAKE_APPOINTMENTS)
@@ -142,3 +144,43 @@ def test_reschedule_shows_current_details_and_asks_for_new_time(_fetch):
     assert "Doctor: Dr. Ahmed Malik" in res["bot_message"]
     assert "new time" in res["bot_message"].lower()
     assert not (res.get("ui_data") or {}).get("appointments")
+    assert not (res.get("ui_data") or {}).get("doctors")
+
+
+@patch("app.backend_client.fetch_patient_appointments", return_value=FAKE_APPOINTMENTS)
+def test_appointment_list_drops_leftover_doctor_cards(_fetch):
+    from app.chatbot import new_session
+
+    conv_id = str(uuid.uuid4())
+    session = new_session(conv_id, PATIENT_ID)
+    session["last_ui_data"] = {
+        "doctors": [
+            {
+                "doctor_id": "b4444444-4444-4444-a444-444444444444",
+                "name": "Dr. Ahmed Khan",
+            }
+        ]
+    }
+    groq_turns = [
+        FakeMessage(
+            tool_calls=[
+                FakeToolCall("get_patient_appointments", {"patient_id": PATIENT_ID}, "a2")
+            ]
+        ),
+        FakeMessage(
+            content=(
+                "Hi Ali! You have appointments on Sep 1 with Dr. Ahmed Khan "
+                "and Sep 2 with Dr. Fatima Zahra."
+            )
+        ),
+    ]
+    with patch("app.groq_client.complete_with_tools", side_effect=groq_turns):
+        res = handle_message(
+            conversation_id=conv_id,
+            patient_id=PATIENT_ID,
+            message="What are my appointments?",
+            language="english",
+            authorization="Bearer test-token",
+        )
+    assert not (res.get("ui_data") or {}).get("doctors")
+    assert res["next_action"] != "waiting_for_doctor_selection"

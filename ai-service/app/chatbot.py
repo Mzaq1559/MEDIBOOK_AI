@@ -121,6 +121,22 @@ def _next_action_from_ui(session: dict[str, Any], ui_data: dict[str, Any], bot: 
     return "waiting_for_input"
 
 
+def _strip_listed_appointment_cards(
+    bot: str, ui_data: dict[str, Any], session: dict[str, Any]
+) -> dict[str, Any]:
+    """Drop doctor/appointment cards when the reply already lists those details."""
+    if not lists_appointment_details(bot) or not ui_data:
+        return ui_data
+    ui_data = dict(ui_data)
+    ui_data.pop("appointments", None)
+    ui_data.pop("doctors", None)
+    last = session.get("last_ui_data")
+    if isinstance(last, dict):
+        last.pop("appointments", None)
+        last.pop("doctors", None)
+    return ui_data
+
+
 def run_agent_loop(
     session: dict[str, Any],
     authorization: Optional[str],
@@ -145,6 +161,7 @@ def run_agent_loop(
         messages.append({"role": m.role, "content": m.message})
 
     ui_data: dict[str, Any] = dict(session.get("last_ui_data") or {})
+    this_turn_ui_keys: set[str] = set()
     bot = ""
 
     for _round in range(MAX_TOOL_ROUNDS):
@@ -168,7 +185,9 @@ def run_agent_loop(
             fn_args = getattr(fn, "arguments", "{}") if fn is not None else "{}"
             result = execute_tool(fn_name, fn_args, session, authorization)
             if isinstance(result, dict) and result.get("ui_data"):
-                ui_data.update(result["ui_data"])
+                fresh = result["ui_data"]
+                this_turn_ui_keys.update(fresh.keys())
+                ui_data.update(fresh)
             messages.append(
                 {
                     "role": "tool",
@@ -181,11 +200,20 @@ def run_agent_loop(
     else:
         bot = strip_markdown(content or "I've got what I need — what would you like to do next?")
 
-    if lists_appointment_details(bot) and ui_data.get("appointments"):
-        ui_data = dict(ui_data)
-        ui_data.pop("appointments", None)
-        if isinstance(session.get("last_ui_data"), dict):
-            session["last_ui_data"].pop("appointments", None)
+    # Listing appointments should not keep leftover doctor/slot cards from an earlier turn.
+    if "appointments" in this_turn_ui_keys:
+        if "doctors" not in this_turn_ui_keys:
+            ui_data.pop("doctors", None)
+        if "slots" not in this_turn_ui_keys:
+            ui_data.pop("slots", None)
+        last = session.get("last_ui_data")
+        if isinstance(last, dict):
+            if "doctors" not in this_turn_ui_keys:
+                last.pop("doctors", None)
+            if "slots" not in this_turn_ui_keys:
+                last.pop("slots", None)
+
+    ui_data = _strip_listed_appointment_cards(bot, ui_data, session)
 
     return bot, ui_data
 
@@ -238,11 +266,7 @@ def handle_message(
         ui_data = dict(session.get("last_ui_data") or {})
 
     bot = strip_markdown(bot)
-    if lists_appointment_details(bot) and ui_data.get("appointments"):
-        ui_data = dict(ui_data)
-        ui_data.pop("appointments", None)
-        if isinstance(session.get("last_ui_data"), dict):
-            session["last_ui_data"].pop("appointments", None)
+    ui_data = _strip_listed_appointment_cards(bot, ui_data, session)
     action = _next_action_from_ui(session, ui_data, bot)
     append_msg(session, "assistant", bot, _utc_now())
 
