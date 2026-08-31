@@ -140,6 +140,44 @@ def fetch_patient_appointments(
         return []
 
 
+def search_patient_appointments(
+    authorization: str,
+    doctor_name: Optional[str] = None,
+    status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Search the authenticated patient's appointments with optional filters.
+
+    Calls GET /api/appointments/search.  Patient scoping is enforced by the
+    backend via the Authorization JWT — no patient_id is sent as a query param.
+    """
+    params: dict[str, Any] = {}
+    if doctor_name:
+        params["doctor_name"] = doctor_name
+    if status:
+        params["status"] = status
+    if date_from:
+        params["date_from"] = date_from
+    if date_to:
+        params["date_to"] = date_to
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            res = client.get(
+                f"{settings.backend_base}/appointments/search",
+                params=params,
+                headers=_headers(authorization),
+            )
+        if res.status_code >= 400:
+            logger.warning("Search patient appointments failed with HTTP %s", res.status_code)
+            return []
+        data = res.json()
+        return list(data.get("appointments") or [])
+    except httpx.HTTPError:
+        logger.warning("Search patient appointments could not reach backend")
+        return []
+
+
 def cancel_appointment(appointment_id: str, authorization: str) -> dict[str, Any]:
     """Cancel an appointment via DELETE /api/appointments/{id}."""
     try:

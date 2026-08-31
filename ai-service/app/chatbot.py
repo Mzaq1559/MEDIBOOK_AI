@@ -153,7 +153,18 @@ def run_agent_loop(
                 "role": "system",
                 "content": (
                     f"Authenticated patient_id is {session['patient_id']}. "
-                    "Pass this id to tools that require it. Do not invent other patient IDs."
+                    "Rules:\n"
+                    "- Use tools for live clinic data. Do not invent doctors, slots, or appointment IDs.\n"
+                    "- For booking, reschedule, and cancel: call propose_X first, state the summary, wait for "
+                    "explicit affirmative text, then call execute_confirmed_action.\n"
+                    "- If the patient is not logged in, ask them to sign in instead of guessing IDs.\n"
+                    "- You only help with this clinic's appointments and information.\n"
+                    "- Do NOT use markdown symbols (**) in responses.\n"
+                    "- Appointment tool selection: when the patient references a specific doctor, date, or "
+                    "status (e.g. 'my appointment with Dr. Khan', 'my Tuesday appointment', 'my cancelled "
+                    "ones'), use search_patient_appointments with the relevant filters so only matching "
+                    "appointments are shown. Use get_patient_appointments only for genuinely broad requests "
+                    "like 'what appointments do I have?' with no qualifying details.\n"
                 ),
             }
         )

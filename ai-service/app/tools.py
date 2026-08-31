@@ -78,6 +78,42 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "search_patient_appointments",
+            "description": (
+                "Search the authenticated patient's appointments with optional filters. "
+                "Use this instead of get_patient_appointments whenever the patient references "
+                "a specific doctor, date range, or status (e.g. 'my appointment with Dr. Khan', "
+                "'my cancelled ones', 'appointments next week'). "
+                "Returns List[Appointment] sorted by appointment_time ascending."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "doctor_name": {
+                        "type": "string",
+                        "description": "Partial doctor name to filter by (case-insensitive). E.g. 'Khan' or 'Dr. Tariq'.",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["scheduled", "cancelled", "completed", "no_show", "rescheduled"],
+                        "description": "Exact appointment status to filter by.",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "Inclusive start date in YYYY-MM-DD format.",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "Inclusive end date in YYYY-MM-DD format.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "propose_reschedule_appointment",
             "description": (
                 "Move an existing appointment to a new date/time. "
@@ -261,6 +297,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 REQUIRED_PARAMS: dict[str, list[str]] = {
     "get_patient_appointments": ["patient_id"],
+    "search_patient_appointments": [],  # all filters optional
     "propose_reschedule_appointment": ["appointment_id", "new_datetime"],
     "execute_confirmed_action": ["proposal_id"],
     "propose_cancel_appointment": ["appointment_id"],
@@ -340,6 +377,11 @@ def build_system_prompt() -> str:
         "- If the patient is not logged in, ask them to sign in instead of guessing IDs.\n"
         "- You only help with this clinic's appointments and information.\n"
         "- Do NOT use markdown symbols (**) in responses.\n"
+        "- Appointment tool selection: when the patient references a specific doctor, date, or "
+        "status (e.g. 'my appointment with Dr. Khan', 'my Tuesday appointment', 'my cancelled "
+        "ones'), use search_patient_appointments with the relevant filters so only matching "
+        "appointments are shown. Use get_patient_appointments only for genuinely broad requests "
+        "like 'what appointments do I have?' with no qualifying details.\n"
     )
 
 
@@ -439,6 +481,43 @@ def tool_get_patient_appointments(
         return {"ok": False, "error": LOGIN_REQUIRED, "appointments": []}
     appts = backend_client.fetch_patient_appointments(patient_id, auth or "")
     session["patient_appointments"] = appts
+    formatted = [format_appointment_for_ui(a) for a in appts]
+    ui = _merge_ui(session, {"appointments": formatted})
+    return {
+        "ok": True,
+        "appointments": formatted,
+        "count": len(formatted),
+        "ui_data": ui,
+    }
+
+
+def tool_search_patient_appointments(
+    session: dict[str, Any],
+    args: dict[str, Any],
+    auth: Optional[str],
+) -> dict[str, Any]:
+    """Filtered appointment search scoped to the authenticated patient.
+
+    All filter parameters are optional.  Patient identity is taken from the
+    session JWT — the LLM must not supply a patient_id.
+    """
+    metrics.inc("agent_tool_calls_total")
+    auth_err = _require_auth(auth)
+    if auth_err:
+        return {"ok": False, "error": auth_err, "appointments": []}
+
+    doctor_name = args.get("doctor_name") or None
+    status_val  = args.get("status") or None
+    date_from   = args.get("date_from") or None
+    date_to     = args.get("date_to") or None
+
+    appts = backend_client.search_patient_appointments(
+        authorization=auth or "",
+        doctor_name=doctor_name,
+        status=status_val,
+        date_from=date_from,
+        date_to=date_to,
+    )
     formatted = [format_appointment_for_ui(a) for a in appts]
     ui = _merge_ui(session, {"appointments": formatted})
     return {
@@ -841,6 +920,7 @@ def tool_retrieve_medical_knowledge(
 
 HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "get_patient_appointments": tool_get_patient_appointments,
+    "search_patient_appointments": tool_search_patient_appointments,
     "propose_reschedule_appointment": tool_propose_reschedule_appointment,
     "propose_cancel_appointment": tool_propose_cancel_appointment,
     "propose_book_appointment": tool_propose_book_appointment,
