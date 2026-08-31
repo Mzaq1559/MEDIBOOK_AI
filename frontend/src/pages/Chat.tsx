@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   sendChatMessage,
   formatChatTimestamp,
+  formatSlotDisplay,
   getChatErrorMessage,
   isValidUuid,
   type ChatOptionItem,
@@ -28,6 +29,27 @@ interface ChatMessage {
   nextAction?: string | null;
 }
 
+function formatUiDataSlots(uiData: ChatUiData | null | undefined): ChatUiData | null | undefined {
+  if (!uiData) return uiData;
+
+  return {
+    ...uiData,
+    booking: uiData.booking
+      ? {
+          ...uiData.booking,
+          selectedSlot: formatSlotDisplay(uiData.booking.selectedSlot)
+        }
+      : undefined,
+    reschedule: uiData.reschedule
+      ? {
+          ...uiData.reschedule,
+          oldSlot: formatSlotDisplay(uiData.reschedule.oldSlot),
+          newSlot: formatSlotDisplay(uiData.reschedule.newSlot)
+        }
+      : undefined
+  };
+}
+
 function mapApiResponseToBotMessage(
   response: Awaited<ReturnType<typeof sendChatMessage>>
 ): Omit<ChatMessage, 'id' | 'sender'> {
@@ -40,7 +62,7 @@ function mapApiResponseToBotMessage(
     isEmergency,
     requiresLogin,
     optionItems: response.options.length > 0 ? response.options : undefined,
-    uiData: response.ui_data,
+    uiData: formatUiDataSlots(response.ui_data),
     nextAction: response.next_action,
   };
 }

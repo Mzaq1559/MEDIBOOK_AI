@@ -502,3 +502,173 @@ def update_doctor(
         clinic_name=doc.clinic.name if doc.clinic else "Clinic"
     )
 
+
+@router.get(
+    "/pending/applications",
+    response_model=List[dict],
+    status_code=status.HTTP_200_OK,
+    summary="List Pending Doctor Applications",
+    description="Admin endpoint to list unverified doctor registrations awaiting review and verification."
+)
+def list_pending_doctors(
+    current_user: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db)
+):
+    unverified_users = db.query(User).filter(
+        User.user_type == "doctor",
+        User.is_verified == False,
+        User.deleted_at.is_(None)
+    ).all()
+
+    res = []
+    for u in unverified_users:
+        doc = db.query(Doctor).filter(Doctor.user_id == u.id).first()
+        res.append({
+            "id": str(doc.id) if doc else str(u.id),
+            "doctor_id": str(doc.id) if doc else None,
+            "user_id": str(u.id),
+            "name": u.name,
+            "email": u.email,
+            "phone": u.phone or "N/A",
+            "specialization": doc.specialization if doc else "General Medicine",
+            "consultation_fee": float(doc.consultation_fee) if doc else 1500.0,
+            "clinic_id": str(doc.clinic_id) if (doc and doc.clinic_id) else None,
+            "max_patients_per_day": doc.max_patients_per_day if doc else 16,
+            "submittedDate": u.created_at.strftime("%Y-%m-%d") if u.created_at else "",
+            "status": "Pending"
+        })
+    return res
+
+
+@router.patch(
+    "/{doctor_id}/verify",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Verify Doctor Account",
+    description="Admin endpoint to verify/approve a doctor account for login access after configuring clinic details."
+)
+def verify_doctor(
+    request: Request,
+    doctor_id: uuid.UUID,
+    payload: Optional[DoctorUpdate] = None,
+    current_user: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db)
+):
+    """Admin-only endpoint to mark a doctor as verified for login, update details, and notify via email."""
+    doc = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doc:
+        doc = db.query(Doctor).filter(Doctor.user_id == doctor_id).first()
+    if not doc:
+        # Check if unverified user exists, and create doctor record if it was missing
+        user = db.query(User).filter(User.id == doctor_id, User.user_type == "doctor").first()
+        if user:
+            from app.models.clinic import Clinic
+            c = db.query(Clinic).first()
+            doc = Doctor(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                clinic_id=c.id if c else None,
+                specialization="General Medicine",
+                consultation_fee=1500.0,
+                is_available=True,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(doc)
+            db.flush()
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Doctor not found", "error_code": "NOT_FOUND"}
+        )
+
+    if not doc.user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Doctor user record missing", "error_code": "INVALID_STATE"}
+        )
+
+    # Update doctor details if provided
+    if payload:
+        if payload.specialization is not None:
+            doc.specialization = payload.specialization
+        if payload.clinic_id is not None:
+            doc.clinic_id = payload.clinic_id
+        if payload.consultation_fee is not None:
+            doc.consultation_fee = payload.consultation_fee
+        if payload.max_patients_per_day is not None:
+            doc.max_patients_per_day = payload.max_patients_per_day
+        if payload.bio is not None:
+            doc.bio = payload.bio
+
+    # Mark doctor as verified and active
+    doc.user.is_verified = True
+    doc.user.updated_at = datetime.utcnow()
+    doc.is_available = True
+    doc.updated_at = datetime.utcnow()
+
+    db.add(doc.user)
+    db.add(doc)
+    db.commit()
+
+    # Trigger welcome/approval email
+    from app.services.email_service import send_doctor_approval_email
+    send_doctor_approval_email(doc.user.email, doc.user.name)
+
+    # Log audit event
+    ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    log_audit_event(
+        db=db,
+        action="verified_doctor",
+        table_name="users",
+        record_id=doc.user_id,
+        user_id=current_user.id,
+        new_values={"is_verified": True, "specialization": doc.specialization, "clinic_id": str(doc.clinic_id) if doc.clinic_id else None},
+        ip_address=ip,
+        user_agent=user_agent
+    )
+
+    return {
+        "message": f"Doctor {doc.user.name} has been verified and approved. An approval confirmation has been emailed.",
+        "doctor_id": doc.id,
+        "user_id": doc.user_id,
+        "is_verified": doc.user.is_verified
+    }
+
+
+@router.delete(
+    "/{doctor_id}/reject",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Reject Doctor Application",
+    description="Admin endpoint to reject and remove a pending doctor application."
+)
+def reject_doctor_application(
+    request: Request,
+    doctor_id: uuid.UUID,
+    current_user: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db)
+):
+    doc = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doc:
+        doc = db.query(Doctor).filter(Doctor.user_id == doctor_id).first()
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Doctor not found", "error_code": "NOT_FOUND"}
+        )
+
+    user = doc.user
+    doc_name = user.name if user else "Doctor"
+
+    db.delete(doc)
+    if user:
+        db.delete(user)
+    db.commit()
+
+    return {
+        "message": f"Application for {doc_name} has been rejected and removed.",
+        "doctor_id": doctor_id
+    }

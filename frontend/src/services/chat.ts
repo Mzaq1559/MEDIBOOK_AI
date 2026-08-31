@@ -93,6 +93,22 @@ export function formatChatTimestamp(isoOrDate?: string): string {
   return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+export function formatSlotDisplay(isoOrTimestamp: string): string {
+  try {
+    const d = new Date(isoOrTimestamp)
+    if (Number.isNaN(d.getTime())) return isoOrTimestamp
+    return d.toLocaleString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    })
+  } catch {
+    return isoOrTimestamp
+  }
+}
+
 export function getChatErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const detail = error.response?.data?.detail

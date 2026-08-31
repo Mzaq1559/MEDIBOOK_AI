@@ -52,13 +52,12 @@ DAY_ABBR_MAP = {
 
 
 def parse_and_validate_time(time_str: str) -> datetime:
-    """Parse ISO 8601 string and convert to naive clinic-local datetime."""
+    """Parse ISO 8601 string and convert to naive UTC datetime."""
     try:
         dt = date_parser.parse(time_str)
         if dt.tzinfo is not None:
-            # Convert to configured clinic timezone and make naive for local time comparisons
-            target_tz = KARACHI_TZ
-            dt = dt.astimezone(target_tz).replace(tzinfo=None)
+            # Convert to UTC and make naive for storage
+            dt = dt.astimezone(pytz.UTC).replace(tzinfo=None)
         return dt
     except Exception:
         raise HTTPException(
@@ -77,7 +76,7 @@ def validate_booking_slot(
     exclude_appointment_id: Optional[uuid.UUID] = None
 ):
     """Validate all clinic, doctor, schedule, overlap, and capacity constraints."""
-    now_clinic = datetime.now(KARACHI_TZ).replace(tzinfo=None)
+    now_clinic = datetime.utcnow()
     if appt_dt <= now_clinic:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

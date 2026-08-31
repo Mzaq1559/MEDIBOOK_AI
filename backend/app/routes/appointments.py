@@ -89,13 +89,17 @@ def list_appointments(
         else:
             return AppointmentListResponse(total=0, limit=limit, offset=offset, appointments=[])
     elif current_user.user_type == "doctor":
-        # Doctors can view their own appointments
+        # Doctors can ONLY view their own appointments (force restriction, ignore doctor_id param)
         doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
-        if doc and not doctor_id:
+        if doc:
             query = query.filter(Appointment.doctor_id == doc.id)
-
-    if doctor_id:
-        query = query.filter(Appointment.doctor_id == doctor_id)
+        else:
+            return AppointmentListResponse(total=0, limit=limit, offset=offset, appointments=[])
+        # NOTE: doctor_id query param is ignored for security; doctors cannot view other doctors' appointments
+    else:
+        # Admin/receptionist can filter by doctor_id if provided
+        if doctor_id:
+            query = query.filter(Appointment.doctor_id == doctor_id)
     if patient_id:
         # Resolve patient_id: caller may supply patients.id OR users.id (the
         # chatbot and some frontend paths send users.id).  Resolve through the
@@ -148,6 +152,7 @@ def list_appointments(
                 clinic_name=a.clinic.name if a.clinic else "Clinic",
                 doctor_id=a.doctor_id,
                 doctor_name=a.doctor.user.name if (a.doctor and a.doctor.user) else "Doctor",
+                doctor_specialization=a.doctor.specialization if a.doctor else None,
                 patient_id=a.patient_id,
                 patient_name=a.patient.user.name if (a.patient and a.patient.user) else "Patient",
                 appointment_time=a.appointment_time.isoformat() + "Z",
@@ -155,6 +160,10 @@ def list_appointments(
                 symptoms_reported=a.symptoms_reported,
                 urgency_level=a.urgency_level,
                 appointment_type=a.appointment_type,
+                doctor_notes=a.notes,
+                feedback_score=a.feedback_score,
+                feedback_text=a.feedback_text,
+                feedback_submitted=bool(a.feedback_score),
                 created_at=a.created_at.isoformat() + "Z"
             )
         )

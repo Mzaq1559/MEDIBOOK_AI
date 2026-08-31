@@ -53,6 +53,7 @@ class AppointmentListItem(BaseModel):
     clinic_name: str
     doctor_id: UUID
     doctor_name: str
+    doctor_specialization: Optional[str] = None
     patient_id: UUID
     patient_name: str
     appointment_time: str
@@ -60,6 +61,10 @@ class AppointmentListItem(BaseModel):
     symptoms_reported: str
     urgency_level: str
     appointment_type: str
+    doctor_notes: Optional[str] = None
+    feedback_score: Optional[int] = None
+    feedback_text: Optional[str] = None
+    feedback_submitted: Optional[bool] = None
     created_at: str
 
 

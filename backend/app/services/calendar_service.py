@@ -100,11 +100,11 @@ def sync_appointment(appointment_id: UUID, db: Session) -> bool:
             ),
             'start': {
                 'dateTime': start_dt.isoformat(),
-                'timeZone': clinic_tz,
+                'timeZone': 'UTC',
             },
             'end': {
                 'dateTime': end_dt.isoformat(),
-                'timeZone': clinic_tz,
+                'timeZone': 'UTC',
             },
         }
 

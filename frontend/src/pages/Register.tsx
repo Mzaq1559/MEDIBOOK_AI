@@ -20,6 +20,7 @@ export const Register: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [doctorRegisteredSubmitted, setDoctorRegisteredSubmitted] = useState(false);
   const [errors, setErrors] = useState<{
     fullName?: string;
     email?: string;
@@ -81,15 +82,25 @@ export const Register: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const user = await register({
-        email: email.trim(),
-        phone: phone.trim(),
-        name: fullName.trim(),
-        password,
-        user_type: mapRegisterRoleToUserType(role),
-      });
-
-      navigate(getDashboardPath(user.userType), { replace: true });
+      if (role === 'Doctor') {
+        await register({
+          email: email.trim(),
+          phone: phone.trim(),
+          name: fullName.trim(),
+          password,
+          user_type: 'doctor',
+        });
+        setDoctorRegisteredSubmitted(true);
+      } else {
+        const user = await register({
+          email: email.trim(),
+          phone: phone.trim(),
+          name: fullName.trim(),
+          password,
+          user_type: mapRegisterRoleToUserType(role),
+        });
+        navigate(getDashboardPath(user.userType), { replace: true });
+      }
     } catch (error) {
       const { message } = parseApiError(error);
       setSubmitError(message);
@@ -102,6 +113,65 @@ export const Register: React.FC = () => {
     { key: 'Patient', label: 'Patient', icon: '👤' },
     { key: 'Doctor', label: 'Doctor', icon: '🩺' },
   ];
+
+  if (doctorRegisteredSubmitted) {
+    return (
+      <div className="min-h-[calc(100vh-140px)] flex items-center justify-center px-4 py-10 sm:py-16">
+        <div className="w-full max-w-lg">
+          <Card
+            radius="3xl"
+            shadow="md"
+            className="p-7 sm:p-10 bg-white border border-surfaceContainerHigh text-center space-y-6 animate-fadeIn"
+          >
+            <div className="w-16 h-16 rounded-3xl bg-amber-100 text-amber-800 border border-amber-200 flex items-center justify-center text-3xl mx-auto shadow-soft-sm">
+              ⏳
+            </div>
+
+            <div>
+              <span className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold uppercase px-3 py-1 rounded-pill mb-3">
+                Application Under Review
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-textPrimary tracking-tight">
+                Waiting for Administrator Verification
+              </h1>
+              <p className="text-sm text-textSecondary mt-2.5 leading-relaxed">
+                Thank you for applying, <strong>{fullName}</strong>. Your doctor application has been submitted and is currently pending review by clinic administration. Please check back in a few days.
+              </p>
+            </div>
+
+            <div className="p-4 bg-surfaceContainer rounded-2xl border border-surfaceContainerHigh text-left space-y-2 text-xs text-textSecondary">
+              <div className="flex items-center gap-2 text-textPrimary font-semibold">
+                <span>📋</span>
+                <span>What happens next?</span>
+              </div>
+              <p>1. Our clinic administration verifies your medical credentials.</p>
+              <p>2. Once verified, an approval email will be sent to <strong>{email}</strong>.</p>
+              <p>3. You can then log in to access your Doctor Clinical Portal and patient queues.</p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Button
+                variant="primary"
+                size="md"
+                className="w-full sm:w-auto"
+                onClick={() => navigate('/login')}
+              >
+                Go to Login
+              </Button>
+              <Button
+                variant="ghost"
+                size="md"
+                className="w-full sm:w-auto"
+                onClick={() => navigate('/')}
+              >
+                Return to Home
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-140px)] flex items-center justify-center px-4 py-10 sm:py-16">

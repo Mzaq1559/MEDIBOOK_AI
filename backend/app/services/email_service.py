@@ -333,3 +333,60 @@ def send_reminder(appointment_id: UUID, reminder_type: str, db: Session) -> bool
         db.rollback()
         logger.warning(f"Failed to send {reminder_type} email reminder for appointment {appointment_id}: {e}")
         return False
+
+
+def send_doctor_approval_email(doctor_email: str, doctor_name: str) -> bool:
+    """
+    Send an email notifying the doctor that their registration application has been verified and approved by the clinic administrator.
+    """
+    try:
+        if not doctor_email:
+            return False
+
+        raw_name = doctor_name or "Doctor"
+        formatted_name = raw_name if raw_name.startswith("Dr.") else f"Dr. {raw_name}"
+        login_url = f"{settings.FRONTEND_URL}/login"
+        subject = f"🎉 Doctor Application Approved: Welcome to MediBook AI, {formatted_name}"
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; background-color: #f4f6f9; color: #333; margin: 0; padding: 20px; }}
+                .container {{ max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                .header {{ background-color: #006B5F; color: #ffffff; padding: 15px; border-radius: 6px 6px 0 0; text-align: center; }}
+                .content {{ padding: 20px 0; line-height: 1.6; }}
+                .details-box {{ background-color: #f8fafc; border-left: 4px solid #006B5F; padding: 15px; margin: 15px 0; }}
+                .button {{ display: inline-block; padding: 12px 24px; background-color: #006B5F; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 15px; }}
+                .footer {{ font-size: 12px; color: #6b7280; text-align: center; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 15px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2 style="margin: 0; font-size: 20px;">MediBook AI — Doctor Application Approved</h2>
+                </div>
+                <div class="content">
+                    <p>Dear <strong>{formatted_name}</strong>,</p>
+                    <p>Congratulations! Your doctor credentials have been reviewed and approved by clinic administration.</p>
+                    <div class="details-box">
+                        <p style="margin: 5px 0;"><strong>Status:</strong> Verified & Active Physician</p>
+                        <p style="margin: 5px 0;"><strong>Email:</strong> {doctor_email}</p>
+                    </div>
+                    <p>You can now sign in to your Doctor Clinical Portal to view patient queues, manage consultation schedules, and record clinical notes.</p>
+                    <p style="text-align: center;">
+                        <a href="{login_url}" class="button" style="color: #ffffff;">Login to Doctor Portal</a>
+                    </p>
+                </div>
+                <div class="footer">
+                    <p>This is an automated notification from MediBook AI. Please do not reply directly to this email.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        return _send_email(doctor_email, subject, html_content)
+    except Exception as e:
+        logger.warning(f"Error sending doctor approval email to {doctor_email}: {e}")
+        return False
