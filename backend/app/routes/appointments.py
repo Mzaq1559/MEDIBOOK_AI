@@ -504,6 +504,23 @@ def mark_no_show(
             detail={"message": "Appointment not found", "error_code": "NOT_FOUND"}
         )
 
+    # ── Temporal validation ──────────────────────────────────────────────────
+    # A no-show can only be recorded after the appointment time has passed.
+    # Both sides are naive UTC datetimes (the project-wide convention).
+    now_utc = datetime.utcnow()
+    if appt.appointment_time >= now_utc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": (
+                    "An appointment cannot be marked as no-show before its "
+                    "scheduled date and time."
+                ),
+                "error_code": "APPOINTMENT_NOT_YET_PASSED",
+            },
+        )
+    # ── End temporal validation ──────────────────────────────────────────────
+
     appt.status = "no_show"
     appt.updated_at = datetime.utcnow()
 
