@@ -28,6 +28,26 @@ from integrations import google_calendar, n8n_webhook, reminders
 
 logger = logging.getLogger("medibook.ai.tools")
 
+import time
+import uuid
+
+_PROPOSALS = {}
+
+def _create_proposal(session: dict[str, Any], p_type: str, patient_id: str, data: dict[str, Any], summary: str) -> str:
+    pid = str(uuid.uuid4())
+    _PROPOSALS[pid] = {
+        "id": pid,
+        "type": p_type,
+        "patient_id": patient_id,
+        "session_id": session.get("conversation_id"),
+        "data": data,
+        "summary": summary,
+        "created_at": time.time(),
+        "used": False
+    }
+    return pid
+
+
 LOGIN_REQUIRED = "Please sign in so I can access your patient record and appointments."
 
 # ---------------------------------------------------------------------------
@@ -58,7 +78,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "reschedule_appointment",
+            "name": "propose_reschedule_appointment",
             "description": (
                 "Move an existing appointment to a new date/time. "
                 "Confirm with the patient before calling. Returns bool success."
@@ -82,7 +102,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "cancel_appointment",
+            "name": "propose_cancel_appointment",
             "description": (
                 "Cancel an existing appointment. Confirm with the patient before calling. "
                 "Returns bool success."
@@ -102,7 +122,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "book_appointment",
+            "name": "propose_book_appointment",
             "description": (
                 "Create a new appointment. Confirm doctor, time, and symptoms with the "
                 "patient before calling. Returns Appointment."
@@ -128,6 +148,26 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     },
                 },
                 "required": ["patient_id", "doctor_id", "datetime", "symptoms"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_confirmed_action",
+            "description": (
+                "Executes a previously proposed action. Call this ONLY after the user explicitly "
+                "confirms the proposal summary."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "proposal_id": {
+                        "type": "string",
+                        "description": "The ID of the proposal to execute",
+                    }
+                },
+                "required": ["proposal_id"],
             },
         },
     },
@@ -221,16 +261,17 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 REQUIRED_PARAMS: dict[str, list[str]] = {
     "get_patient_appointments": ["patient_id"],
-    "reschedule_appointment": ["appointment_id", "new_datetime"],
-    "cancel_appointment": ["appointment_id"],
-    "book_appointment": ["patient_id", "doctor_id", "datetime", "symptoms"],
+    "propose_reschedule_appointment": ["appointment_id", "new_datetime"],
+    "execute_confirmed_action": ["proposal_id"],
+    "propose_cancel_appointment": ["appointment_id"],
+    "propose_book_appointment": ["patient_id", "doctor_id", "datetime", "symptoms"],
     "get_doctors_by_specialty": ["specialty"],
     "get_availability": ["doctor_id", "date"],
     "get_patient_info": ["patient_id"],
     "retrieve_medical_knowledge": ["symptoms"],
 }
 
-WRITE_TOOLS = frozenset({"book_appointment", "reschedule_appointment", "cancel_appointment"})
+WRITE_TOOLS = frozenset({"propose_book_appointment", "propose_reschedule_appointment", "propose_cancel_appointment", "execute_confirmed_action"})
 
 
 def tools_prompt_listing() -> str:
@@ -294,8 +335,8 @@ def build_system_prompt() -> str:
         "\n"
         "Rules:\n"
         "- Use tools for live clinic data. Do not invent doctors, slots, or appointment IDs.\n"
-        "- For booking, reschedule, and cancel: confirm in one short sentence, then wait for "
-        "a clear yes before calling the write tool.\n"
+        "- For booking, reschedule, and cancel: call propose_X first, state the summary, wait for "
+        "explicit affirmative text, then call execute_confirmed_action.\n"
         "- If the patient is not logged in, ask them to sign in instead of guessing IDs.\n"
         "- You only help with this clinic's appointments and information.\n"
         "- Do NOT use markdown symbols (**) in responses.\n"
@@ -518,7 +559,7 @@ def tool_get_patient_info(
     return {"ok": True, "patient": safe}
 
 
-def tool_book_appointment(
+def tool_propose_book_appointment(
     session: dict[str, Any],
     args: dict[str, Any],
     auth: Optional[str],
@@ -551,52 +592,18 @@ def tool_book_appointment(
         "urgency_level": session.get("urgency_level") or "normal",
         "appointment_type": "in_person",
     }
-    try:
-        created = backend_client.create_appointment(payload, auth or "")
-    except backend_client.BackendError as exc:
-        return {"ok": False, "error": _booking_error(exc)}
-    appt_id = created.get("appointment_id") or created.get("id")
-    session["appointment_booked"] = appt_id
-    session["status"] = "completed"
-    try:
-        cal_p = {
-            "appointment_id": str(appt_id),
-            "doctor_name": doc["name"],
-            "patient_name": "Patient",
-            "clinic_name": doc["clinic_name"],
-            "clinic_address": doc["clinic_address"],
-            "appointment_time": slot["timestamp"],
-            "duration_minutes": 30,
-            "symptoms_reported": symptoms,
-        }
-        cid = google_calendar.create_calendar_event(cal_p)
-        if cid:
-            session["google_calendar_event_id"] = cid
-        n8n_p = dict(cal_p)
-        n8n_p["patient_id"] = patient_id
-        n8n_p["doctor_id"] = doc["doctor_id"]
-        n8n_p["clinic_id"] = created.get("clinic_id")
-        n8n_p["urgency_level"] = payload["urgency_level"]
-        n8n_p["google_calendar_event_id"] = session.get("google_calendar_event_id")
-        n8n_webhook.dispatch_appointment_created(n8n_p)
-    except Exception as exc:
-        logger.warning("Integration sync after booking failed: %s", exc)
-    appointment = {
-        "appointment_id": str(appt_id),
-        "doctor_id": doc["doctor_id"],
-        "doctor_name": doc["name"],
-        "datetime": slot.get("label") or slot.get("timestamp"),
-        "symptoms": symptoms,
-        "status": created.get("status") or "scheduled",
-    }
+    
+    summary = f"Book appointment with {doc['name']} on {slot.get('label') or slot.get('timestamp')}."
+    pid = _create_proposal(session, "book", patient_id, {"payload": payload, "doc": doc, "slot": slot, "symptoms": symptoms}, summary)
+    
     ui = _merge_ui(
         session,
-        {"booking": {"doctor": doc, "selectedSlot": slot.get("label"), "isConfirmed": True}},
+        {"booking": {"doctor": doc, "selectedSlot": slot.get("label"), "isConfirmed": False}},
     )
-    return {"ok": True, "appointment": appointment, "ui_data": ui}
+    return {"ok": True, "proposal_id": pid, "summary": summary, "ui_data": ui}
 
 
-def tool_reschedule_appointment(
+def tool_propose_reschedule_appointment(
     session: dict[str, Any],
     args: dict[str, Any],
     auth: Optional[str],
@@ -625,39 +632,18 @@ def tool_reschedule_appointment(
             "error": f"Requested slot '{new_datetime}' is not available. Available slots: {available}",
             "success": False,
         }
-    try:
-        updated = backend_client.reschedule_appointment(appointment_id, slot["timestamp"], auth or "")
-    except backend_client.BackendError as exc:
-        return {"ok": False, "error": _booking_error(exc), "success": False}
-    cal_id = session.get("google_calendar_event_id") or (updated or {}).get("google_calendar_event_id")
-    if cal_id:
-        try:
-            google_calendar.update_calendar_event(cal_id, slot["timestamp"])
-        except Exception:
-            pass
-    try:
-        rm = reminders.calculate_reminder_times(slot["timestamp"]) if slot.get("timestamp") else {}
-        n8n_webhook.dispatch_appointment_rescheduled(
-            {
-                "appointment_id": appointment_id,
-                "patient_id": patient_id,
-                "doctor_id": doc_id,
-                "new_appointment_time": slot["timestamp"],
-                "previous_appointment_time": (appt or {}).get("appointment_time"),
-                "new_reminder_time_1": rm.get("reminder_time_1"),
-                "new_reminder_time_2": rm.get("reminder_time_2"),
-            }
-        )
-    except Exception:
-        pass
+        
+    summary = f"Reschedule appointment with {doc['name']} to {slot.get('label') or slot.get('timestamp')}."
+    pid = _create_proposal(session, "reschedule", patient_id, {"appointment_id": appointment_id, "slot": slot, "appt": appt, "doc_id": doc_id, "doc": doc}, summary)
+    
     ui = _merge_ui(
         session,
         {"reschedule": {"doctor": doc, "oldSlot": (appt or {}).get("appointment_time"), "newSlot": slot.get("label")}},
     )
-    return {"ok": True, "success": True, "new_datetime": slot.get("label"), "ui_data": ui}
+    return {"ok": True, "success": True, "proposal_id": pid, "summary": summary, "ui_data": ui}
 
 
-def tool_cancel_appointment(
+def tool_propose_cancel_appointment(
     session: dict[str, Any],
     args: dict[str, Any],
     auth: Optional[str],
@@ -673,12 +659,148 @@ def tool_cancel_appointment(
     _appt, err = _find_owned_appointment(session, appointment_id, patient_id, auth or "")
     if err:
         return {"ok": False, "error": err, "success": False}
-    try:
-        backend_client.cancel_appointment(appointment_id, auth or "")
-    except backend_client.BackendError as exc:
-        return {"ok": False, "error": _booking_error(exc), "success": False}
-    return {"ok": True, "success": True}
+        
+    doc_id = str((_appt or {}).get("doctor_id") or "")
+    doc = _load_doctor(session, doc_id) if doc_id else None
+    
+    summary = f"Cancel appointment{' with ' + doc['name'] if doc else ''}."
+    pid = _create_proposal(session, "cancel", patient_id, {"appointment_id": appointment_id}, summary)
+        
+    return {"ok": True, "success": True, "proposal_id": pid, "summary": summary}
 
+
+
+
+def tool_execute_confirmed_action(
+    session: dict[str, Any],
+    args: dict[str, Any],
+    auth: Optional[str],
+) -> dict[str, Any]:
+    metrics.inc("agent_tool_calls_total")
+    proposal_id = str(args.get("proposal_id") or "")
+    proposal = _PROPOSALS.get(proposal_id)
+    
+    if not proposal:
+        return {"ok": False, "error": "Proposal not found or invalid ID."}
+        
+    if proposal.get("used"):
+        return {"ok": False, "error": "This proposal has already been executed."}
+        
+    if time.time() - proposal.get("created_at", 0) > 300: # 5 minutes TTL
+        return {"ok": False, "error": "This proposal has expired. Please propose the action again."}
+        
+    patient_id = _session_patient_id(session, None)
+    if not patient_id or proposal.get("patient_id") != patient_id:
+        return {"ok": False, "error": "Patient ID mismatch. Cannot execute this proposal."}
+        
+    if proposal.get("session_id") != session.get("conversation_id"):
+        return {"ok": False, "error": "Session mismatch. Cannot execute this proposal."}
+
+    proposal["used"] = True
+    p_type = proposal["type"]
+    data = proposal["data"]
+    
+    if p_type == "book":
+        payload = data["payload"]
+        doc = data["doc"]
+        slot = data["slot"]
+        symptoms = data["symptoms"]
+        
+        try:
+            created = backend_client.create_appointment(payload, auth or "")
+        except backend_client.BackendError as exc:
+            return {"ok": False, "error": _booking_error(exc)}
+            
+        appt_id = created.get("appointment_id") or created.get("id")
+        session["appointment_booked"] = appt_id
+        session["status"] = "completed"
+        
+        try:
+            cal_p = {
+                "appointment_id": str(appt_id),
+                "doctor_name": doc["name"],
+                "patient_name": "Patient",
+                "clinic_name": doc["clinic_name"],
+                "clinic_address": doc["clinic_address"],
+                "appointment_time": slot["timestamp"],
+                "duration_minutes": 30,
+                "symptoms_reported": symptoms,
+            }
+            cid = google_calendar.create_calendar_event(cal_p)
+            if cid:
+                session["google_calendar_event_id"] = cid
+            n8n_p = dict(cal_p)
+            n8n_p["patient_id"] = patient_id
+            n8n_p["doctor_id"] = doc["doctor_id"]
+            n8n_p["clinic_id"] = created.get("clinic_id")
+            n8n_p["urgency_level"] = payload["urgency_level"]
+            n8n_p["google_calendar_event_id"] = session.get("google_calendar_event_id")
+            n8n_webhook.dispatch_appointment_created(n8n_p)
+        except Exception as exc:
+            logger.warning("Integration sync after booking failed: %s", exc)
+            
+        appointment = {
+            "appointment_id": str(appt_id),
+            "doctor_id": doc["doctor_id"],
+            "doctor_name": doc["name"],
+            "datetime": slot.get("label") or slot.get("timestamp"),
+            "symptoms": symptoms,
+            "status": created.get("status") or "scheduled",
+        }
+        ui = _merge_ui(
+            session,
+            {"booking": {"doctor": doc, "selectedSlot": slot.get("label"), "isConfirmed": True}},
+        )
+        return {"ok": True, "appointment": appointment, "ui_data": ui, "summary": "Booking executed."}
+        
+    elif p_type == "reschedule":
+        appointment_id = data["appointment_id"]
+        slot = data["slot"]
+        appt = data.get("appt")
+        doc_id = data.get("doc_id")
+        
+        try:
+            updated = backend_client.reschedule_appointment(appointment_id, slot["timestamp"], auth or "")
+        except backend_client.BackendError as exc:
+            return {"ok": False, "error": _booking_error(exc), "success": False}
+            
+        cal_id = session.get("google_calendar_event_id") or (updated or {}).get("google_calendar_event_id")
+        if cal_id:
+            try:
+                google_calendar.update_calendar_event(cal_id, slot["timestamp"])
+            except Exception:
+                pass
+        try:
+            rm = reminders.calculate_reminder_times(slot["timestamp"]) if slot.get("timestamp") else {}
+            n8n_webhook.dispatch_appointment_rescheduled(
+                {
+                    "appointment_id": appointment_id,
+                    "patient_id": patient_id,
+                    "doctor_id": doc_id,
+                    "new_appointment_time": slot["timestamp"],
+                    "previous_appointment_time": (appt or {}).get("appointment_time"),
+                    "new_reminder_time_1": rm.get("reminder_time_1"),
+                    "new_reminder_time_2": rm.get("reminder_time_2"),
+                }
+            )
+        except Exception:
+            pass
+            
+        ui = _merge_ui(
+            session,
+            {"reschedule": {"doctor": data.get("doc"), "oldSlot": (appt or {}).get("appointment_time"), "newSlot": slot.get("label"), "isConfirmed": True}},
+        )
+        return {"ok": True, "success": True, "new_datetime": slot.get("label"), "ui_data": ui, "summary": "Reschedule executed."}
+
+    elif p_type == "cancel":
+        appointment_id = data["appointment_id"]
+        try:
+            backend_client.cancel_appointment(appointment_id, auth or "")
+        except backend_client.BackendError as exc:
+            return {"ok": False, "error": _booking_error(exc), "success": False}
+        return {"ok": True, "success": True, "summary": "Cancellation executed."}
+
+    return {"ok": False, "error": "Unknown proposal type."}
 
 def tool_retrieve_medical_knowledge(
     session: dict[str, Any],
@@ -719,9 +841,10 @@ def tool_retrieve_medical_knowledge(
 
 HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "get_patient_appointments": tool_get_patient_appointments,
-    "reschedule_appointment": tool_reschedule_appointment,
-    "cancel_appointment": tool_cancel_appointment,
-    "book_appointment": tool_book_appointment,
+    "propose_reschedule_appointment": tool_propose_reschedule_appointment,
+    "propose_cancel_appointment": tool_propose_cancel_appointment,
+    "propose_book_appointment": tool_propose_book_appointment,
+    "execute_confirmed_action": tool_execute_confirmed_action,
     "get_doctors_by_specialty": tool_get_doctors_by_specialty,
     "get_availability": tool_get_availability,
     "get_patient_info": tool_get_patient_info,
@@ -753,7 +876,7 @@ def execute_tool(
         return {"ok": False, "error": f"Unknown tool '{name}'"}
     args = _parse_arguments(arguments)
     required = REQUIRED_PARAMS.get(name) or []
-    if name in ("get_patient_appointments", "book_appointment", "get_patient_info"):
+    if name in ("get_patient_appointments", "propose_book_appointment", "get_patient_info"):
         if not args.get("patient_id") and session.get("patient_id"):
             args["patient_id"] = str(session["patient_id"])
     if name == "get_availability" and not args.get("date"):
