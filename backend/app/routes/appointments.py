@@ -246,6 +246,92 @@ def bulk_cancel_appointments(
 
 
 @router.get(
+    "/search",
+    response_model=AppointmentListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Search Patient Appointments",
+    description=(
+        "Search the authenticated patient's own appointments with optional filters: "
+        "doctor_name (partial, case-insensitive), status (exact), date_from/date_to "
+        "(inclusive ISO date range on appointment_time). "
+        "Results are sorted by appointment_time ascending."
+    )
+)
+def search_patient_appointments(
+    doctor_name: Optional[str] = Query(None, description="Partial, case-insensitive doctor name"),
+    status_filter: Optional[str] = Query(None, alias="status", description="Exact appointment status (e.g. scheduled, cancelled, completed)"),
+    date_from: Optional[str] = Query(None, description="Start date inclusive (ISO format, e.g. 2026-09-01)"),
+    date_to: Optional[str] = Query(None, description="End date inclusive (ISO format, e.g. 2026-09-30)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Resolve the patient record — only patients may use this route.
+    patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
+    if not patient:
+        return AppointmentListResponse(total=0, limit=500, offset=0, appointments=[])
+
+    query = (
+        db.query(Appointment)
+        .filter(Appointment.patient_id == patient.id)
+    )
+
+    if doctor_name:
+        # Case-insensitive partial match against the related User.name column.
+        query = (
+            query
+            .join(Appointment.doctor)   # Doctor
+            .join(Doctor.user)          # User
+            .filter(User.name.ilike(f"%{doctor_name}%"))
+        )
+
+    if status_filter:
+        query = query.filter(Appointment.status == status_filter)
+
+    if date_from:
+        try:
+            df = date_parser.parse(date_from).replace(tzinfo=None)
+            query = query.filter(Appointment.appointment_time >= df)
+        except Exception:
+            pass
+
+    if date_to:
+        try:
+            dt = date_parser.parse(date_to).replace(tzinfo=None)
+            # Inclusive upper bound: extend to end of the given day if no time specified.
+            from datetime import time as dt_time
+            if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+                dt = datetime.combine(dt.date(), dt_time(23, 59, 59))
+            query = query.filter(Appointment.appointment_time <= dt)
+        except Exception:
+            pass
+
+    appts = query.order_by(Appointment.appointment_time.asc()).all()
+    total = len(appts)
+
+    items: List[AppointmentListItem] = []
+    for a in appts:
+        items.append(
+            AppointmentListItem(
+                appointment_id=a.id,
+                clinic_id=a.clinic_id,
+                clinic_name=a.clinic.name if a.clinic else "Clinic",
+                doctor_id=a.doctor_id,
+                doctor_name=a.doctor.user.name if (a.doctor and a.doctor.user) else "Doctor",
+                patient_id=a.patient_id,
+                patient_name=a.patient.user.name if (a.patient and a.patient.user) else "Patient",
+                appointment_time=a.appointment_time.isoformat() + "Z",
+                status=a.status,
+                symptoms_reported=a.symptoms_reported,
+                urgency_level=a.urgency_level,
+                appointment_type=a.appointment_type,
+                created_at=a.created_at.isoformat() + "Z"
+            )
+        )
+
+    return AppointmentListResponse(total=total, limit=500, offset=0, appointments=items)
+
+
+@router.get(
     "/{appointment_id}",
     response_model=AppointmentDetailResponse,
     status_code=status.HTTP_200_OK,
