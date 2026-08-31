@@ -72,13 +72,19 @@ function mapApiResponseToBotMessage(
 
 export const Chat: React.FC = () => {
   const { currentUser } = useAuth();
-  const userName = currentUser?.name?.split(',')[0]?.split(' ')[0] || 'there';
+  const rawName = (currentUser?.name || '').trim();
+  let userName = 'there';
+  if (rawName.includes(',')) {
+    userName = rawName.split(',')[1]?.trim().split(/\s+/)[0] || rawName.split(',')[0].split(/\s+/)[0] || 'there';
+  } else if (rawName) {
+    userName = rawName.split(/\s+/)[0];
+  }
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'msg-welcome',
       sender: 'bot',
-      text: `Hello ${userName}! I'm your MediBook AI Health Assistant. How can I help you today? You can describe symptoms to book an appointment, or ask to reschedule/cancel an existing one.`,
+      text: `Hi ${userName}! How can I help you today?`,
       timestamp: 'Just now',
     },
   ]);

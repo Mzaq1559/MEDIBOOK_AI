@@ -10,6 +10,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from app import groq_client
+from app.patient_context import load_patient_context
 from app.response_format import lists_appointment_details, strip_markdown
 from app.schemas import MessageItem
 from app.symptom_triage import EMERGENCY_ALERT, is_emergency
@@ -99,6 +100,13 @@ def _assistant_message_dict(message: Any) -> dict[str, Any]:
     return payload
 
 
+def _default_greeting(session: dict[str, Any]) -> str:
+    name = str(session.get("patient_first_name") or "").strip()
+    if name:
+        return f"Hi {name}! How can I help you today?"
+    return "How can I help you today?"
+
+
 def _next_action_from_ui(session: dict[str, Any], ui_data: dict[str, Any], bot: str) -> str:
     if session.get("appointment_booked") and "confirmed" in (bot or "").lower():
         return "appointment_booked"
@@ -116,9 +124,13 @@ def _next_action_from_ui(session: dict[str, Any], ui_data: dict[str, Any], bot: 
 def run_agent_loop(
     session: dict[str, Any],
     authorization: Optional[str],
+    language: str = "english",
 ) -> tuple[str, dict[str, Any]]:
     """Send history + tools to Groq, execute tool calls, repeat until a final reply."""
     messages: list[dict[str, Any]] = [{"role": "system", "content": build_system_prompt()}]
+    patient_context = load_patient_context(session, authorization, language)
+    if patient_context:
+        messages.append({"role": "system", "content": patient_context})
     if session.get("patient_id"):
         messages.append(
             {
@@ -140,13 +152,13 @@ def run_agent_loop(
             messages=messages,
             tools=TOOL_DEFINITIONS,
             tool_choice="auto",
-            temperature=0.2,
+            temperature=0.4,
         )
         tool_calls = getattr(response_message, "tool_calls", None) or []
         content = (getattr(response_message, "content", None) or "").strip()
 
         if not tool_calls:
-            bot = strip_markdown(content or "How can I help you today?")
+            bot = strip_markdown(content or _default_greeting(session))
             break
 
         messages.append(_assistant_message_dict(response_message))
@@ -167,7 +179,7 @@ def run_agent_loop(
         else:
             continue
     else:
-        bot = strip_markdown(content or "I gathered the information above. How would you like to continue?")
+        bot = strip_markdown(content or "I've got what I need — what would you like to do next?")
 
     if lists_appointment_details(bot) and ui_data.get("appointments"):
         ui_data = dict(ui_data)
@@ -216,7 +228,7 @@ def handle_message(
         }
 
     try:
-        bot, ui_data = run_agent_loop(session, authorization)
+        bot, ui_data = run_agent_loop(session, authorization, language=language)
     except groq_client.LLMError:
         bot = groq_client.LLM_FALLBACK
         ui_data = dict(session.get("last_ui_data") or {})

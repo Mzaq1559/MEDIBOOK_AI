@@ -117,7 +117,7 @@ def reschedule_appointment(appointment_id: str, appointment_time: str, authoriza
 def fetch_patient_appointments(
     patient_id: str,
     authorization: str,
-    status_filter: str = "scheduled",
+    status_filter: Optional[str] = "scheduled",
 ) -> list[dict[str, Any]]:
     """Fetch a patient's appointments. Returns a list of appointment dicts."""
     params: dict[str, Any] = {"patient_id": patient_id, "limit": 20}
