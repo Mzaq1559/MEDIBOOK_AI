@@ -28,19 +28,44 @@ interface ChatMessage {
   nextAction?: string | null;
 }
 
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/gs, '$1')
+    .replace(/__(.+?)__/gs, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*/g, '')
+    .replace(/__/g, '')
+    .trim();
+}
+
+function listsAppointmentDetails(text?: string): boolean {
+  if (!text) return false;
+  const cleaned = stripMarkdown(text).toLowerCase();
+  const hasDoctor = /\bdoctor\s*:/.test(cleaned);
+  const hasWhen = /\b(date|time|date\s*&\s*time)\s*:/.test(cleaned);
+  const hasClinic = /\bclinic\s*:/.test(cleaned);
+  const hasReason = /\breason(\s+noted)?\s*:/.test(cleaned);
+  return hasDoctor && (hasWhen || hasClinic || hasReason);
+}
+
 function mapApiResponseToBotMessage(
   response: Awaited<ReturnType<typeof sendChatMessage>>
 ): Omit<ChatMessage, 'id' | 'sender'> {
   const isEmergency = response.next_action === 'emergency_redirect';
   const requiresLogin = response.next_action === 'waiting_for_login';
+  const text = response.bot_message ? stripMarkdown(response.bot_message) : response.bot_message;
+  const uiData = response.ui_data ? { ...response.ui_data } : response.ui_data;
+  if (listsAppointmentDetails(text) && uiData?.appointments) {
+    delete uiData.appointments;
+  }
 
   return {
-    text: response.bot_message,
+    text,
     timestamp: formatChatTimestamp(response.timestamp),
     isEmergency,
     requiresLogin,
     optionItems: response.options.length > 0 ? response.options : undefined,
-    uiData: response.ui_data,
+    uiData,
     nextAction: response.next_action,
   };
 }
@@ -289,7 +314,9 @@ export const Chat: React.FC = () => {
                     </div>
                   )}
 
-                  {msg.uiData?.appointments && msg.uiData.appointments.length > 0 && (
+                  {msg.uiData?.appointments &&
+                    msg.uiData.appointments.length > 0 &&
+                    !listsAppointmentDetails(msg.text) && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
                       {msg.uiData.appointments.map((appt) => (
                         <AppointmentCard

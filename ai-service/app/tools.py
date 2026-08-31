@@ -253,6 +253,16 @@ def build_system_prompt() -> str:
         "- If the patient is not logged in, ask them to sign in instead of guessing IDs.\n"
         "- Never diagnose. You may suggest a specialty and offer to book.\n"
         "- You only help with this clinic's appointments and information.\n"
+        "- Write plain text only. Do NOT use markdown symbols such as ** or ## in responses.\n"
+        "\n"
+        "When displaying appointment information, format cleanly:\n"
+        "\n"
+        "Doctor: Dr. Tariq Mahmood\n"
+        "Date & Time: 27 August 2026 at 10:00 AM\n"
+        "Clinic: City Health Clinic\n"
+        "Reason: head burnt yesterday no worse\n"
+        "\n"
+        "Do NOT use markdown symbols (**) in responses.\n"
     )
 
 

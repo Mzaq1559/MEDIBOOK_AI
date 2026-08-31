@@ -10,6 +10,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from app import groq_client
+from app.response_format import lists_appointment_details, strip_markdown
 from app.schemas import MessageItem
 from app.symptom_triage import EMERGENCY_ALERT, is_emergency
 from app.tools import TOOL_DEFINITIONS, build_system_prompt, execute_tool
@@ -145,7 +146,7 @@ def run_agent_loop(
         content = (getattr(response_message, "content", None) or "").strip()
 
         if not tool_calls:
-            bot = content or "How can I help you today?"
+            bot = strip_markdown(content or "How can I help you today?")
             break
 
         messages.append(_assistant_message_dict(response_message))
@@ -166,7 +167,13 @@ def run_agent_loop(
         else:
             continue
     else:
-        bot = content or "I gathered the information above. How would you like to continue?"
+        bot = strip_markdown(content or "I gathered the information above. How would you like to continue?")
+
+    if lists_appointment_details(bot) and ui_data.get("appointments"):
+        ui_data = dict(ui_data)
+        ui_data.pop("appointments", None)
+        if isinstance(session.get("last_ui_data"), dict):
+            session["last_ui_data"].pop("appointments", None)
 
     return bot, ui_data
 
@@ -218,6 +225,12 @@ def handle_message(
         bot = groq_client.LLM_FALLBACK
         ui_data = dict(session.get("last_ui_data") or {})
 
+    bot = strip_markdown(bot)
+    if lists_appointment_details(bot) and ui_data.get("appointments"):
+        ui_data = dict(ui_data)
+        ui_data.pop("appointments", None)
+        if isinstance(session.get("last_ui_data"), dict):
+            session["last_ui_data"].pop("appointments", None)
     action = _next_action_from_ui(session, ui_data, bot)
     append_msg(session, "assistant", bot, _utc_now())
 
