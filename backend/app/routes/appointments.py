@@ -24,6 +24,7 @@ from app.schemas.appointment import (
     AppointmentDetailResponse,
     AppointmentRescheduleRequest, AppointmentRescheduleResponse,
     AppointmentCancelResponse,
+    BulkCancelRequest, BulkCancelResponse,
     AppointmentCompleteRequest, AppointmentCompleteResponse,
     AppointmentNoShowResponse,
     AppointmentFeedbackRequest, AppointmentFeedbackResponse
@@ -164,6 +165,83 @@ def list_appointments(
         limit=limit,
         offset=offset,
         appointments=items
+    )
+
+
+@router.post(
+    "/bulk-cancel",
+    response_model=BulkCancelResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Bulk Cancel Appointments",
+    description="Cancel multiple scheduled appointments for a patient in a single request."
+)
+def bulk_cancel_appointments(
+    request: Request,
+    payload: BulkCancelRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Patients may only cancel their own appointments; resolve patient record.
+    patient = db.query(Patient).filter(
+        (Patient.id == payload.patient_id) | (Patient.user_id == payload.patient_id)
+    ).first()
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Patient not found", "error_code": "NOT_FOUND"}
+        )
+
+    # Patients may only act on their own records.
+    if current_user.user_type == "patient" and patient.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Access forbidden", "error_code": "FORBIDDEN"}
+        )
+
+    # Fetch only schedulable appointments that belong to this patient.
+    appointments = db.query(Appointment).filter(
+        Appointment.id.in_(payload.appointment_ids),
+        Appointment.patient_id == patient.id,
+        Appointment.status == "scheduled"
+    ).all()
+
+    if not appointments:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "No cancellable appointments found", "error_code": "NOT_FOUND"}
+        )
+
+    cancelled_ids = []
+    now = datetime.utcnow()
+    ip = request.client.host if request.client else None
+
+    for apt in appointments:
+        apt.status = "cancelled"
+        apt.updated_at = now
+        cancelled_ids.append(apt.id)
+        log_audit_event(
+            db=db,
+            action="cancelled_appointment",
+            table_name="appointments",
+            record_id=apt.id,
+            user_id=current_user.id,
+            new_values={"status": "cancelled"},
+            ip_address=ip
+        )
+
+    db.commit()
+
+    requested_count = len(payload.appointment_ids)
+    cancelled_count = len(cancelled_ids)
+    skipped_count = requested_count - cancelled_count
+
+    return BulkCancelResponse(
+        success=True,
+        cancelled_count=cancelled_count,
+        cancelled_ids=cancelled_ids,
+        skipped_count=skipped_count,
+        message=f"Cancelled {cancelled_count} appointment(s)"
+        + (f"; {skipped_count} skipped (not found or already cancelled)" if skipped_count else "")
     )
 
 

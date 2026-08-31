@@ -113,6 +113,19 @@ class AppointmentCancelResponse(BaseModel):
     cancelled_at: str
 
 
+class BulkCancelRequest(BaseModel):
+    patient_id: UUID
+    appointment_ids: List[UUID] = Field(..., min_length=1, max_length=100)
+
+
+class BulkCancelResponse(BaseModel):
+    success: bool
+    cancelled_count: int
+    cancelled_ids: List[UUID]
+    skipped_count: int
+    message: str
+
+
 class AppointmentCompleteRequest(BaseModel):
     notes: Optional[str] = None
     prescription_id: Optional[UUID] = None
