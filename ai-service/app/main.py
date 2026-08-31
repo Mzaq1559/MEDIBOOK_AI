@@ -14,6 +14,7 @@ from slowapi.util import get_remote_address
 from app.chatbot import get_session, handle_message
 from app.config import settings
 from app.groq_client import LLMError, LLM_FALLBACK
+from app.response_format import lists_appointment_details, strip_markdown
 from app.rag.config import rag_settings
 from app.rag.embeddings import embedding_status
 from app.rag.metrics import metrics as rag_metrics
@@ -199,14 +200,20 @@ def send_chat_message(
         except (ValueError, TypeError):
             patient_uuid = payload.patient_id
 
+    bot_message = strip_markdown(result["bot_message"])
+    ui_data = result.get("ui_data")
+    if isinstance(ui_data, dict) and lists_appointment_details(bot_message):
+        ui_data = dict(ui_data)
+        ui_data.pop("appointments", None)
+
     return ChatMessageResponse(
         conversation_id=result["conversation_id"],
         patient_id=patient_uuid,
         timestamp=result["timestamp"],
-        bot_message=result["bot_message"],
+        bot_message=bot_message,
         next_action=result["next_action"],
         options=result["options"],
-        ui_data=result.get("ui_data"),
+        ui_data=ui_data,
         conversation_history=result["conversation_history"],
     )
 
