@@ -362,7 +362,13 @@ export const Chat: React.FC = () => {
                       </div>
                     )}
 
-                  {msg.uiData?.booking && (
+                  {msg.uiData?.booking &&
+                    // Show the card when the agent is actively awaiting confirmation,
+                    // OR when the proposal has already reached a terminal state
+                    // (executed / expired / failed) so the history card remains visible.
+                    (msg.nextAction === 'waiting_for_confirm' ||
+                      (msg.uiData.booking.status &&
+                        msg.uiData.booking.status !== 'pending')) && (
                     <ConfirmationCard
                       booking={msg.uiData.booking}
                       isLoading={isBookingInProgress}
@@ -372,7 +378,10 @@ export const Chat: React.FC = () => {
                     />
                   )}
 
-                  {msg.uiData?.reschedule && (
+                  {msg.uiData?.reschedule &&
+                    (msg.nextAction === 'waiting_for_reschedule_confirm' ||
+                      (msg.uiData.reschedule.status &&
+                        msg.uiData.reschedule.status !== 'pending')) && (
                     <RescheduleConfirmation
                       reschedule={msg.uiData.reschedule}
                       isLoading={isBookingInProgress}

@@ -34,16 +34,23 @@ export interface ParsedAppointment {
   symptoms_reported: string
 }
 
+export type ProposalStatus = 'pending' | 'executed' | 'expired' | 'failed'
+
 export interface ParsedBookingSummary {
   doctor: ParsedDoctorOption
   selectedSlot: string
+  /** @deprecated Use `status` instead */
   isConfirmed: boolean
+  proposal_id?: string | null
+  status?: ProposalStatus | null
 }
 
 export interface ParsedRescheduleSummary {
   doctor: ParsedDoctorOption
   oldSlot: string
   newSlot: string
+  proposal_id?: string | null
+  status?: ProposalStatus | null
 }
 
 export interface TriageSource {
