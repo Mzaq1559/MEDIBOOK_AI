@@ -64,7 +64,7 @@ function mapApiResponseToBotMessage(
   ].includes(response.next_action || '');
 
   const listReply =
-    listsAppointmentDetails(text) || response.next_action === 'show_appointments';
+    listsAppointmentDetails(text) && response.next_action !== 'show_appointments';
 
   if (listReply && uiData && !isBookingAction) {
     delete uiData.appointments;
@@ -349,14 +349,13 @@ export const Chat: React.FC = () => {
 
                   {msg.uiData?.appointments &&
                     msg.uiData.appointments.length > 0 &&
-                    msg.nextAction !== 'show_appointments' &&
-                    !listsAppointmentDetails(msg.text) && (
+                    msg.nextAction === 'show_appointments' && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
                         {msg.uiData.appointments.map((appt) => (
                           <AppointmentCard
                             key={appt.appointment_id}
                             appointment={appt}
-                            onSelect={(msg.nextAction === 'show_appointments' && msg.text?.includes('cancel') === false && msg.text?.includes('reschedule') === false) ? undefined : (id) => handleAction("Selected Appointment", id)}
+                            onSelect={undefined}
                             disabled={isBotTyping}
                           />
                         ))}
