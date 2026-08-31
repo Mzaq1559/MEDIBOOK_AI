@@ -196,6 +196,27 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "retrieve_medical_knowledge",
+            "description": (
+                "Evaluate patient symptoms or answer medical questions. "
+                "Retrieves clinical triage guidelines and recommends a specialist. "
+                "Returns TriageResult with bot_message, urgency, and specialty."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symptoms": {
+                        "type": "string",
+                        "description": "The patient's symptom description or medical question",
+                    }
+                },
+                "required": ["symptoms"],
+            },
+        },
+    },
 ]
 
 REQUIRED_PARAMS: dict[str, list[str]] = {
@@ -206,6 +227,7 @@ REQUIRED_PARAMS: dict[str, list[str]] = {
     "get_doctors_by_specialty": ["specialty"],
     "get_availability": ["doctor_id", "date"],
     "get_patient_info": ["patient_id"],
+    "retrieve_medical_knowledge": ["symptoms"],
 }
 
 WRITE_TOOLS = frozenset({"book_appointment", "reschedule_appointment", "cancel_appointment"})
@@ -259,7 +281,7 @@ def build_system_prompt() -> str:
         "\n"
         "Your role:\n"
         "- Help patients book appointments\n"
-        "- Listen to symptoms and suggest a specialist (never diagnose)\n"
+        "- Use retrieve_medical_knowledge when a patient describes symptoms or asks a medical question. Use the tool's result to advise them.\n"
         "- Reschedule or cancel appointments\n"
         "- Answer questions about this clinic\n"
         "\n"
@@ -658,6 +680,43 @@ def tool_cancel_appointment(
     return {"ok": True, "success": True}
 
 
+def tool_retrieve_medical_knowledge(
+    session: dict[str, Any],
+    args: dict[str, Any],
+    auth: Optional[str],
+) -> dict[str, Any]:
+    metrics.inc("agent_tool_calls_total")
+    symptoms = str(args.get("symptoms") or "").strip()
+    
+    if not symptoms:
+        return {"ok": False, "error": "Symptoms are required for medical knowledge retrieval."}
+
+    from app.rag.pipeline import get_rag_pipeline
+    pipeline = get_rag_pipeline()
+    
+    history = []
+    for m in session.get("messages", [])[-4:]:
+        role = getattr(m, "role", "user")
+        message = getattr(m, "message", "")
+        history.append(f"{role}: {message}")
+    context = "\n".join(history)
+    
+    result = pipeline.triage_symptoms(
+        message=symptoms,
+        conversation_context=context,
+        request_id=session.get("conversation_id"),
+    )
+    
+    return {
+        "ok": True,
+        "bot_message": result.bot_message,
+        "specialty": result.specialty,
+        "urgency_level": result.urgency_level,
+        "needs_emergency_care": result.needs_emergency_care,
+        "confidence": result.confidence,
+    }
+
+
 HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "get_patient_appointments": tool_get_patient_appointments,
     "reschedule_appointment": tool_reschedule_appointment,
@@ -666,6 +725,7 @@ HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "get_doctors_by_specialty": tool_get_doctors_by_specialty,
     "get_availability": tool_get_availability,
     "get_patient_info": tool_get_patient_info,
+    "retrieve_medical_knowledge": tool_retrieve_medical_knowledge,
 }
 
 
