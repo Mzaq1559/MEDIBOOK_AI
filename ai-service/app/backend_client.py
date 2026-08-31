@@ -153,3 +153,21 @@ def cancel_appointment(appointment_id: str, authorization: str) -> dict[str, Any
     if res.status_code >= 400:
         raise _parse_error(res)
     return res.json()
+
+
+def get_patient_info(patient_id: str, authorization: str) -> Optional[dict[str, Any]]:
+    """Fetch a patient profile via GET /api/patients/{id}."""
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            res = client.get(
+                f"{settings.backend_base}/patients/{patient_id}",
+                headers=_headers(authorization),
+            )
+        if res.status_code >= 400:
+            logger.warning("Get patient info failed with HTTP %s", res.status_code)
+            return None
+        data = res.json()
+        return data if isinstance(data, dict) else None
+    except httpx.HTTPError:
+        logger.warning("Get patient info could not reach backend")
+        return None
