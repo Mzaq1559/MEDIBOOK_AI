@@ -73,7 +73,11 @@ def complete_with_tools(
     max_tokens: int = 800,
     retries: int = 3,
 ) -> Any:
-    """Call Groq chat completions with tool definitions. Returns choice message object."""
+    """Call Groq chat completions with tool definitions. Returns choice message object.
+
+    Do not set response_format json_object here: Groq function calling is incompatible
+    with JSON-object mode. The model returns either assistant text or tool_calls.
+    """
     last_error: Optional[Exception] = None
     create_kwargs: dict[str, Any] = {
         "model": settings.GROQ_MODEL,
