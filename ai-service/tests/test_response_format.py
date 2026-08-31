@@ -48,13 +48,13 @@ def test_lists_appointment_details_detects_inline_fields():
     assert lists_appointment_details("You have one upcoming visit.") is False
 
 
-def test_system_prompt_forbids_markdown_and_shows_plain_layout():
+def test_system_prompt_forbids_markdown_and_uses_conversational_tone():
     prompt = build_system_prompt()
     assert "Do NOT use markdown symbols (**) in responses." in prompt
-    assert "Doctor: Dr. Tariq Mahmood" in prompt
-    assert "Date & Time: 27 August 2026 at 10:00 AM" in prompt
-    assert "Clinic: City Health Clinic" in prompt
-    assert "Reason: head burnt yesterday no worse" in prompt
+    assert "experienced healthcare receptionist" in prompt
+    assert "Hi Ali! You have an appointment with Dr. Tariq on Aug 27th at 10 AM." in prompt
+    assert "Never write labeled fields" in prompt
+    assert "Date & Time: 27 August 2026 at 10:00 AM" not in prompt
 
 
 @patch("app.backend_client.fetch_patient_appointments", return_value=FAKE_APPOINTMENTS)
