@@ -26,6 +26,10 @@ services:
       dockerfile: Dockerfile
     container_name: medibook_backend
     restart: unless-stopped
+    command: >
+      sh -c "alembic upgrade head &&
+             python seeds/seed_appointments.py &&
+             uvicorn app.main:app --host 0.0.0.0 --port $${PORT:-8000}"
     ports:
       - "8000:8000"
     environment:

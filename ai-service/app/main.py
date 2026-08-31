@@ -205,6 +205,7 @@ def send_chat_message(
     if isinstance(ui_data, dict) and lists_appointment_details(bot_message):
         ui_data = dict(ui_data)
         ui_data.pop("appointments", None)
+        ui_data.pop("doctors", None)
 
     return ChatMessageResponse(
         conversation_id=result["conversation_id"],

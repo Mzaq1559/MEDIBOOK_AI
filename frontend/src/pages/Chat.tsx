@@ -55,8 +55,20 @@ function mapApiResponseToBotMessage(
   const requiresLogin = response.next_action === 'waiting_for_login';
   const text = response.bot_message ? stripMarkdown(response.bot_message) : response.bot_message;
   const uiData = response.ui_data ? { ...response.ui_data } : response.ui_data;
-  if (listsAppointmentDetails(text) && uiData?.appointments) {
+  const isBookingAction = [
+    'waiting_for_doctor_selection',
+    'waiting_for_slot_selection',
+    'waiting_for_confirm',
+    'waiting_for_reschedule_confirm',
+    'waiting_for_cancel_confirm'
+  ].includes(response.next_action || '');
+
+  const listReply =
+    listsAppointmentDetails(text) || response.next_action === 'show_appointments';
+
+  if (listReply && uiData && !isBookingAction) {
     delete uiData.appointments;
+    delete uiData.doctors;
   }
 
   return {
@@ -180,7 +192,7 @@ export const Chat: React.FC = () => {
       };
       setMessages((prev) => [...prev, userMessage]);
     }
-    
+
     if (!textToSend) setInputVal('');
 
     await callChatApi(text, optionId);
@@ -297,43 +309,50 @@ export const Chat: React.FC = () => {
                   )}
 
                   {/* Structured UI rendering based on uiData */}
-                  {msg.uiData?.doctors && msg.uiData.doctors.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-                      {msg.uiData.doctors.map((doc) => (
-                        <DoctorCard 
-                          key={doc.doctor_id} 
-                          doctor={doc} 
-                          onClick={(id) => handleAction("Selected Doctor", id)}
+                  {msg.nextAction === 'waiting_for_doctor_selection' &&
+                    msg.uiData?.doctors &&
+                    msg.uiData.doctors.length > 0 &&
+                    !listsAppointmentDetails(msg.text) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                        {msg.uiData.doctors.map((doc) => (
+                          <DoctorCard
+                            key={doc.doctor_id}
+                            doctor={doc}
+                            onClick={(id) => handleAction("Selected Doctor", id)}
+                            disabled={isBotTyping}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                  {msg.nextAction === 'waiting_for_slot_selection' &&
+                    msg.uiData?.slots &&
+                    msg.uiData.slots.length > 0 &&
+                    !listsAppointmentDetails(msg.text) && (
+                      <div className="pt-2">
+                        <TimeSlotGrid
+                          slots={msg.uiData.slots}
+                          onSelect={(ts) => handleAction("Selected Time Slot", ts)}
                           disabled={isBotTyping}
                         />
-                      ))}
-                    </div>
-                  )}
-
-                  {msg.uiData?.slots && msg.uiData.slots.length > 0 && (
-                    <div className="pt-2">
-                      <TimeSlotGrid
-                        slots={msg.uiData.slots}
-                        onSelect={(ts) => handleAction("Selected Time Slot", ts)}
-                        disabled={isBotTyping}
-                      />
-                    </div>
-                  )}
+                      </div>
+                    )}
 
                   {msg.uiData?.appointments &&
                     msg.uiData.appointments.length > 0 &&
+                    msg.nextAction !== 'show_appointments' &&
                     !listsAppointmentDetails(msg.text) && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-                      {msg.uiData.appointments.map((appt) => (
-                        <AppointmentCard
-                          key={appt.appointment_id}
-                          appointment={appt}
-                          onSelect={(msg.nextAction === 'show_appointments' && msg.text?.includes('cancel') === false && msg.text?.includes('reschedule') === false) ? undefined : (id) => handleAction("Selected Appointment", id)}
-                          disabled={isBotTyping}
-                        />
-                      ))}
-                    </div>
-                  )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                        {msg.uiData.appointments.map((appt) => (
+                          <AppointmentCard
+                            key={appt.appointment_id}
+                            appointment={appt}
+                            onSelect={(msg.nextAction === 'show_appointments' && msg.text?.includes('cancel') === false && msg.text?.includes('reschedule') === false) ? undefined : (id) => handleAction("Selected Appointment", id)}
+                            disabled={isBotTyping}
+                          />
+                        ))}
+                      </div>
+                    )}
 
                   {msg.uiData?.booking && (
                     <ConfirmationCard
