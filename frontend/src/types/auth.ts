@@ -26,6 +26,8 @@ export interface LoginResponse {
   access_token: string;
   refresh_token: string;
   expires_in: number;
+  /** patients.id returned by /auth/login for patient users */
+  patientId?: string | null;
 }
 
 export interface RegisterResponse extends LoginResponse {

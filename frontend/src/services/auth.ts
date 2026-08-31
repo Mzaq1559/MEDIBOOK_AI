@@ -38,6 +38,7 @@ function mapAuthResponse(data: LoginResponse | RegisterResponse): AuthUser {
     name: data.name,
     email: data.email,
     userType: data.user_type,
+    patientId: data.patientId ?? undefined,
   };
 }
 
