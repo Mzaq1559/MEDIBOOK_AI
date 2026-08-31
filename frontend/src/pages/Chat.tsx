@@ -312,18 +312,27 @@ export const Chat: React.FC = () => {
                   {msg.nextAction === 'waiting_for_doctor_selection' &&
                     msg.uiData?.doctors &&
                     msg.uiData.doctors.length > 0 &&
-                    !listsAppointmentDetails(msg.text) && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-                        {msg.uiData.doctors.map((doc) => (
-                          <DoctorCard
-                            key={doc.doctor_id}
-                            doctor={doc}
-                            onClick={(id) => handleAction("Selected Doctor", id)}
-                            disabled={isBotTyping}
-                          />
-                        ))}
-                      </div>
-                    )}
+                    !listsAppointmentDetails(msg.text) && (() => {
+                      const recommendedSpecialty = msg.uiData.triage?.specialty;
+                      const recommendedDoctors = recommendedSpecialty
+                        ? msg.uiData.doctors.filter(
+                            (doc) => doc.specialization.toLowerCase() === recommendedSpecialty.toLowerCase()
+                          )
+                        : msg.uiData.doctors;
+
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                          {recommendedDoctors.map((doc) => (
+                            <DoctorCard
+                              key={doc.doctor_id}
+                              doctor={doc}
+                              onClick={(id) => handleAction("Selected Doctor", id)}
+                              disabled={isBotTyping}
+                            />
+                          ))}
+                        </div>
+                      );
+                    })()}
 
                   {msg.nextAction === 'waiting_for_slot_selection' &&
                     msg.uiData?.slots &&
