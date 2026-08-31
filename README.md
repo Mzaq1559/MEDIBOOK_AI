@@ -289,7 +289,8 @@ Backend validates:
 ✓ No appointment conflict
              │
              ▼
-Proposal created
+Proposal stored in-memory
+(ai-service process, 5-min TTL)
              │
              ▼
 Patient receives:
@@ -423,7 +424,7 @@ Appointment ownership is verified by the backend before cancellation or reschedu
 
 Medical knowledge retrieval is implemented as an **agent tool**.
 
-The agent can decide when medical knowledge retrieval is useful.
+`retrieve_medical_knowledge` is registered in `TOOL_DEFINITIONS` in `ai-service/app/tools.py` and handled by `tool_retrieve_medical_knowledge`, which invokes the RAG pipeline's `triage_symptoms` method. The agent can decide when medical knowledge retrieval is useful.
 
 ```text
 Patient symptom
@@ -967,7 +968,8 @@ Emergency handling does not depend on whether the LLM chooses to invoke a tool.
 
 * **Web-first:** Native mobile applications are not currently included.
 * **English-primary:** Urdu/English bilingual support is planned.
-* **Session persistence:** Conversational sessions are currently in-memory.
+* **Session persistence:** Conversational sessions are held in-memory within each ai-service process. Restarting the ai-service container clears all active sessions.
+* **In-memory proposal storage:** Write-gate proposals (`_PROPOSALS` in `tools.py`) are also stored in-memory. Any pending proposal (book, reschedule, or cancel) is lost if the ai-service process restarts before the patient confirms. Patients would need to restart the booking flow after a service restart.
 * **Medical scope:** RAG focuses on common symptoms, conditions, specialties, emergency indicators, and clinic procedures.
 * **Informational medical guidance:** The system is not intended to diagnose patients.
 
