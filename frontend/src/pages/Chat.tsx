@@ -15,6 +15,15 @@ import { TimeSlotGrid } from '../components/chat/TimeSlotGrid';
 import { ConfirmationCard } from '../components/chat/ConfirmationCard';
 import { RescheduleConfirmation } from '../components/chat/RescheduleConfirmation';
 import { AppointmentCard } from '../components/chat/AppointmentCard';
+import { getTextDirection, getTextLanguage } from '../utils/rtl';
+
+/**
+ * System font fallbacks that render Urdu/Arabic script legibly. Applied only to
+ * RTL chat bubbles and to the input while Urdu is being typed, so English
+ * typography (Inter / Manrope + system sans-serif) is never changed globally.
+ */
+const URDU_FONT_FALLBACK =
+  "'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Naskh Arabic', 'Segoe UI', system-ui, -apple-system, sans-serif";
 
 interface ChatMessage {
   id: string;
@@ -202,6 +211,12 @@ export const Chat: React.FC = () => {
     handleSendMessage(text, id);
   };
 
+  // The input flips direction as the patient types Urdu; empty/English stays LTR.
+  const inputDir = getTextDirection(inputVal);
+  const inputLang = getTextLanguage(inputVal);
+  const inputRtlStyle: React.CSSProperties | undefined =
+    inputDir === 'rtl' ? { fontFamily: URDU_FONT_FALLBACK } : undefined;
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       {/* Page Header */}
@@ -242,11 +257,30 @@ export const Chat: React.FC = () => {
       >
         <div className="space-y-5">
           {messages.map((msg) => {
+            // Per-message direction/language: each bubble decides independently
+            // so the overall chat interface is never forced to RTL.
+            const textDir = getTextDirection(msg.text ?? '');
+            const textLang = getTextLanguage(msg.text ?? '');
+            const rtlStyle: React.CSSProperties | undefined =
+              textDir === 'rtl'
+                ? {
+                    unicodeBidi: 'isolate',
+                    fontFamily: URDU_FONT_FALLBACK,
+                    lineHeight: 2,
+                    overflowWrap: 'break-word',
+                  }
+                : undefined;
+
             if (msg.sender === 'user') {
               return (
                 <div key={msg.id} className="flex justify-end items-end gap-2 animate-fadeIn">
                   <div className="flex flex-col items-end max-w-[85%] sm:max-w-[75%]">
-                    <div className="bg-primary text-white p-3.5 sm:p-4 rounded-2xl rounded-tr-sm shadow-soft-sm text-sm leading-relaxed">
+                    <div
+                      dir={textDir}
+                      lang={textLang}
+                      className="bg-primary text-white p-3.5 sm:p-4 rounded-2xl rounded-tr-sm shadow-soft-sm text-sm leading-relaxed"
+                      style={rtlStyle}
+                    >
                       {msg.text}
                     </div>
                     <span className="text-[10px] text-textSecondary mt-1 px-1">{msg.timestamp}</span>
@@ -292,7 +326,12 @@ export const Chat: React.FC = () => {
                 <div className="w-full max-w-2xl space-y-3">
                   {/* Bot text bubble */}
                   {msg.text && (
-                    <div className="bg-gradient-to-br from-[#EFF4FF] to-[#E6EEFF] border border-primaryContainer/15 p-4 rounded-2xl rounded-tl-sm text-textPrimary text-sm leading-relaxed shadow-soft-sm whitespace-pre-line">
+                    <div
+                      dir={textDir}
+                      lang={textLang}
+                      className="bg-gradient-to-br from-[#EFF4FF] to-[#E6EEFF] border border-primaryContainer/15 p-4 rounded-2xl rounded-tl-sm text-textPrimary text-sm leading-relaxed shadow-soft-sm whitespace-pre-line"
+                      style={rtlStyle}
+                    >
                       {msg.text}
                     </div>
                   )}
@@ -458,7 +497,10 @@ export const Chat: React.FC = () => {
           value={inputVal}
           onChange={(e) => setInputVal(e.target.value)}
           placeholder="Type your message here..."
+          dir={inputDir}
+          lang={inputLang}
           className="flex-1 bg-transparent px-4 py-2 text-sm text-textPrimary placeholder:text-textSecondary/60 outline-none"
+          style={inputRtlStyle}
           disabled={isBotTyping}
         />
 
