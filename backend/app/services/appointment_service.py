@@ -274,6 +274,7 @@ def create_appointment(
         appointment_type=payload.appointment_type or "in_person",
         symptoms_reported=payload.symptoms_reported,
         urgency_level=payload.urgency_level.lower(),
+        urgency_reason=getattr(payload, 'urgency_reason', None),
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -329,6 +330,7 @@ def create_appointment(
         status=appt.status,
         symptoms_reported=appt.symptoms_reported,
         urgency_level=appt.urgency_level,
+        urgency_reason=appt.urgency_reason,
         confirmation_message=f"Your appointment with {doc_name} is confirmed for {appt_dt.strftime('%A, %B %d at %I:%M %p')}",
         reminder_time_1=reminder_1,
         reminder_time_2=reminder_2,

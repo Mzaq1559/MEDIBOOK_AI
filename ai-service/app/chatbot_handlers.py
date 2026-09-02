@@ -237,6 +237,7 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         requested_specialty = _validated_specialty(nlu.get("specialty"), doctors)
         session["specialty"] = requested_specialty or _validated_specialty(result.specialty, doctors)
         session["urgency_level"] = result.urgency_level
+        session["urgency_reason"] = result.reason
         session["follow_ups"] = follow_ups_for(result.specialty)
         session["follow_up_index"] = 0
         session["state"] = S.ASKING_FOLLOWUP
@@ -461,6 +462,7 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
                 "appointment_time": ts,
                 "symptoms_reported": (session.get("symptoms_text") or "General")[:500],
                 "urgency_level": session.get("urgency_level") or "normal",
+                "urgency_reason": session.get("urgency_reason"),
                 "appointment_type": "in_person"
             }
             try:

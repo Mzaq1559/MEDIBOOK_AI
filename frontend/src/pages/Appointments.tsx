@@ -23,11 +23,47 @@ interface BackendAppointment {
   end_time?: string;
   status: string;
   urgency_level?: string;
+  urgency_reason?: string | null;
+  appointment_type?: string;
   symptoms_reported?: string;
   doctor_notes?: string;
   feedback_score?: number;
   feedback_text?: string;
   feedback_submitted?: boolean;
+}
+
+/** Translate backend triage reason codes into human-friendly labels (display only). */
+const TRIAGE_REASON_LABELS: Record<string, string> = {
+  chest_pain_with_breathing_distress: 'Chest pain with breathing distress',
+  chest_pain_radiating: 'Chest pain radiating to arm/jaw/back',
+  worsening_chest_pain: 'Worsening chest pain',
+  severe_bleeding: 'Severe bleeding',
+  serious_trauma: 'Serious trauma / fracture / burn',
+  head_injury_red_flag: 'Head injury with red-flag symptoms',
+  anaphylaxis_red_flag: 'Anaphylaxis / severe allergic reaction',
+  severe_abdominal_pain: 'Severe abdominal pain',
+  meningitis_red_flag: 'Meningitis warning signs',
+  diabetic_red_flag: 'Diabetic emergency',
+  severe_asthma: 'Severe asthma attack',
+  child_high_fever: 'Child with high fever',
+  pregnancy_emergency: 'Pregnancy emergency',
+  standalone_emergency_pattern: 'Acute emergency pattern detected',
+  high_urgency_marker: 'High-urgency symptoms reported',
+  cardiology_route: 'Cardiology-related symptoms',
+  specialty_route: 'Specialist referral based on symptoms',
+  insufficient_detail: 'General — insufficient detail for specialist routing',
+};
+
+const URGENCY_BADGE_STYLES: Record<string, { label: string; className: string }> = {
+  critical: { label: 'Critical', className: 'bg-red-100 text-red-800 border-red-300' },
+  high:     { label: 'High',     className: 'bg-amber-100 text-amber-800 border-amber-300' },
+  normal:   { label: 'Normal',   className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  low:      { label: 'Low',      className: 'bg-surfaceContainer text-textSecondary border-outline/30' },
+};
+
+function formatTriageReason(reason: string | null | undefined): string {
+  if (!reason) return '';
+  return TRIAGE_REASON_LABELS[reason] || reason.replace(/_/g, ' ');
 }
 
 export const Appointments: React.FC = () => {
@@ -49,8 +85,12 @@ export const Appointments: React.FC = () => {
       // feedback_score, feedback_text, feedback_submitted, doctor_notes etc.
       // Doctors: filtered server-side to their own appointments automatically.
       // Patients: filtered by patient_id (resolves user_id → patient.id in backend).
+      // Admin/Receptionist: system-wide, no filter.
       if (currentUser.userType === 'doctor') {
         const data = await listAppointments();
+        setAppointments(Array.isArray(data) ? data : data.appointments || []);
+      } else if (currentUser.userType === 'admin' || currentUser.userType === 'receptionist') {
+        const data = await listAppointments({ limit: 200 });
         setAppointments(Array.isArray(data) ? data : data.appointments || []);
       } else {
         const data = await listAppointments({ patient_id: currentUser.id });
@@ -206,11 +246,15 @@ export const Appointments: React.FC = () => {
             </Badge>
           </div>
           <h1 className="font-heading font-extrabold text-3xl sm:text-4xl text-textPrimary tracking-tight">
-            My Appointments
+            {currentUser?.userType === 'admin' || currentUser?.userType === 'receptionist'
+              ? 'All Appointments'
+              : 'My Appointments'}
           </h1>
           <p className="text-sm sm:text-base text-textSecondary mt-1">
             {currentUser?.userType === 'doctor'
               ? 'View complete patient appointment history and consultation records.'
+              : currentUser?.userType === 'admin' || currentUser?.userType === 'receptionist'
+              ? 'System-wide appointment overview with AI symptom-triage urgency and reason codes.'
               : 'View, reschedule, cancel, and review your past and upcoming clinical visits.'}
           </p>
         </div>
@@ -269,12 +313,14 @@ export const Appointments: React.FC = () => {
               const isCompleted = statusDisplay === 'Completed';
               const isUpcoming = statusDisplay === 'Upcoming';
               const isDoctorUser = currentUser?.userType === 'doctor';
+              const isAdminUser = currentUser?.userType === 'admin' || currentUser?.userType === 'receptionist';
               const currentRatingState = ratingInputs[apt.appointment_id] || {
                 rating: apt.feedback_score || 0,
                 feedback: apt.feedback_text || '',
               };
               const hasRating = Boolean(apt.feedback_score);
               const dt = formatDateTime(apt.appointment_time);
+              const urgencyStyle = URGENCY_BADGE_STYLES[apt.urgency_level || ''] || URGENCY_BADGE_STYLES.normal;
 
               return (
                 <Card
@@ -284,121 +330,168 @@ export const Appointments: React.FC = () => {
                   className="p-6 sm:p-7 bg-white border border-surfaceContainerHigh hover:border-primaryContainer/50 transition-all duration-200 cursor-pointer"
                   onClick={() => setSelectedAppointmentForDetail(apt)}
                 >
-                  <div className="flex flex-col md:flex-row md:items-start justify-between gap-5">
-                    {/* Doctor & Patient Info */}
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className="w-13 h-13 rounded-2xl bg-surfaceContainer text-primary border border-surfaceContainerHigh flex items-center justify-center font-bold text-base shrink-0 mt-0.5">
-                        {isDoctorUser
-                          ? (apt.patient_name?.charAt(0) || 'P')
-                          : (apt.doctor_name?.split(' ')[1]?.charAt(0) || 'Dr')}
-                      </div>
+                  <div className="space-y-4">
+                    {/* Top row: Patient + Doctor + Badges */}
+                    {isAdminUser ? (
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 min-w-0">
+                          {/* Patient info */}
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-11 h-11 rounded-2xl bg-primaryContainer/30 text-primary border border-primaryContainer/40 flex items-center justify-center font-bold text-sm shrink-0">
+                              {apt.patient_name?.charAt(0) || 'P'}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] uppercase font-bold text-textSecondary tracking-wider">Patient</p>
+                              <p className="font-heading font-bold text-sm text-textPrimary truncate">{apt.patient_name || 'Patient'}</p>
+                            </div>
+                          </div>
 
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2.5">
-                          <h3 className="font-heading font-bold text-lg text-textPrimary">
-                            {isDoctorUser
-                              ? (apt.patient_name || 'Patient Record')
-                              : apt.doctor_name}
-                          </h3>
+                          {/* Arrow / separator */}
+                          <div className="hidden sm:flex items-center">
+                            <svg className="w-5 h-5 text-outline" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                            </svg>
+                          </div>
+
+                          {/* Doctor info */}
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-11 h-11 rounded-2xl bg-secondaryContainer/30 text-secondary border border-secondaryContainer/40 flex items-center justify-center font-bold text-sm shrink-0">
+                              {apt.doctor_name?.split(' ').pop()?.charAt(0) || 'Dr'}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] uppercase font-bold text-textSecondary tracking-wider">Doctor</p>
+                              <p className="font-heading font-bold text-sm text-textPrimary truncate">{apt.doctor_name || 'Doctor'}</p>
+                              <p className="text-[11px] text-secondary font-medium">{apt.doctor_specialization || 'Clinical Care'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Urgency + Status badges */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-pill border ${urgencyStyle.className}`}>
+                            {urgencyStyle.label}
+                          </span>
                           <Badge status={getBadgeStatus(statusDisplay)} size="sm" withDot>
                             {statusDisplay}
                           </Badge>
-                          {apt.urgency_level && (
-                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-pill bg-surfaceContainer border border-outline/30 text-textSecondary">
-                              {apt.urgency_level}
-                            </span>
-                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      /* Patient / Doctor view: single avatar */
+                      <div className="flex items-start gap-4">
+                        <div className="w-13 h-13 rounded-2xl bg-surfaceContainer text-primary border border-surfaceContainerHigh flex items-center justify-center font-bold text-base shrink-0 mt-0.5">
+                          {isDoctorUser
+                            ? (apt.patient_name?.charAt(0) || 'P')
+                            : (apt.doctor_name?.split(' ')[1]?.charAt(0) || 'Dr')}
                         </div>
 
-                        <p className="text-xs font-semibold text-secondary">
-                          {isDoctorUser
-                            ? `Attending: ${apt.doctor_name} • ${apt.doctor_specialization || 'Clinical Care'}`
-                            : (apt.doctor_specialization || apt.specialization || 'Clinical Care')}
-                        </p>
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <h3 className="font-heading font-bold text-lg text-textPrimary">
+                              {isDoctorUser
+                                ? (apt.patient_name || 'Patient Record')
+                                : apt.doctor_name}
+                            </h3>
+                            <Badge status={getBadgeStatus(statusDisplay)} size="sm" withDot>
+                              {statusDisplay}
+                            </Badge>
+                            {apt.urgency_level && (
+                              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-pill border ${urgencyStyle.className}`}>
+                                {urgencyStyle.label}
+                              </span>
+                            )}
+                          </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-4 pt-2 text-xs text-textSecondary">
+                          <p className="text-xs font-semibold text-secondary">
+                            {isDoctorUser
+                              ? `Attending: ${apt.doctor_name} • ${apt.doctor_specialization || 'Clinical Care'}`
+                              : (apt.doctor_specialization || apt.specialization || 'Clinical Care')}
+                          </p>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-4 pt-2 text-xs text-textSecondary">
+                            <div className="flex items-center gap-2">
+                              <svg className="w-4 h-4 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+                              </svg>
+                              <span className="font-semibold text-textPrimary">{dt.date} &bull; {dt.time}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <svg className="w-4 h-4 text-textSecondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+                              </svg>
+                              <span className="truncate">{apt.clinic_name}</span>
+                            </div>
+                          </div>
+
+                          {apt.symptoms_reported && (
+                            <div className="text-xs text-textSecondary pt-1">
+                              <span className="font-medium text-textPrimary">Reported Symptoms: </span>
+                              {apt.symptoms_reported}
+                            </div>
+                          )}
+
+                          {/* Triage / Urgency Reason */}
+                          <div className="text-xs pt-1 flex items-start gap-1.5">
+                            <span className="font-medium text-textPrimary shrink-0">Triage Reason:</span>
+                            {apt.urgency_reason ? (
+                              <span className="text-textSecondary">{formatTriageReason(apt.urgency_reason)}</span>
+                            ) : (
+                              <span className="text-textSecondary italic">No triage data</span>
+                            )}
+                          </div>
+
+                          {apt.doctor_notes && (
+                            <div className="mt-2.5 p-2.5 bg-surfaceContainer rounded-xl text-xs text-textSecondary border border-surfaceContainerHigh">
+                              <strong className="text-textPrimary">Clinical Notes:</strong> {apt.doctor_notes}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Admin-only: details row + triage + symptoms (full width, stacked) */}
+                    {isAdminUser && (
+                      <div className="space-y-3 border-t border-surfaceContainerHigh pt-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                           <div className="flex items-center gap-2">
                             <svg className="w-4 h-4 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
                             </svg>
-                            <span className="font-semibold text-textPrimary">{dt.date} • {dt.time}</span>
+                            <span className="font-semibold text-textPrimary">{dt.date} &bull; {dt.time}</span>
                           </div>
-
                           <div className="flex items-center gap-2">
-                            <svg className="w-4 h-4 text-textSecondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
-                            </svg>
-                            <span className="truncate">{apt.clinic_name}</span>
+                            <span className="text-textSecondary font-medium">Type:</span>
+                            <span className="text-textPrimary capitalize">{apt.appointment_type || 'in_person'}</span>
+                          </div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-textSecondary font-medium shrink-0">Clinic:</span>
+                            <span className="text-textPrimary truncate">{apt.clinic_name}</span>
                           </div>
                         </div>
 
+                        <div className="text-xs flex items-start gap-1.5">
+                          <span className="font-bold text-textPrimary shrink-0">Why / Triage Reason:</span>
+                          {apt.urgency_reason ? (
+                            <span className="text-textSecondary">{formatTriageReason(apt.urgency_reason)}</span>
+                          ) : (
+                            <span className="text-textSecondary italic">Not assessed</span>
+                          )}
+                        </div>
+
                         {apt.symptoms_reported && (
-                          <div className="text-xs text-textSecondary pt-1">
-                            <span className="font-medium text-textPrimary">Reported Symptoms: </span>
+                          <div className="text-xs text-textSecondary">
+                            <span className="font-medium text-textPrimary">Symptoms: </span>
                             {apt.symptoms_reported}
                           </div>
                         )}
-
-                        {apt.doctor_notes && (
-                          <div className="mt-2.5 p-2.5 bg-surfaceContainer rounded-xl text-xs text-textSecondary border border-surfaceContainerHigh">
-                            <strong className="text-textPrimary">Clinical Notes:</strong> {apt.doctor_notes}
-                          </div>
-                        )}
                       </div>
-                    </div>
-
-                    {/* Actions for Scheduled Appointments */}
-                    <div
-                      className="flex flex-wrap md:flex-col items-center md:items-end justify-between md:justify-start gap-2.5 pt-3 md:pt-0 border-t md:border-t-0 border-surfaceContainerHigh shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-xs"
-                        onClick={() => setSelectedAppointmentForDetail(apt)}
-                      >
-                        View Full Details &rarr;
-                      </Button>
-
-                      {isUpcoming && !isDoctorUser && (
-                        <>
-                          <a
-                            href={generateGoogleCalendarUrl({
-                              title: `MediBook: Dr. ${apt.doctor_name}`,
-                              startTime: apt.appointment_time,
-                              description: `Doctor: Dr. ${apt.doctor_name} (${apt.doctor_specialization})\nClinic: ${apt.clinic_name}\nAddress: ${apt.clinic_address}`,
-                              location: `${apt.clinic_name}, ${apt.clinic_address}`,
-                            })}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surfaceContainer hover:bg-surfaceContainerHigh border border-surfaceContainerHigh text-primary text-xs font-semibold rounded-pill transition-all"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z" />
-                            </svg>
-                            <span>Add to Calendar</span>
-                          </a>
-                          <Link to="/chat">
-                            <Button size="sm" variant="secondary">
-                              Reschedule
-                            </Button>
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={() => handleCancel(apt.appointment_id)}
-                            className="text-xs font-semibold text-error hover:underline px-3 py-1.5 rounded-pill hover:bg-errorContainer/30 transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    )}
                   </div>
 
                   {/* Completed Appointments Rating & Feedback View */}
-                  {isCompleted && (
+                  {isCompleted && !isAdminUser && (
                     <div
                       className="mt-5 pt-4 border-t border-surfaceContainerHigh bg-surfaceContainer/40 -mx-6 sm:-mx-7 -mb-6 sm:-mb-7 p-5 rounded-b-2xl"
                       onClick={(e) => e.stopPropagation()}

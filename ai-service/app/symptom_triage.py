@@ -292,63 +292,68 @@ class TriageResult:
     reason: str
 
 
-def is_emergency(text: str) -> bool:
+def _emergency_reason(text: str) -> Optional[str]:
+    """Return a machine-readable emergency reason code, or *None*."""
     if not text or not text.strip():
-        return False
+        return None
     blob = text.lower()
 
-    # Rule 1: Chest discomfort + ANY breathing distress triggers emergency (regardless of "severe")
+    # Rule 1: Chest discomfort + ANY breathing distress
     if _CHEST_PATTERN.search(blob) and _BREATHING_PATTERN.search(blob):
-        return True
+        return "chest_pain_with_breathing_distress"
 
-    # Rule 2: Chest pain radiating to the arm, jaw, neck, back, or shoulder.
+    # Rule 2: Chest pain radiating to arm, jaw, neck, back, or shoulder
     if _CHEST_PATTERN.search(blob) and _CHEST_RADIATION_PATTERN.search(blob):
-        return True
+        return "chest_pain_radiating"
 
-    # Rule 3: Chest pain that is worsening, including a follow-up answer such as "very worse".
+    # Rule 3: Worsening chest pain
     if _CHEST_WORSENING_PATTERN.search(blob):
-        return True
+        return "worsening_chest_pain"
     if _CHEST_PATTERN.search(blob) and _WORSENING_FOLLOWUP_PATTERN.search(blob):
-        return True
+        return "worsening_chest_pain"
 
-    # Rule 4: Active bleeding, serious trauma, fractures, burns, and deep wounds.
+    # Rule 4: Active bleeding, serious trauma, fractures, burns, deep wounds
     if _BLEEDING_PATTERN.search(blob):
-        return True
+        return "severe_bleeding"
     if _FRACTURE_PATTERN.search(blob) or _FALL_INJURY_PATTERN.search(blob):
-        return True
+        return "serious_trauma"
     if _BURN_PATTERN.search(blob) or _DEEP_CUT_PATTERN.search(blob):
-        return True
+        return "serious_trauma"
 
-    # Rule 5: Head injury with confusion, vomiting, or altered consciousness.
+    # Rule 5: Head injury with red-flag symptoms
     if _HEAD_INJURY_PATTERN.search(blob) and _HEAD_RED_FLAG_PATTERN.search(blob):
-        return True
+        return "head_injury_red_flag"
 
-    # Rule 6: Anaphylaxis warning signs, especially breathing or throat swelling after exposure.
+    # Rule 6: Anaphylaxis warning signs
     if _ANAPHYLAXIS_EXPOSURE_PATTERN.search(blob) and (
-        _BREATHING_PATTERN.search(blob) or _THROAT_SWELLING_PATTERN.search(blob) or
-        re.search(r"\bhives?\b|\burticaria\b|\bchhote\s+daane\b", blob, re.IGNORECASE)
+        _BREATHING_PATTERN.search(blob) or _THROAT_SWELLING_PATTERN.search(blob)
+        or re.search(r"\bhives?\b|\burticaria\b|\bchhote\s+daane\b", blob, re.IGNORECASE)
     ):
-        return True
+        return "anaphylaxis_red_flag"
 
-    # Rule 7: Severe abdominal pain, meningitis signs, and diabetic crises.
+    # Rule 7: Severe abdominal pain, meningitis, diabetic crises, asthma, child fever, pregnancy
     if _SEVERE_ABDOMINAL_PATTERN.search(blob):
-        return True
+        return "severe_abdominal_pain"
     if _MENINGITIS_PATTERN.search(blob) and _FEVER_PATTERN.search(blob):
-        return True
+        return "meningitis_red_flag"
     if _DIABETES_PATTERN.search(blob) and _DIABETIC_RED_FLAG_PATTERN.search(blob):
-        return True
+        return "diabetic_red_flag"
     if _SEVERE_ASTHMA_PATTERN.search(blob):
-        return True
+        return "severe_asthma"
     if _CHILD_FEVER_PATTERN.search(blob):
-        return True
+        return "child_high_fever"
     if _PREGNANCY_EMERGENCY_PATTERN.search(blob):
-        return True
+        return "pregnancy_emergency"
 
     # Rule 8: Standalone acute emergency patterns
     if any(re.search(p, blob, flags=re.IGNORECASE) for p in _STANDALONE_EMERGENCY_PATTERNS):
-        return True
+        return "standalone_emergency_pattern"
 
-    return False
+    return None
+
+
+def is_emergency(text: str) -> bool:
+    return _emergency_reason(text) is not None
 
 
 def recommend_specialty(text: str) -> Optional[str]:
@@ -406,20 +411,31 @@ def urgency_for(text: str, specialty: Optional[str], emergency: bool) -> str:
 
 
 def triage(text: str) -> TriageResult:
-    emergency = is_emergency(text)
-    if emergency:
+    emergency_code = _emergency_reason(text)
+    if emergency_code:
         return TriageResult(
             is_emergency=True,
             specialty=None,
             urgency_level="critical",
-            reason="emergency_pattern",
+            reason=emergency_code,
         )
     specialty = recommend_specialty(text)
+    urgency = urgency_for(text, specialty, False)
+
+    if specialty == SPECIALTY_CARDIOLOGY:
+        reason = "cardiology_route"
+    elif urgency == "high":
+        reason = "high_urgency_marker"
+    elif specialty:
+        reason = "specialty_route"
+    else:
+        reason = "insufficient_detail"
+
     return TriageResult(
         is_emergency=False,
         specialty=specialty,
-        urgency_level=urgency_for(text, specialty, False),
-        reason="specialty_route" if specialty else "insufficient_detail",
+        urgency_level=urgency,
+        reason=reason,
     )
 
 
