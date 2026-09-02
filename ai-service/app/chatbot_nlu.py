@@ -13,6 +13,13 @@ logger = logging.getLogger("medibook.ai.nlu")
 
 MAX_HISTORY = 20
 
+# Regex overrides for Urdu/Roman Urdu cancel/reschedule/lookup (Bug 1 fix)
+# Priority order: cancel > reschedule > lookup
+# This prevents messages like "cancel and show me my appointments" from being misrouted
+CANCEL_RE = re.compile(r"(کینسل|منسوخ|cancel|hatao|hata do)", re.I)
+RESCHEDULE_RE = re.compile(r"(دوبارہ\s*بک|تبدیل|reschedule|badal|waqt\s*badal|time\s*change)", re.I)
+LOOKUP_RE = re.compile(r"(dikhao|dikha do|meri.*appointment|appointment.*(dekh|show)|میری.*اپوائنٹمنٹ.*دکھاؤ|اپوائنٹمنٹ دیکھنی)", re.I)
+
 INTENTS = ("appointment", "symptom", "faq", "reschedule", "cancel", "lookup", "show_doctors", "patient_details")
 
 NLU_SYSTEM = """You are the NLU for MediBook AI, a clinic virtual receptionist (Pakistan).
@@ -38,15 +45,21 @@ Rules:
 - faq: clinic hours, fees, location questions
 - reschedule: change existing appointment time
 - cancel: cancel/delete an appointment
-- lookup: check/view appointment details ("what is my appointment", "show my bookings")
+- lookup: check/view appointment details ("what is my appointment", "show my bookings", "meri appointment dikhao")
 - patient_details: doctor wants to view a specific patient's appointment details (e.g. "علی کی ڈیٹیل دکھاؤ", "show Ali's details", "mujhe patient ki detail chahiye")
 - confirms true: yes/confirm/haan/ji haan/theek hai/bilkul/kar do
 - declines true: no/cancel/nahi/na/mat karo/rehne do
-- Extract doctor_name when user mentions a specific doctor
-- Extract specialty when the user clearly names a medical specialty or it is clearly implied by symptoms
+- IMPORTANT: Always extract doctor_name and specialty if a name or specialty is mentioned ANYWHERE in the latest message, regardless of the message's classified intent, sentence structure, script (Urdu/Roman Urdu/English), or whether it looks like an answer to a previous question.
+- Extract doctor_name when user mentions a specific doctor (e.g. "Dr Fatima se milna hai", "ڈاکٹر فاطمہ کو دکھاؤ")
+- Extract specialty when the user clearly names a medical specialty or it is clearly implied by symptoms (e.g. "I need to see a dermatologist", "skin specialist")
 - Extract symptoms when user describes health issues
 - Extract appointment_id when user references a specific appointment
 - If you are not confident about doctor_name or specialty, return null rather than guessing. Never invent a doctor name or specialty that wasn't clearly stated or implied by symptoms.
+
+Examples:
+- "Dr Fatima se milna hai" -> doctor_name: "Dr Fatima", intent: "appointment" or "show_doctors"
+- "ڈاکٹر فاطمہ کو دکھاؤ" -> doctor_name: "ڈاکٹر فاطمہ" or "Fatima", intent: "show_doctors"
+- "I need to see a dermatologist" -> specialty: "dermatologist", intent: "appointment" or "show_doctors"
 """
 
 
@@ -96,6 +109,16 @@ def classify(text: str, history: list[MessageItem], state: S) -> dict[str, Any]:
             {"role": "system", "content": NLU_SYSTEM},
             {"role": "user", "content": f"conversation:\n{history_blob}\nlatest: {text}"},
         ])
+        logger.debug("NLU parsed: %s", parsed)
+        
+        # Regex overrides for Urdu/Roman Urdu cancel/reschedule/lookup (Bug 1 fix)
+        # Priority: cancel > reschedule > lookup (checked in this order)
+        if CANCEL_RE.search(text):
+            parsed["intent"] = "cancel"
+        elif RESCHEDULE_RE.search(text):
+            parsed["intent"] = "reschedule"
+        elif LOOKUP_RE.search(text):
+            parsed["intent"] = "lookup"
     except Exception as exc:
         logger.warning("NLU LLM failed: %s", exc)
         parsed = {"intent": "symptom"}

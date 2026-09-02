@@ -267,10 +267,10 @@ def handle_message(
             if state in (S.IDLE, S.BOOKED, S.FAQ):
                 session["state"] = S.FAQ
                 
-        elif intent == "cancel" or state.startswith("cancel"):
+        elif intent == "cancel" or state in (S.CANCEL_FETCH, S.CANCEL_PICK, S.CANCEL_CONFIRM):
             bot, action, _, ui_data = handle_cancel(session, message, nlu, authorization)
             
-        elif intent == "reschedule" or state.startswith("reschedule"):
+        elif intent == "reschedule" or state in (S.RESCHEDULE_FETCH, S.RESCHEDULE_PICK, S.RESCHEDULE_SLOTS, S.RESCHEDULE_CONFIRM):
             bot, action, _, ui_data = handle_reschedule(session, message, nlu, authorization)
 
         elif intent == "lookup" or state == S.LOOKUP:

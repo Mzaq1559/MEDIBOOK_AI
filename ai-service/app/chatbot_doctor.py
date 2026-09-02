@@ -36,21 +36,18 @@ def _match_appointment_by_patient(
     text: str,
     nlu_patient_name: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    lowered = text.lower()
-    tokens = {token for token in re.findall(r"[a-z]+", lowered) if len(token) > 2}
+    # Use \w+ (Unicode word chars) to support both Latin and Urdu script names
+    tokens = {token.lower() for token in re.findall(r"\w+", text) if len(token) > 2}
     
     # Add NLU-classified patient name tokens (supports Urdu script, Roman Urdu, etc.)
     if nlu_patient_name:
-        nlu_tokens = {token for token in re.findall(r"[a-z]+", nlu_patient_name.lower()) if len(token) > 2}
-        # Also add non-Latin tokens from NLU name (e.g., Urdu script characters)
-        non_latin_tokens = {char for char in nlu_patient_name if not char.isascii() and char.strip()}
+        nlu_tokens = {token.lower() for token in re.findall(r"\w+", nlu_patient_name) if len(token) > 2}
         tokens.update(nlu_tokens)
-        tokens.update(non_latin_tokens)
     
     matches: list[dict[str, Any]] = []
     for appointment in appointments:
         patient_name = str(appointment.get("patient_name") or appointment.get("patient") or "")
-        patient_tokens = {token for token in re.findall(r"[a-z]+", patient_name.lower()) if len(token) > 2}
+        patient_tokens = {token.lower() for token in re.findall(r"\w+", patient_name) if len(token) > 2}
         if patient_tokens and (patient_tokens & tokens):
             matches.append(appointment)
     return matches
