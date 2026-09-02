@@ -832,7 +832,7 @@ export const Admin: React.FC = () => {
 
       {/* --- ADD / EDIT DOCTOR MODAL --- */}
       {isDoctorModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 py-8 overflow-y-auto animate-fadeIn">
           <div className="w-full max-w-lg">
             <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
               <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
@@ -926,7 +926,7 @@ export const Admin: React.FC = () => {
 
       {/* --- ADD / EDIT CLINIC MODAL --- */}
       {isClinicModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 py-8 overflow-y-auto animate-fadeIn">
           <div className="w-full max-w-lg">
             <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
               <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
@@ -1045,7 +1045,7 @@ export const Admin: React.FC = () => {
 
       {/* --- DOCTOR APPLICATION APPROVAL & CONFIGURATION MODAL --- */}
       {isApprovalModalOpen && selectedApp && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 py-8 overflow-y-auto animate-fadeIn">
           <div className="w-full max-w-lg">
             <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
               <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
@@ -1065,25 +1065,29 @@ export const Admin: React.FC = () => {
                 </button>
               </div>
 
-              <form onSubmit={handleConfirmApproval} className="space-y-4">
-                <div className="p-3.5 bg-surfaceContainer rounded-2xl border border-surfaceContainerHigh space-y-1 text-xs text-textSecondary">
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-textPrimary">Applicant Name:</span>
-                    <span>{selectedApp.name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-textPrimary">Applicant Email:</span>
-                    <span>{selectedApp.email}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-textPrimary">Phone:</span>
-                    <span>{selectedApp.phone}</span>
-                  </div>
-                </div>
+                            <form onSubmit={handleConfirmApproval} className="space-y-4">
+                <Input
+                  label="Full Name & Title"
+                  value={selectedApp.name}
+                  disabled
+                />
 
                 <Input
-                  label="Clinical Specialization"
-                  placeholder="e.g. Cardiology & Vascular Care"
+                  label="Email Address"
+                  type="email"
+                  value={selectedApp.email}
+                  disabled
+                />
+
+                <Input
+                  label="Phone Number"
+                  value={selectedApp.phone}
+                  disabled
+                />
+
+                <Input
+                  label="Specialization"
+                  placeholder="e.g. Cardiology & Vascular Medicine"
                   value={approvalForm.specialization}
                   onChange={(e) => setApprovalForm({ ...approvalForm, specialization: e.target.value })}
                   required
@@ -1100,7 +1104,7 @@ export const Admin: React.FC = () => {
                   />
 
                   <Input
-                    label="Max Daily Patients"
+                    label="Max Patients / Day"
                     type="number"
                     min={1}
                     max={50}
@@ -1110,9 +1114,9 @@ export const Admin: React.FC = () => {
                   />
                 </div>
 
-                {/* Assigned Clinic */}
+                {/* Clinic Facility Dropdown */}
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-textPrimary">Assign Clinic Facility</label>
+                  <label className="text-sm font-semibold text-textPrimary">Assigned Clinic Facility</label>
                   <select
                     value={approvalForm.clinicId}
                     onChange={(e) => setApprovalForm({ ...approvalForm, clinicId: e.target.value })}
