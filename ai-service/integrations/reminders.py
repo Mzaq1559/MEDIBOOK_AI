@@ -21,6 +21,29 @@ from integrations.n8n_webhook import send_n8n_webhook, EVENT_REMINDER_TRIGGERED
 logger = logging.getLogger("medibook.ai.reminders")
 
 
+def _format_appointment_time(time_value: Any) -> str:
+    """Parse and format appointment time to human-readable format.
+    
+    Handles both datetime objects and ISO 8601 strings.
+    Returns formatted string like 'Tuesday, September 02, 2026 at 04:30 PM'.
+    Preserves timezone awareness when present.
+    """
+    if time_value is None:
+        return "Scheduled Time"
+    
+    # If already a datetime object, format directly
+    if isinstance(time_value, datetime):
+        return time_value.strftime("%A, %B %d, %Y at %I:%M %p")
+    
+    # Parse ISO string
+    try:
+        dt = date_parser.parse(str(time_value))
+        return dt.strftime("%A, %B %d, %Y at %I:%M %p")
+    except Exception as exc:
+        logger.warning("Failed to parse appointment_time '%s': %s", time_value, exc)
+        return str(time_value)
+
+
 def send_confirmation_email(appointment: dict[str, Any]) -> bool:
     """Send an immediate appointment confirmation email directly via SMTP."""
     to_email = appointment.get("patient_email") or appointment.get("email") or ""
@@ -43,7 +66,7 @@ def send_confirmation_email(appointment: dict[str, Any]) -> bool:
         patient_name = appointment.get("patient_name") or "Valued Patient"
         clinic_name = appointment.get("clinic_name") or "MediBook Clinic"
         clinic_address = appointment.get("clinic_address") or "Clinic Address"
-        when = appointment.get("appointment_time") or "Scheduled Time"
+        when = _format_appointment_time(appointment.get("appointment_time"))
         appt_id = appointment.get("appointment_id") or appointment.get("id") or ""
         frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
 
@@ -161,7 +184,7 @@ def format_reminder_message(
 ) -> str:
     """Format human-readable reminder text suitable for WhatsApp or Email."""
     doctor_name = appointment.get("doctor_name") or "Doctor"
-    when = appointment.get("appointment_time") or "your scheduled time"
+    when = _format_appointment_time(appointment.get("appointment_time"))
     clinic = appointment.get("clinic_name") or "Prime Care Clinic Taxila"
     appt_id = appointment.get("appointment_id") or appointment.get("id") or ""
 

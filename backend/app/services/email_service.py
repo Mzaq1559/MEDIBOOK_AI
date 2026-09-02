@@ -1,14 +1,47 @@
 import smtplib
 import logging
+from datetime import datetime
 from uuid import UUID
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from sqlalchemy.orm import Session
+from dateutil import parser as date_parser
+import pytz
 
 from app.core.config import settings
 from app.models.appointment import Appointment
 
 logger = logging.getLogger(__name__)
+
+KARACHI_TZ = pytz.timezone(settings.TIMEZONE)
+
+
+def _format_appointment_time(time_value) -> str:
+    """Format appointment time to human-readable string in Karachi timezone.
+    
+    Handles both datetime objects and ISO 8601 strings defensively.
+    DB stores naive UTC, so we convert to Karachi time before formatting.
+    Returns formatted string like 'Tuesday, September 02, 2026 at 04:30 PM'.
+    """
+    if time_value is None:
+        return "Scheduled Time"
+    
+    if isinstance(time_value, datetime):
+        dt = time_value
+        # Naive datetime from DB is stored as UTC — convert to Karachi
+        if dt.tzinfo is None:
+            dt = pytz.UTC.localize(dt).astimezone(KARACHI_TZ)
+        return dt.strftime("%A, %B %d, %Y at %I:%M %p")
+    
+    # Parse ISO string defensively
+    try:
+        dt = date_parser.parse(str(time_value))
+        if dt.tzinfo is None:
+            dt = pytz.UTC.localize(dt).astimezone(KARACHI_TZ)
+        return dt.strftime("%A, %B %d, %Y at %I:%M %p")
+    except Exception as exc:
+        logger.warning("Failed to parse appointment_time '%s': %s", time_value, exc)
+        return str(time_value)
 
 
 def _send_email(to_email: str, subject: str, html_content: str) -> bool:
@@ -68,7 +101,7 @@ def send_appointment_confirmation(appointment_id: UUID, db: Session) -> bool:
             logger.warning(f"No patient email found for appointment {appointment_id}. Skipping confirmation email.")
             return False
 
-        formatted_time = appointment.appointment_time.strftime("%A, %B %d, %Y at %I:%M %p")
+        formatted_time = _format_appointment_time(appointment.appointment_time)
         portal_url = f"{settings.FRONTEND_URL}/appointments"
         subject = f"✅ Appointment Confirmed: {doctor_name} on {formatted_time}"
 
@@ -144,7 +177,7 @@ def send_appointment_rescheduled(appointment_id: UUID, db: Session) -> bool:
         if not patient_email:
             return False
 
-        formatted_time = appointment.appointment_time.strftime("%A, %B %d, %Y at %I:%M %p")
+        formatted_time = _format_appointment_time(appointment.appointment_time)
         portal_url = f"{settings.FRONTEND_URL}/appointments"
         subject = f"📅 Appointment Rescheduled: {doctor_name} on {formatted_time}"
 
@@ -208,7 +241,7 @@ def send_appointment_cancelled(appointment_id: UUID, db: Session) -> bool:
         if not patient_email:
             return False
 
-        formatted_time = appointment.appointment_time.strftime("%A, %B %d, %Y at %I:%M %p")
+        formatted_time = _format_appointment_time(appointment.appointment_time)
         subject = f"❌ Appointment Cancelled: {doctor_name}"
 
         html_content = f"""
@@ -268,7 +301,7 @@ def send_reminder(appointment_id: UUID, reminder_type: str, db: Session) -> bool
             logger.warning(f"No patient email found for appointment {appointment_id}. Skipping email reminder.")
             return False
 
-        formatted_time = appointment.appointment_time.strftime("%A, %B %d, %Y at %I:%M %p")
+        formatted_time = _format_appointment_time(appointment.appointment_time)
         reschedule_url = f"{settings.FRONTEND_URL}/appointments"
 
         time_frame = "24 hours" if reminder_type == "24h" else "1 hour"

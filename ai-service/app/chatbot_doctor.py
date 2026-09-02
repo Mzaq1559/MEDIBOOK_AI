@@ -7,7 +7,9 @@ from typing import Any, Optional
 
 from app import backend_client
 from app.chatbot_handlers import _appointment_selection_message, _appointment_time_label, _select_appointment_from_text
+from app.chatbot_nlu import classify
 from app.chatbot_slots import fetch_doctor_slots, find_slot_by_ts, format_appointment_for_ui, match_slot_from_text, slots_ui_data
+from app.chatbot_state import S
 
 logger = logging.getLogger("medibook.ai.chatbot_doctor")
 
@@ -29,9 +31,22 @@ def _extract_date_filter(message: str) -> Optional[str]:
     return None
 
 
-def _match_appointment_by_patient(appointments: list[dict[str, Any]], text: str) -> list[dict[str, Any]]:
+def _match_appointment_by_patient(
+    appointments: list[dict[str, Any]],
+    text: str,
+    nlu_patient_name: Optional[str] = None,
+) -> list[dict[str, Any]]:
     lowered = text.lower()
     tokens = {token for token in re.findall(r"[a-z]+", lowered) if len(token) > 2}
+    
+    # Add NLU-classified patient name tokens (supports Urdu script, Roman Urdu, etc.)
+    if nlu_patient_name:
+        nlu_tokens = {token for token in re.findall(r"[a-z]+", nlu_patient_name.lower()) if len(token) > 2}
+        # Also add non-Latin tokens from NLU name (e.g., Urdu script characters)
+        non_latin_tokens = {char for char in nlu_patient_name if not char.isascii() and char.strip()}
+        tokens.update(nlu_tokens)
+        tokens.update(non_latin_tokens)
+    
     matches: list[dict[str, Any]] = []
     for appointment in appointments:
         patient_name = str(appointment.get("patient_name") or appointment.get("patient") or "")
@@ -125,11 +140,23 @@ def _doctor_show_appointments(doctor_id: str, authorization: str, message: str, 
     }
 
 
-def _doctor_patient_details(doctor_id: str, authorization: str, message: str, session: dict[str, Any]) -> dict[str, Any]:
+def _doctor_patient_details(
+    doctor_id: str,
+    authorization: str,
+    message: str,
+    session: dict[str, Any],
+    nlu: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     appointments = session.get("doctor_appointments") or backend_client.fetch_doctor_appointments(doctor_id, authorization)
     if not appointments:
         return {"bot_message": "You have no appointments to review.", "next_action": "doctor_appointment_details", "ui_data": {"appointments": []}}
-    matches = _match_appointment_by_patient(appointments, message)
+    
+    # Use NLU-classified patient name (or doctor_name as fallback) for matching
+    nlu_patient_name = None
+    if nlu:
+        nlu_patient_name = nlu.get("patient_name") or nlu.get("doctor_name")
+    
+    matches = _match_appointment_by_patient(appointments, message, nlu_patient_name=nlu_patient_name)
     if len(matches) == 1:
         appointment = matches[0]
         detail = backend_client.get_appointment_details(str(appointment.get("appointment_id") or appointment.get("id") or ""), authorization) or appointment
@@ -297,10 +324,14 @@ def handle_doctor_message(
     if not doctor_id:
         return {"bot_message": "Unable to load your doctor profile — please contact support", "next_action": "doctor_profile_error", "ui_data": {}}
 
-    lower = message.lower()
-    normalized_lookup = lower.replace("appointmnets", "appointments").replace("appointmets", "appointments").replace("appontments", "appointments").replace("appointments", "appointments")
     doctor_name = _doctor_name_from_context(doctor_context)
+    lower = message.lower()
 
+    # NLU classification for intent detection (supports English, Roman Urdu, Urdu script)
+    nlu = classify(message, session.get("messages") or [], session.get("state") or S.IDLE)
+    intent = nlu.get("intent") or ""
+
+    # Pending selection logic (unchanged)
     last_action = session.get("last_doctor_action")
     selected_id = _extract_selected_appointment_id(message)
     has_pending_doctor_selection = bool(
@@ -321,21 +352,22 @@ def handle_doctor_message(
         if last_action == "reschedule":
             return _doctor_reschedule(doctor_id, authorization, message, session, doctor_name)
 
-    if "reschedule" in lower:
+    # Route based on NLU intent
+    if intent == "reschedule":
         session["last_doctor_action"] = "reschedule"
         return _doctor_reschedule(doctor_id, authorization, message, session, doctor_name)
 
-    if "cancel" in lower:
+    if intent == "cancel":
         session["last_doctor_action"] = "cancel"
         return _doctor_cancel(doctor_id, authorization, message, session, doctor_name)
 
-    if "details for" in lower or "detail for" in lower or "appointment details" in lower:
-        return _doctor_patient_details(doctor_id, authorization, message, session)
+    if intent == "patient_details":
+        return _doctor_patient_details(doctor_id, authorization, message, session, nlu=nlu)
 
-    if any(keyword in normalized_lookup for keyword in ("show my appointments", "show appointments", "my appointments", "appointments")) and "book" not in lower and "new appointment" not in lower:
+    if intent == "lookup":
         return _doctor_show_appointments(doctor_id, authorization, message, session)
 
-    if any(keyword in lower for keyword in ("book a new appointment", "new appointment", "book appointment", "schedule a patient", "book me a")):
+    if intent == "appointment":
         return {"bot_message": "This assistant is for doctor schedule management. Booking a new patient appointment is not supported here. Please use your dashboard to manage scheduling.", "next_action": "doctor_unsupported", "ui_data": {}}
 
     return {"bot_message": "This assistant is for doctor schedule management. Please ask to show your appointments, view a patient detail, reschedule, or cancel an appointment.", "next_action": "doctor_unsupported", "ui_data": {}}

@@ -1,4 +1,4 @@
-"""NLU: intent classification, entity extraction, keyword shortcuts."""
+"""NLU: intent classification, entity extraction using LLM."""
 from __future__ import annotations
 
 import logging
@@ -13,14 +13,16 @@ logger = logging.getLogger("medibook.ai.nlu")
 
 MAX_HISTORY = 20
 
-INTENTS = ("appointment", "symptom", "faq", "reschedule", "cancel", "lookup")
+INTENTS = ("appointment", "symptom", "faq", "reschedule", "cancel", "lookup", "show_doctors", "patient_details")
 
 NLU_SYSTEM = """You are the NLU for MediBook AI, a clinic virtual receptionist (Pakistan).
 Classify the latest user message. Return JSON only:
 {
-  "intent": "appointment"|"symptom"|"faq"|"reschedule"|"cancel"|"lookup",
+  "intent": "appointment"|"symptom"|"faq"|"reschedule"|"cancel"|"lookup"|"show_doctors"|"patient_details",
   "doctor_name": string|null,
   "doctor_id": string|null,
+    "specialty": string|null,
+    "wants_doctor_list": boolean,
   "date": string|null,
   "symptoms": string|null,
   "appointment_id": string|null,
@@ -30,72 +32,65 @@ Classify the latest user message. Return JSON only:
   "option_id": string|null
 }
 Rules:
-- appointment: user wants to book (e.g. "book appointment", "doctor se milna hai")
-- symptom: user describes health symptoms (e.g. "chest pain", "gala kharab hai")
+- show_doctors and wants_doctor_list: user asks to see available doctors in English, Roman Urdu, or Urdu script
+- appointment: user wants to book an appointment (e.g. "book appointment", "doctor se milna hai", "book with Dr Fatima")
+- symptom: user describes health symptoms (e.g. "chest pain", "gala kharab hai", "mujhe bukhar hai")
 - faq: clinic hours, fees, location questions
 - reschedule: change existing appointment time
 - cancel: cancel/delete an appointment
 - lookup: check/view appointment details ("what is my appointment", "show my bookings")
+- patient_details: doctor wants to view a specific patient's appointment details (e.g. "علی کی ڈیٹیل دکھاؤ", "show Ali's details", "mujhe patient ki detail chahiye")
 - confirms true: yes/confirm/haan/ji haan/theek hai/bilkul/kar do
 - declines true: no/cancel/nahi/na/mat karo/rehne do
-- Extract option_id if user passes a UUID or option reference."""
-
-
-def _keyword_nlu(text: str, state: S) -> Optional[dict[str, Any]]:
-    b = text.lower().strip()
-    confirm = bool(re.search(r"\b(yes|yeah|yep|y|confirm|book it|go ahead|please book|haan|ji haan|theek hai|bilkul|kar do)\b", b))
-    decline = bool(re.search(r"\b(no|nope|cancel|stop|nahi|na|mat karo|rehne do|chhor do)\b", b))
-
-    # In confirmation states, catch yes/no immediately without LLM
-    if state in (S.AWAIT_CONFIRM, S.RESCHEDULE_CONFIRM, S.CANCEL_CONFIRM) and (confirm or decline):
-        return {"intent": "appointment", "confirms": confirm, "declines": decline,
-                "doctor_name": None, "doctor_id": None, "date": None, "symptoms": None,
-                "appointment_id": None, "faq_topic": None, "option_id": None}
-
-    # Cancel intent
-    if any(p in b for p in ("cancel appointment", "cancel my appointment", "appointment cancel", "cancel karna", "appointment cancel karna")):
-        return {"intent": "cancel", "confirms": False, "declines": False,
-                "doctor_name": None, "doctor_id": None, "date": None, "symptoms": None,
-                "appointment_id": None, "faq_topic": None, "option_id": None}
-
-    # Lookup intent
-    if any(p in b for p in ("my appointment", "show appointment", "check appointment", "view appointment", "what is my appointment", "mera appointment", "appointments dikhao")):
-        return {"intent": "lookup", "confirms": False, "declines": False,
-                "doctor_name": None, "doctor_id": None, "date": None, "symptoms": None,
-                "appointment_id": None, "faq_topic": None, "option_id": None}
-
-    # Reschedule intent
-    if any(p in b for p in ("reschedule", "reshedule", "change time", "change appointment", "waqt tabdeel", "time badal", "tabdeel karna")):
-        return {"intent": "reschedule", "confirms": False, "declines": False,
-                "doctor_name": None, "doctor_id": None, "date": None, "symptoms": None,
-                "appointment_id": None, "faq_topic": None, "option_id": None}
-
-    # Booking intent must be re-evaluated even when an older workflow is active.
-    if any(p in b for p in ("book appointment", "book an appointment", "book a new appointment", "schedule an appointment")):
-        return {"intent": "appointment", "confirms": False, "declines": False,
-                "doctor_name": None, "doctor_id": None, "date": None, "symptoms": None,
-                "appointment_id": None, "faq_topic": None, "option_id": None}
-
-    # FAQ hours
-    if state in (S.IDLE, S.FAQ, S.BOOKED) and any(w in b for w in ("hour", "timing", "open", "close", "weekend", "kab khulta")):
-        return {"intent": "faq", "faq_topic": "hours", "confirms": False, "declines": False,
-                "doctor_name": None, "doctor_id": None, "date": None, "symptoms": None,
-                "appointment_id": None, "option_id": None}
-
-    # FAQ fees
-    if state in (S.IDLE, S.FAQ, S.BOOKED) and any(w in b for w in ("fee", "cost", "price", "charge", "fees", "kitne paise")):
-        return {"intent": "faq", "faq_topic": "fees", "confirms": False, "declines": False,
-                "doctor_name": None, "doctor_id": None, "date": None, "symptoms": None,
-                "appointment_id": None, "option_id": None}
-
-    return None
+- Extract doctor_name when user mentions a specific doctor
+- Extract specialty when the user clearly names a medical specialty or it is clearly implied by symptoms
+- Extract symptoms when user describes health issues
+- Extract appointment_id when user references a specific appointment
+- If you are not confident about doctor_name or specialty, return null rather than guessing. Never invent a doctor name or specialty that wasn't clearly stated or implied by symptoms.
+"""
 
 
 def classify(text: str, history: list[MessageItem], state: S) -> dict[str, Any]:
-    fast = _keyword_nlu(text, state)
-    if fast:
-        return fast
     history_blob = "\n".join(f"{m.role}: {m.message}" for m in history[-8:])
+    
+    # Check for emergency first (always need fast response)
+    emergency_keywords = ["chest pain", "heart attack", "stroke", "bleeding", "unconscious", "breathing difficulty", "seenay mein dard"]
+    if any(k in text.lower() for k in emergency_keywords):
+        return {
+            "intent": "emergency",
+            "doctor_name": None,
+            "doctor_id": None,
+            "specialty": None,
+            "wants_doctor_list": False,
+            "date": None,
+            "symptoms": text,
+            "appointment_id": None,
+            "confirms": False,
+            "declines": False,
+            "faq_topic": None,
+            "option_id": None,
+        }
+    
+    # Check for simple confirm/decline in confirmation states (fast path)
+    if state in (S.AWAIT_CONFIRM, S.RESCHEDULE_CONFIRM, S.CANCEL_CONFIRM):
+        confirm = bool(re.search(r"\b(yes|yeah|yep|confirm|haan|ji haan|theek hai|bilkul|kar do)\b", text.lower()))
+        decline = bool(re.search(r"\b(no|nope|cancel|stop|nahi|na|mat karo|rehne do)\b", text.lower()))
+        if confirm or decline:
+            return {
+                "intent": "appointment",
+                "doctor_name": None,
+                "doctor_id": None,
+                "specialty": None,
+                "wants_doctor_list": False,
+                "date": None,
+                "symptoms": None,
+                "appointment_id": None,
+                "confirms": confirm,
+                "declines": decline,
+                "faq_topic": None,
+                "option_id": None,
+            }
+    
     try:
         parsed = groq_client.complete_json([
             {"role": "system", "content": NLU_SYSTEM},
@@ -108,12 +103,15 @@ def classify(text: str, history: list[MessageItem], state: S) -> dict[str, Any]:
     intent = str(parsed.get("intent") or "symptom").lower().strip()
     if intent not in INTENTS:
         intent = "symptom"
+    
     return {
         "intent": intent,
         "doctor_name": parsed.get("doctor_name"),
         "doctor_id": parsed.get("doctor_id"),
+        "specialty": parsed.get("specialty"),
+        "wants_doctor_list": bool(parsed.get("wants_doctor_list")),
         "date": parsed.get("date"),
-        "symptoms": parsed.get("symptoms"),
+        "symptoms": parsed.get("symptoms") or text if intent == "symptom" else parsed.get("symptoms"),
         "appointment_id": parsed.get("appointment_id"),
         "confirms": bool(parsed.get("confirms")),
         "declines": bool(parsed.get("declines")),
@@ -142,14 +140,11 @@ def extract_appointment_id(text: str, nlu: dict) -> Optional[str]:
 
 
 def extract_option_id(text: str, nlu: dict) -> Optional[str]:
-    """Extract a UUID or ISO-timestamp option_id from the message or NLU result."""
     if nlu.get("option_id"):
         return str(nlu["option_id"]).strip()
-    # Allow clients to send bare UUIDs as doctor/slot selection
     m = re.search(r"\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b", text, re.I)
     if m:
         return m.group(1)
-    # Also match ISO 8601 timestamps sent by the TimeSlotGrid (e.g. 2026-08-28T09:00:00+05:00)
     iso = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)?)", text)
     if iso:
         return iso.group(1)

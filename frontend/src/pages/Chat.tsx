@@ -29,6 +29,8 @@ interface ChatMessage {
   nextAction?: string | null;
 }
 
+type Language = 'en' | 'ur';
+
 function formatUiDataSlots(uiData: ChatUiData | null | undefined): ChatUiData | null | undefined {
   if (!uiData) return uiData;
 
@@ -85,6 +87,13 @@ export const Chat: React.FC = () => {
   const [isBookingInProgress, setIsBookingInProgress] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
 
+  const [language, setLanguage] = useState<Language>(() => {
+    return (localStorage.getItem('preferredLanguage') as Language) || 'en';
+  });
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('⚪ Idle');
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const patientId =
@@ -114,6 +123,83 @@ export const Chat: React.FC = () => {
         'Reschedule appointment',
         'What are my appointments?',
       ];
+
+  const toggleLanguage = useCallback(() => {
+    const newLang = language === 'en' ? 'ur' : 'en';
+    setLanguage(newLang);
+    localStorage.setItem('preferredLanguage', newLang);
+    setVoiceStatus(`Language: ${newLang === 'en' ? 'English' : 'Urdu'}`);
+  }, [language]);
+
+  const startVoiceInput = useCallback(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Your browser doesn\'t support voice input. Please use Chrome or Edge.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = language === 'en' ? 'en-US' : 'ur-PK';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognitionRef.current = recognition;
+
+    setIsRecording(true);
+    setVoiceStatus('🎤 Listening...');
+
+    recognition.start();
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = event.results[0][0].transcript;
+      setInputVal(transcript);
+      setVoiceStatus(`✅ Heard: "${transcript}"`);
+      
+      setTimeout(() => {
+        if (transcript.trim()) {
+          handleSendMessage(transcript);
+        }
+      }, 500);
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      let errorMsg = '⚠️ Could not understand. ';
+      if (event.error === 'not-allowed') {
+        errorMsg += 'Please allow microphone access.';
+      } else if (event.error === 'no-speech') {
+        errorMsg += 'No speech detected. Please try again.';
+      } else if (event.error === 'audio-capture') {
+        errorMsg += 'No microphone found. Please check your mic.';
+      } else {
+        errorMsg += 'Please try again.';
+      }
+      
+      setVoiceStatus(errorMsg);
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      if (!inputVal) {
+        setVoiceStatus('⏹ Stopped listening');
+      }
+    };
+  }, [language, inputVal]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === ' ' && e.target?.tagName !== 'INPUT' && e.target?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        if (!isRecording && !isBotTyping) {
+          startVoiceInput();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isRecording, isBotTyping, startVoiceInput]);
 
   const callChatApi = useCallback(
     async (text: string, optionId?: string) => {
@@ -154,6 +240,7 @@ export const Chat: React.FC = () => {
       } finally {
         setIsBotTyping(false);
         setIsBookingInProgress(false);
+        setVoiceStatus('⚪ Idle');
       }
     },
     [conversationId, patientId]
@@ -387,33 +474,70 @@ export const Chat: React.FC = () => {
       </Card>
 
       {/* Message Input Bar */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleSendMessage();
-        }}
-        className="bg-white p-2.5 sm:p-3 rounded-2xl sm:rounded-pill border border-surfaceContainerHigh shadow-soft flex items-center gap-2"
-      >
-        <input
-          type="text"
-          value={inputVal}
-          onChange={(e) => setInputVal(e.target.value)}
-          placeholder="Type your message here..."
-          className="flex-1 bg-transparent px-4 py-2 text-sm text-textPrimary placeholder:text-textSecondary/60 outline-none"
-          disabled={isBotTyping}
-        />
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 px-1">
+          <button
+            type="button"
+            onClick={toggleLanguage}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-pill text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+              language === 'en'
+                ? 'bg-primary text-white hover:bg-primary/90'
+                : 'bg-orange-500 text-white hover:bg-orange-600'
+            }`}
+          >
+            {language === 'en' ? '🇬🇧 English' : '🇵🇰 اردو'}
+          </button>
 
-        <button
-          type="submit"
-          disabled={!inputVal.trim() || isBotTyping}
-          className="w-10 h-10 rounded-pill bg-primary hover:bg-primaryContainer text-white flex items-center justify-center shrink-0 disabled:opacity-40 disabled:cursor-not-allowed shadow-soft-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary"
-          aria-label="Send message"
+          <button
+            type="button"
+            onClick={startVoiceInput}
+            disabled={isRecording || isBotTyping}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-pill text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+              isRecording
+                ? 'bg-red-500 text-white animate-pulse'
+                : 'bg-surfaceContainer hover:bg-surfaceContainerHigh text-textPrimary'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {isRecording ? '🔴 Recording...' : '🎤 Speak'}
+          </button>
+
+          <span className="text-xs text-textSecondary/70 italic ml-auto">
+            {voiceStatus}
+          </span>
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendMessage();
+          }}
+          className="bg-white p-2.5 sm:p-3 rounded-2xl sm:rounded-pill border border-surfaceContainerHigh shadow-soft flex items-center gap-2"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
-          </svg>
-        </button>
-      </form>
+          <input
+            type="text"
+            value={inputVal}
+            onChange={(e) => setInputVal(e.target.value)}
+            placeholder={language === 'en' ? "Type or speak your message..." : "اپنا پیغام ٹائپ کریں یا بولیں..."}
+            className="flex-1 bg-transparent px-4 py-2 text-sm text-textPrimary placeholder:text-textSecondary/60 outline-none"
+            disabled={isBotTyping}
+          />
+
+          <button
+            type="submit"
+            disabled={!inputVal.trim() || isBotTyping}
+            className="w-10 h-10 rounded-pill bg-primary hover:bg-primaryContainer text-white flex items-center justify-center shrink-0 disabled:opacity-40 disabled:cursor-not-allowed shadow-soft-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary"
+            aria-label="Send message"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+            </svg>
+          </button>
+        </form>
+
+        <div className="text-center text-[10px] text-textSecondary/50">
+          Press <kbd className="px-1.5 py-0.5 bg-surfaceContainer rounded text-xs font-mono">Space</kbd> to start voice input
+        </div>
+      </div>
     </div>
   );
 };
