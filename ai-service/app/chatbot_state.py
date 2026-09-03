@@ -16,6 +16,7 @@ class S(str, Enum):
     IDLE = "idle"
     ASKING_SYMPTOMS = "asking_symptoms"
     ASKING_FOLLOWUP = "asking_followup"
+    ASKING_HISTORY = "asking_history"
     SHOWING_DOCTORS = "showing_doctors"
     SHOWING_SLOTS = "showing_slots"
     AWAIT_CONFIRM = "await_confirm"
@@ -53,6 +54,8 @@ def new_session(conv_id: str, patient_id: Optional[str]) -> dict[str, Any]:
         "state": S.IDLE,
         # booking
         "symptoms_text": "",
+        "emergency_explanation": None,
+        "medical_history": None,
         "follow_up_index": 0,
         "follow_ups": [],
         "specialty": None,

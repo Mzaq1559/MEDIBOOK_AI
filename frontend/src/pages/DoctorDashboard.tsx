@@ -17,6 +17,7 @@ interface BackendDoctorAppointment {
   urgency_level?: string;
   symptoms_reported?: string;
   doctor_notes?: string;
+  patient_history?: string;
 }
 
 export const DoctorDashboard: React.FC = () => {
@@ -366,6 +367,30 @@ export const DoctorDashboard: React.FC = () => {
                           </div>
                         )}
 
+                        {/* Patient-shared Medical History (doctor-only) */}
+                        {apt.patient_history && (() => {
+                          try {
+                            const hist = typeof apt.patient_history === 'string' ? JSON.parse(apt.patient_history) : apt.patient_history;
+                            const parts: string[] = [];
+                            if (hist.conditions?.length) parts.push(`Conditions: ${hist.conditions.join(', ')}`);
+                            if (hist.allergies?.length) parts.push(`Allergies: ${hist.allergies.join(', ')}`);
+                            if (hist.past_issues?.length) parts.push(`History: ${hist.past_issues.join(', ')}`);
+                            if (parts.length === 0) return null;
+                            return (
+                              <div className="mt-2 p-3 bg-blue-50 rounded-xl text-xs border border-blue-200 space-y-0.5">
+                                <span className="font-bold text-blue-700 uppercase text-[10px] tracking-wider block">
+                                  📋 Patient Medical History
+                                </span>
+                                {parts.map((p, i) => (
+                                  <p key={i} className="text-textPrimary">{p}</p>
+                                ))}
+                              </div>
+                            );
+                          } catch {
+                            return null;
+                          }
+                        })()}
+
                         {/* Completed Notes View */}
                         {apt.doctor_notes && !isEditingNotes && (
                           <div className="mt-2.5 p-3 bg-surfaceContainer/80 rounded-xl text-xs border border-surfaceContainerHigh space-y-0.5">
@@ -529,6 +554,30 @@ export const DoctorDashboard: React.FC = () => {
                             <strong className="text-textPrimary">Symptoms / Reason:</strong> {apt.symptoms_reported}
                           </div>
                         )}
+
+                        {/* Patient-shared Medical History (doctor-only) */}
+                        {apt.patient_history && (() => {
+                          try {
+                            const hist = typeof apt.patient_history === 'string' ? JSON.parse(apt.patient_history) : apt.patient_history;
+                            const parts: string[] = [];
+                            if (hist.conditions?.length) parts.push(`Conditions: ${hist.conditions.join(', ')}`);
+                            if (hist.allergies?.length) parts.push(`Allergies: ${hist.allergies.join(', ')}`);
+                            if (hist.past_issues?.length) parts.push(`History: ${hist.past_issues.join(', ')}`);
+                            if (parts.length === 0) return null;
+                            return (
+                              <div className="mt-2 p-3 bg-blue-50 rounded-xl text-xs border border-blue-200 space-y-0.5">
+                                <span className="font-bold text-blue-700 uppercase text-[10px] tracking-wider block">
+                                  📋 Patient Medical History
+                                </span>
+                                {parts.map((p, i) => (
+                                  <p key={i} className="text-textPrimary">{p}</p>
+                                ))}
+                              </div>
+                            );
+                          } catch {
+                            return null;
+                          }
+                        })()}
 
                         {/* Completed Notes View */}
                         {apt.doctor_notes && !isEditingNotes && (

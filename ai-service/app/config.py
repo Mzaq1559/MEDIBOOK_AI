@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     BACKEND_API_URL: str = "http://backend:8000/api"
 
     GROQ_API_KEY: str = ""
+    GROQ_API_KEYS: str = ""  # Comma-separated list for multi-key round-robin
     GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     GOOGLE_CALENDAR_CREDENTIALS_PATH: str = "google-calendar-credentials.json"

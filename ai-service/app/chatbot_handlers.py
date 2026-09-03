@@ -1,12 +1,16 @@
 """Workflow handlers for NEW_BOOKING, RESCHEDULE, CANCEL, LOOKUP."""
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Any, Optional
 
 from app import backend_client
-from app.chatbot_nlu import extract_appointment_id, extract_option_id, is_confirm, is_decline
+from app.chatbot_nlu import (
+    extract_appointment_id, extract_option_id, is_confirm, is_decline,
+    RESCHEDULE_RE, LOOKUP_RE, CANCEL_RE,
+)
 from app.chatbot_slots import (
     doctors_ui_data,
     fetch_doctor_slots,
@@ -18,7 +22,7 @@ from app.chatbot_slots import (
 )
 from app.chatbot_state import S
 from app.schemas import OptionItem
-from app.symptom_triage import EMERGENCY_ALERT, follow_ups_for, is_emergency, triage
+from app.symptom_triage import emergency_alert_with, emergency_explanation, follow_ups_for, is_emergency, triage
 from integrations import google_calendar, n8n_webhook, reminders
 
 logger = logging.getLogger("medibook.ai.handlers")
@@ -27,6 +31,142 @@ LOGIN_REQ_BOOK = "To confirm this appointment you need to be logged in. Please s
 LOGIN_REQ_RESCHEDULE = "To reschedule you need to be logged in. Please sign in, then confirm."
 LOGIN_REQ_CANCEL = "Please log in to cancel appointments."
 LOGIN_REQ_LOOKUP = "Please log in to view your appointments."
+
+# ── Patient medical history collection ──────────────────────────────────
+HISTORY_CONSENT = (
+    "\U0001f512 This information will only be shared with your assigned doctor for this appointment."
+)
+HISTORY_PROMPT = (
+    "Would you like to share any relevant medical history for the doctor? "
+    "(e.g. existing conditions, allergies, or past similar issues)\n\n"
+    "You can skip this by typing \"skip\"."
+)
+
+_SKIP_WORDS = frozenset({
+    "skip", "no", "nah", "no thanks", "no thank you", "not really",
+    "n/a", "none", "pass", "nope", "not needed", "nothing",
+    "nahi", "nahi chahiye", "skip karo", "kuch nahi",
+})
+
+_CONDITION_TERMS = [
+    "diabetes", "diabetic", "blood pressure", "hypertension", "high blood pressure",
+    "asthma", "heart disease", "heart condition", "thyroid", "cholesterol",
+    "kidney disease", "liver disease", "epilepsy", "arthritis", "cancer",
+    "copd", "hepatitis", "hiv", "tuberculosis", "tb",
+]
+# Captures the full allergy list (including commas) until a sentence
+# terminator (period, newline, or end-of-string).  Individual items are
+# then split on commas and "and" in post-processing.
+_ALLERGY_MARKERS = re.compile(
+    r"(?:allergi(?:c|es|y)\s+(?:to\s+)?|allergy\s*:?\s*|intolerant\s+(?:to\s+)?)"
+    r"([\w\s,]+?)(?:\.|\n|$)",
+    re.IGNORECASE,
+)
+# Splitter for breaking a captured allergy string into individual items.
+# Priority: comma (optionally followed by spaces/and) > standalone "and".
+_ALLERGY_SPLIT_RE = re.compile(r",\s*(?:and\s+)?|\s+and\s+", re.IGNORECASE)
+_PAST_ISSUE_MARKERS = re.compile(
+    r"(?:(?:ha[ds]|previous(?:ly)?|past|history\s+of|prior|last\s+(?:year|month|week)|suffered\s+from|was\s+diagnosed\s+with)\s+)"
+    r"([\w\s,]+?)(?:\.|,|\band\b|$)",
+    re.IGNORECASE,
+)
+
+
+def _is_history_skip(text: str) -> bool:
+    stripped = text.strip().lower()
+    return stripped in _SKIP_WORDS or stripped.startswith("skip") or stripped.startswith("no ")
+
+
+def extract_medical_history(text: str) -> dict[str, Any]:
+    """Parse free-text patient input into structured medical history."""
+    blob = text.lower()
+    conditions: list[str] = [t for t in _CONDITION_TERMS if t in blob]
+    # Allergy extraction: capture full list, then split on commas and "and"
+    raw_allergy_matches = [
+        m.group(1).strip() for m in _ALLERGY_MARKERS.finditer(text) if m.group(1).strip()
+    ]
+    allergies: list[str] = []
+    for raw in raw_allergy_matches:
+        parts = _ALLERGY_SPLIT_RE.split(raw)
+        allergies.extend(p.strip() for p in parts if p.strip())
+    past_issues: list[str] = [m.group(1).strip() for m in _PAST_ISSUE_MARKERS.finditer(text) if m.group(1).strip()]
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    conditions = [c for c in conditions if not (c in seen or seen.add(c))]
+    allergies = [a for a in allergies if not (a.lower() in seen or seen.add(a.lower()))]
+    past_issues = [p for p in past_issues if not (p.lower() in seen or seen.add(p.lower()))]
+    return {
+        "conditions": conditions,
+        "allergies": allergies,
+        "past_issues": past_issues,
+        "raw": text.strip()[:500],
+    }
+
+
+def build_patient_summary(symptoms: str, urgency: str, history: Optional[dict[str, Any]]) -> str:
+    """3–5 bullet summary combining symptoms, urgency, and shared history."""
+    bullets: list[str] = []
+    if symptoms:
+        bullets.append(f"\u2022 Current symptoms: {symptoms}")
+    bullets.append(f"\u2022 Urgency level: {urgency or 'normal'}")
+    if history:
+        conds = history.get("conditions") or []
+        if conds:
+            bullets.append(f"\u2022 Existing conditions: {', '.join(conds)}")
+        allerg = history.get("allergies") or []
+        if allerg:
+            bullets.append(f"\u2022 Known allergies: {', '.join(allerg)}")
+        past = history.get("past_issues") or []
+        if past:
+            bullets.append(f"\u2022 Relevant history: {', '.join(past)}")
+    return "\n".join(bullets[:5])
+
+
+def _history_prompt_message() -> str:
+    return f"{HISTORY_CONSENT}\n\n{HISTORY_PROMPT}"
+
+
+def _proceed_to_show_doctors(session: dict[str, Any]) -> tuple[str, str, list, dict]:
+    """Transition from ASKING_HISTORY to SHOWING_DOCTORS, loading doctor slots."""
+    try:
+        spec = session.get("specialty")
+        if not spec:
+            docs = backend_client.list_doctors()
+            enriched = fetch_doctor_slots(docs, next_days=3)
+            session["candidate_doctors"] = enriched
+            session["state"] = S.SHOWING_DOCTORS
+            if not enriched:
+                return "No doctors are available right now. Please try again later.", "waiting_for_doctor_selection", [], {"doctors": []}
+            return (
+                "Here are the available doctors. Please select one:",
+                "waiting_for_doctor_selection",
+                [],
+                {"doctors": doctors_ui_data(enriched)},
+            )
+        docs = backend_client.list_doctors(specialization=spec)
+        enriched = fetch_doctor_slots(docs, next_days=3)
+        session["candidate_doctors"] = enriched
+        session["state"] = S.SHOWING_DOCTORS
+        if not enriched:
+            session["awaiting_specialty_fallback"] = True
+            return (
+                f"No {spec or 'recommended'} slots are available right now. "
+                "Would you like me to check General Medicine instead?",
+                "waiting_for_doctor_selection",
+                [],
+                {"doctors": []},
+            )
+        msg = f"Based on your symptoms, I recommend seeing a {spec or 'doctor'}. Please select a doctor:"
+        return msg, "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(enriched)}
+    except Exception as exc:
+        logger.error("Failed to load doctors: %s", exc, exc_info=True)
+        session["state"] = S.IDLE
+        return (
+            "I'm sorry, I couldn't load the doctor list right now. Please try again in a moment.",
+            "waiting_for_input",
+            [],
+            {},
+        )
 
 
 def _appointment_time_label(appointment: dict[str, Any]) -> str:
@@ -57,7 +197,10 @@ def _select_appointment_from_text(
     doctor_matches = [
         appointment for appointment in appointments
         if doctor_name
-        and str(appointment.get("doctor_name") or "Doctor").strip().casefold().removeprefix("dr.").strip() == doctor_name
+        and (
+            str(appointment.get("doctor_name") or "Doctor").strip().casefold().removeprefix("dr.").strip() == doctor_name
+            or str(appointment.get("patient_name") or "").strip().casefold().removeprefix("dr.").strip() == doctor_name
+        )
     ]
     if not doctor_matches:
         if len(appointments) == 1 and "selected appointment" in lowered:
@@ -201,7 +344,10 @@ def _handle_named_selection(
 def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Optional[str]) -> tuple[str, str, list, dict]:
     state = session["state"]
 
-    if nlu.get("wants_doctor_list") or nlu.get("intent") == "show_doctors":
+    # Direct "show doctors" request from a non-active state — skip symptom flow
+    if state in (S.IDLE, S.FAQ, S.LOOKUP) and (
+        nlu.get("wants_doctor_list") or nlu.get("intent") == "show_doctors"
+    ):
         spec = session.get("specialty")
         if not spec:
             docs = backend_client.list_doctors()
@@ -231,7 +377,8 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         session["symptoms_text"] = str(nlu.get("symptoms") or text)
         if is_emergency(session["symptoms_text"]):
             session["state"] = S.EMERGENCY
-            return EMERGENCY_ALERT, "emergency_redirect", [], {}
+            session["emergency_explanation"] = emergency_explanation(session["symptoms_text"])
+            return emergency_alert_with(session["emergency_explanation"]), "emergency_redirect", [], {}
         result = triage(session["symptoms_text"])
         doctors = backend_client.list_doctors()
         requested_specialty = _validated_specialty(nlu.get("specialty"), doctors)
@@ -244,24 +391,65 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         return f"Thank you. Let me ask a few quick questions:\n{session['follow_ups'][0]}", "waiting_for_input", [], {}
 
     if state == S.ASKING_FOLLOWUP:
+        # ── Intent-switch escape hatch ──────────────────────────────────
+        # If the user sends a clearly unrelated request (lookup, reschedule,
+        # cancel) while we're collecting follow-up answers, detect and route
+        # instead of blindly consuming the message as a symptom answer.
+        _intent = nlu.get("intent")
+        _is_switch = _intent in ("reschedule", "cancel", "lookup")
+        if not _is_switch:
+            lower = text.lower()
+            if (
+                "?" in text
+                and any(
+                    kw in lower
+                    for kw in (
+                        "my appointment", "what are my", "show my",
+                        "view my", "check my", "cancel my", "reschedule my",
+                        "start over", "help",
+                    )
+                )
+            ):
+                _is_switch = True
+        if _is_switch:
+            logger.info(
+                "Intent switch '%s' detected during ASKING_FOLLOWUP — "
+                "breaking out to route as '%s'",
+                text[:80], _intent,
+            )
+            from app.chatbot import _reset_patient_workflow
+            # Infer the correct target intent when NLU says "symptom"/"appointment"
+            # but the text clearly indicates a different request
+            _target = _intent
+            if _target not in ("reschedule", "cancel", "lookup"):
+                lower2 = text.lower()
+                if any(kw in lower2 for kw in ("my appointment", "show my", "view my", "check my", "what are my")):
+                    _target = "lookup"
+                elif any(kw in lower2 for kw in ("cancel my", "cancel this")):
+                    _target = "cancel"
+                elif any(kw in lower2 for kw in ("reschedule my", "change my", "time change")):
+                    _target = "reschedule"
+                else:
+                    _target = "appointment"
+            _reset_patient_workflow(session, _target)
+            if _target == "lookup":
+                return handle_lookup(session, text, nlu, auth)
+            if _target == "reschedule":
+                return handle_reschedule(session, text, nlu, auth)
+            if _target == "cancel":
+                return handle_cancel(session, text, nlu, auth)
+            session["state"] = S.IDLE
+            return handle_new_booking(session, text, nlu, auth)
+
         session["symptoms_text"] = f"{session.get('symptoms_text', '')} {text}".strip()
         if is_emergency(session["symptoms_text"]):
             session["state"] = S.EMERGENCY
-            return EMERGENCY_ALERT, "emergency_redirect", [], {}
+            session["emergency_explanation"] = emergency_explanation(session["symptoms_text"])
+            return emergency_alert_with(session["emergency_explanation"]), "emergency_redirect", [], {}
         
         if nlu.get("wants_doctor_list") or nlu.get("intent") == "show_doctors":
-            spec = session.get("specialty")
-            if not spec:
-                docs = backend_client.list_doctors()
-            else:
-                docs = backend_client.list_doctors(specialization=spec)
-            enriched = fetch_doctor_slots(docs, next_days=3)
-            session["candidate_doctors"] = enriched
-            session["state"] = S.SHOWING_DOCTORS
-            if not enriched:
-                return f"No {spec or 'doctor'} slots are available right now. Please try again later.", "waiting_for_doctor_selection", [], {"doctors": []}
-            msg = f"Here are the available {'specialists' if spec else 'doctors'}:"
-            return msg, "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(enriched)}
+            session["state"] = S.ASKING_HISTORY
+            return _history_prompt_message(), "waiting_for_input", [], {}
 
         named_selection = _handle_named_selection(session, nlu)
         if named_selection:
@@ -273,32 +461,62 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         if idx < min(3, len(fu)):
             return f"Thanks. {fu[idx]}", "waiting_for_input", [], {}
         
-        spec = session.get("specialty")
-        if not spec:
-            session["state"] = S.SHOWING_DOCTORS
-            session["awaiting_general_fallback"] = True
-            return (
-                "I'm not sure which specialist fits best. Would you like to see available doctors, "
-                "or describe your symptoms differently?",
-                "waiting_for_input",
-                [],
-                {"doctors": []},
+        # Transition to optional medical history collection before showing doctors
+        session["state"] = S.ASKING_HISTORY
+        return _history_prompt_message(), "waiting_for_input", [], {}
+
+    if state == S.ASKING_HISTORY:
+        # ── Intent-switch escape hatch (same logic as ASKING_FOLLOWUP) ──
+        _intent_h = nlu.get("intent")
+        _is_switch_h = _intent_h in ("reschedule", "cancel", "lookup")
+        if not _is_switch_h:
+            lower_h = text.lower()
+            if (
+                "?" in text
+                and any(
+                    kw in lower_h
+                    for kw in (
+                        "my appointment", "what are my", "show my",
+                        "view my", "check my", "cancel my", "reschedule my",
+                        "start over", "help",
+                    )
+                )
+            ):
+                _is_switch_h = True
+        if _is_switch_h:
+            logger.info(
+                "Intent switch '%s' detected during ASKING_HISTORY — "
+                "breaking out to route as '%s'",
+                text[:80], _intent_h,
             )
-        docs = backend_client.list_doctors(specialization=spec)
-        enriched = fetch_doctor_slots(docs, next_days=3)
-        session["candidate_doctors"] = enriched
-        session["state"] = S.SHOWING_DOCTORS
-        if not enriched:
-            session["awaiting_specialty_fallback"] = True
-            return (
-                f"No {spec or 'recommended'} slots are available right now. "
-                "Would you like me to check General Medicine instead?",
-                "waiting_for_doctor_selection",
-                [],
-                {"doctors": []},
-            )
-        msg = f"Based on your symptoms, I recommend seeing a {spec or 'doctor'}. Please select a doctor:"
-        return msg, "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(enriched)}
+            from app.chatbot import _reset_patient_workflow
+            _target_h = _intent_h
+            if _target_h not in ("reschedule", "cancel", "lookup"):
+                lower_h2 = text.lower()
+                if any(kw in lower_h2 for kw in ("my appointment", "show my", "view my", "check my", "what are my")):
+                    _target_h = "lookup"
+                elif any(kw in lower_h2 for kw in ("cancel my", "cancel this")):
+                    _target_h = "cancel"
+                elif any(kw in lower_h2 for kw in ("reschedule my", "change my", "time change")):
+                    _target_h = "reschedule"
+                else:
+                    _target_h = "appointment"
+            _reset_patient_workflow(session, _target_h)
+            if _target_h == "lookup":
+                return handle_lookup(session, text, nlu, auth)
+            if _target_h == "reschedule":
+                return handle_reschedule(session, text, nlu, auth)
+            if _target_h == "cancel":
+                return handle_cancel(session, text, nlu, auth)
+            session["state"] = S.IDLE
+            return handle_new_booking(session, text, nlu, auth)
+
+        if _is_history_skip(text):
+            session["medical_history"] = None
+        else:
+            history = extract_medical_history(text)
+            session["medical_history"] = history
+        return _proceed_to_show_doctors(session)
 
     if state == S.SHOWING_DOCTORS:
         if session.pop("awaiting_general_fallback", False):
@@ -354,7 +572,13 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             if doc:
                 session["selected_doctor"] = doc
                 session["state"] = S.SHOWING_SLOTS
-                return f"You selected {doc['name']}. Please pick an available time slot:", "waiting_for_slot_selection", [], {"slots": slots_ui_data(doc)}
+                try:
+                    slot_data = slots_ui_data(doc)
+                except Exception as exc:
+                    logger.error("Failed to serialize slots for doctor %s: %s", doc.get("doctor_id"), exc, exc_info=True)
+                    session["state"] = S.SHOWING_DOCTORS
+                    return "I couldn't load available time slots for this doctor. Please try selecting again.", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(session.get("candidate_doctors", []))}
+                return f"You selected {doc['name']}. Please pick an available time slot:", "waiting_for_slot_selection", [], {"slots": slot_data}
         
         doctors = backend_client.list_doctors()
         doctor_name = nlu.get("doctor_name")
@@ -374,7 +598,13 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             if doctor:
                 session["selected_doctor"] = doctor
                 session["state"] = S.SHOWING_SLOTS
-                return f"You selected {doctor['name']}. Please pick an available time slot:", "waiting_for_slot_selection", [], {"slots": slots_ui_data(doctor)}
+                try:
+                    slot_data = slots_ui_data(doctor)
+                except Exception as exc:
+                    logger.error("Failed to serialize slots for doctor %s: %s", doctor.get("doctor_id"), exc, exc_info=True)
+                    session["state"] = S.SHOWING_DOCTORS
+                    return "I couldn't load available time slots for this doctor. Please try selecting again.", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(session.get("candidate_doctors", []))}
+                return f"You selected {doctor['name']}. Please pick an available time slot:", "waiting_for_slot_selection", [], {"slots": slot_data}
             else:
                 return f"I couldn't find a doctor named '{doctor_name}'. Please select a doctor by clicking one of the cards.", "waiting_for_doctor_selection", [], {"doctors": doctors_ui_data(session.get("candidate_doctors", []))}
         
@@ -465,11 +695,21 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
                 "urgency_reason": session.get("urgency_reason"),
                 "appointment_type": "in_person"
             }
+            # Attach structured patient history if the patient shared any
+            med_history = session.get("medical_history")
+            if med_history:
+                summary = build_patient_summary(
+                    session.get("symptoms_text") or "",
+                    session.get("urgency_level") or "normal",
+                    med_history,
+                )
+                payload["patient_history"] = json.dumps(med_history, ensure_ascii=False)
+                session["patient_history_summary"] = summary
             try:
                 created = backend_client.create_appointment(payload, auth)
             except backend_client.BackendError as e:
-                ui = {"booking": {"doctor": doc, "selectedSlot": session.get("selected_slot_label"), "isConfirmed": False}}
-                return _booking_error(e), "waiting_for_confirmation", [], {"booking": ui}
+                ui_booking = {"doctor": doc, "selectedSlot": session.get("selected_slot_label"), "isConfirmed": False}
+                return _booking_error(e), "waiting_for_confirmation", [], {"booking": ui_booking}
 
             session["appointment_booked"] = created.get("appointment_id") or created.get("id")
             if created.get("patient_id"):

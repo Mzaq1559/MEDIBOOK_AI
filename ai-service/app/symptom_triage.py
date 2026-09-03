@@ -1,4 +1,4 @@
-"""Symptom routing and emergency detection.
+﻿"""Symptom routing and emergency detection.
 
 This module only routes to a specialist and flags urgency. It does not diagnose.
 """
@@ -80,7 +80,7 @@ _WORSENING_FOLLOWUP_PATTERN = re.compile(
 
 _SEVERE_ASTHMA_PATTERN = re.compile(
     r"\b(?:severe|bad|acute)\s+asthma\b|\basthma\b.{0,40}\b(?:can't|cannot|unable|hard|difficulty)\s+breathe\b|"
-    r"\b(?:dam|saans)\s+ghut(?:na|raha|rahi)\b",
+    r"\b(?:dam|saans)\s+ghut(?:\s+(?:na|raha|rahi))?\b",
     re.IGNORECASE,
 )
 _CHILD_FEVER_PATTERN = re.compile(
@@ -160,47 +160,66 @@ _DIABETIC_RED_FLAG_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Standalone high-urgency emergency phrases (English & Roman Urdu)
-_STANDALONE_EMERGENCY_PATTERNS = [
+# Standalone high-urgency emergency phrases (English & Roman Urdu), grouped by
+# category so the appended explanation can name the emergency that matched.
+_STANDALONE_EMERGENCY_GROUPS: list[tuple[str, list[str]]] = [
     # 1. Severe / acute chest pain on its own
-    r"(?:severe|intense|crushing|heavy|sharp|unbearable|excruciating)\s+(?:chest\s+pain|pain\s+in\s+(?:my\s+|the\s+)?chest)",
-    r"(?:chest\s+pain|pain\s+in\s+(?:my\s+|the\s+)?chest)\s+(?:is\s+)?(?:severe|unbearable|intense|excruciating)",
-    r"seene\s+(?:me|mein)\s+(?:shadeed|bohot(?:\s+zyada)?|tez|sakht)\s+(?:dard|takleef|jalan|dabao)",
-    r"(?:shadeed|bohot(?:\s+zyada)?|tez|sakht)\s+seene\s+(?:me|mein)\s+(?:dard|takleef)",
-    r"dil\s+(?:me|mein)\s+(?:shadeed|bohot(?:\s+zyada)?|tez|sakht)\s+(?:dard|takleef)",
+    ("severe_chest_pain", [
+        r"(?:severe|intense|crushing|heavy|sharp|unbearable|excruciating)\s+(?:chest\s+pain|pain\s+in\s+(?:my\s+|the\s+)?chest)",
+        r"(?:chest\s+pain|pain\s+in\s+(?:my\s+|the\s+)?chest)\s+(?:is\s+)?(?:severe|unbearable|intense|excruciating)",
+        r"seene\s+(?:me|mein)\s+(?:shadeed|bohot(?:\s+zyada)?|tez|sakht)\s+(?:dard|takleef|jalan|dabao)",
+        r"(?:shadeed|bohot(?:\s+zyada)?|tez|sakht)\s+seene\s+(?:me|mein)\s+(?:dard|takleef)",
+        r"dil\s+(?:me|mein)\s+(?:shadeed|bohot(?:\s+zyada)?|tez|sakht)\s+(?:dard|takleef)",
+    ]),
     # 2. Critical breathing crisis on its own
-    r"(?:can'?t|cannot|unable\s+to|can\s+not)\s+breathe",
-    r"(?:not|stopped)\s+breathing",
-    r"gasping\s+for\s+air|suffocating|severe\s+shortness\s+of\s+breath|severe\s+difficulty\s+breathing",
-    r"saans\s+lene\s+me(?:in)?\s+dushwari",
-    r"saans\s+lene\s+me(?:in)?\s+takleef",
-    r"saans\s+nahi\s+aa\s+rahi",
-    r"saans\s+ruk\s+gayi",
-    r"saans\s+band",
-    r"dam\s+ghut(?:\s+raha)?",
+    ("breathing_crisis", [
+        r"(?:can'?t|cannot|unable\s+to|can\s+not)\s+breathe",
+        r"(?:not|stopped)\s+breathing",
+        r"gasping\s+for\s+air|suffocating|severe\s+shortness\s+of\s+breath|severe\s+difficulty\s+breathing",
+        r"saans\s+lene\s+me(?:in)?\s+dushwari",
+        r"saans\s+lene\s+me(?:in)?\s+takleef",
+        r"saans\s+nahi\s+aa\s+rahi",
+        r"saans\s+ruk\s+gayi",
+        r"saans\s+band",
+        r"dam\s+ghut(?:\s+raha)?",
+    ]),
     # 3. Unconsciousness / Fainting / Altered mental state
-    r"\bunconscious\b|\bunresponsive\b|\bpassed\s+out\b|\bfainted\b|\bfainting\b|\bblacked\s+out\b|\bcollapse[d]?\b|\bloss\s+of\s+consciousness\b|\bnot\s+waking\s+up\b",
-    r"\bbehosh\b|hosh\s+nahi|hosh\s+kho\s+(?:diya|baitha)|gash\s+aa\s+gaya",
+    ("unconsciousness", [
+        r"\bunconscious\b|\bunresponsive\b|\bpassed\s+out\b|\bfainted\b|\bfainting\b|\bblacked\s+out\b|\bcollapse[d]?\b|\bloss\s+of\s+consciousness\b|\bnot\s+waking\s+up\b",
+        r"\bbehosh\b|hosh\s+nahi|hosh\s+kho\s+(?:diya|baitha)|gash\s+aa\s+gaya",
+    ]),
     # 4. Severe / Hemorrhagic Bleeding
-    r"(?:heavy|severe|profuse|excessive|non-stop|uncontrolled)\s+bleeding",
-    r"bleeding\s+(?:heavily|severely|profusely|non-stop)",
-    r"gushing\s+blood|coughing\s+(?:up\s+)?blood|vomiting\s+blood",
-    r"bohot\s+(?:zyada\s+)?khoon|shadeed\s+khoon|khoon\s+ki\s+ulti|khoon\s+ruk\s+nahi|khoon\s+beh\s+raha",
+    ("severe_bleeding", [
+        r"(?:heavy|severe|profuse|excessive|non-stop|uncontrolled)\s+bleeding",
+        r"bleeding\s+(?:heavily|severely|profusely|non-stop)",
+        r"gushing\s+blood|coughing\s+(?:up\s+)?blood|vomiting\s+blood",
+        r"bohot\s+(?:zyada\s+)?khoon|shadeed\s+khoon|khoon\s+ki\s+ulti|khoon\s+ruk\s+nahi|khoon\s+beh\s+raha",
+    ]),
     # 5. Stroke / Neurological Emergency
-    r"\bstroke\b|\bmini-stroke\b|\btransient\s+ischemic\b|\bface\s+droop(?:ing)?\b|\bparalysis\b|\bslurred\s+speech\b|\bsudden\s+numbness\b",
-    r"\bfalij\b|\blakwa\b|\bjism\s+sunn\b|\bchehra\s+terha\b",
+    ("stroke", [
+        r"\bstroke\b|\bmini-stroke\b|\btransient\s+ischemic\b|\bface\s+droop(?:ing)?\b|\bparalysis\b|\bslurred\s+speech\b|\bsudden\s+numbness\b",
+        r"\bfalij\b|\blakwa\b|\bjism\s+sunn\b|\bchehra\s+terha\b",
+    ]),
     # 6. Seizure / Convulsion
-    r"\bseizure[s]?\b|\bconvulsion[s]?\b|\bfits\b|\bepileptic\s+fit\b",
-    r"\bmirgi\s+ka\s+daura\b|\bdaure\s+par\s+rahe\b|\bdaura\s+para\b|\bjhatke\s+lag\s+rahe\b",
+    ("seizure", [
+        r"\bseizure[s]?\b|\bconvulsion[s]?\b|\bfits\b|\bepileptic\s+fit\b",
+        r"\bmirgi\s+ka\s+daura\b|\bdaure\s+par\s+rahe\b|\bdaura\s+para\b|\bjhatke\s+lag\s+rahe\b",
+    ]),
     # 7. Heart Attack / Cardiac Arrest
-    r"\bheart\s+attack\b|\bcardiac\s+arrest\b|\bheart\s+stopped\b",
-    r"\bdil\s+ka\s+daura\b|\bdil\s+ka\s+attack\b|\bdil\s+band\b",
+    ("heart_attack", [
+        r"\bheart\s+attack\b|\bcardiac\s+arrest\b|\bheart\s+stopped\b",
+        r"\bdil\s+ka\s+daura\b|\bdil\s+ka\s+attack\b|\bdil\s+band\b",
+    ]),
     # 8. Poisoning / Overdose
-    r"\boverdose\b|\bpoisoning\b|\bswallowed\s+poison\b|\btoxic\s+ingestion\b",
-    r"\bzehar\b|\bzehrila\b|\bpoison\b",
+    ("poisoning", [
+        r"\boverdose\b|\bpoisoning\b|\bswallowed\s+poison\b|\btoxic\s+ingestion\b",
+        r"\bzehar\b|\bzehrila\b|\bpoison\b",
+    ]),
     # 9. Suicide / Self-Harm
-    r"\bsuicid|\bkill\s+myself\b|\bend\s+my\s+life\b|\bhurt\s+myself\b",
-    r"\bkhudkushi\b|\bjaan\s+dena\b",
+    ("self_harm", [
+        r"\bsuicid|\bkill\s+myself\b|\bend\s+my\s+life\b|\bhurt\s+myself\b",
+        r"\bkhudkushi\b|\bjaan\s+dena\b",
+    ]),
 ]
 
 _CARDIO = [
@@ -292,52 +311,158 @@ class TriageResult:
     reason: str
 
 
-def _emergency_reason(text: str) -> Optional[str]:
-    """Return a machine-readable emergency reason code, or *None*."""
+# One-sentence, plain-language explanations for each emergency category. They
+# describe the pattern that was noticed (never a diagnosis) so the safety flag
+# stays transparent. English only, matching the rest of the bot's output.
+_EMERGENCY_EXPLANATIONS: dict[str, str] = {
+    "chest_breathing": (
+        "I flagged this because you mentioned chest pain together with trouble breathing, "
+        "which can indicate a serious heart or lung emergency."
+    ),
+    "chest_radiation": (
+        "I flagged this because you mentioned chest pain along with pain spreading to your "
+        "arm, neck, jaw, or back, which can indicate a heart attack."
+    ),
+    "chest_worsening": (
+        "I flagged this because you said your chest pain is getting worse, "
+        "which can indicate a serious heart problem."
+    ),
+    "bleeding": (
+        "I flagged this because you described active bleeding, which needs immediate attention."
+    ),
+    "fracture": (
+        "I flagged this because you described a possible broken bone, which needs urgent medical care."
+    ),
+    "fall_injury": (
+        "I flagged this because you described a fall that caused a serious injury, "
+        "which needs urgent medical care."
+    ),
+    "burn": (
+        "I flagged this because you described a serious burn, which needs immediate medical care."
+    ),
+    "deep_cut": (
+        "I flagged this because you described a deep or severe cut, "
+        "which can cause heavy bleeding and needs immediate attention."
+    ),
+    "head_injury": (
+        "I flagged this because you mentioned a head injury along with confusion, vomiting, "
+        "or passing out, which can indicate a serious injury."
+    ),
+    "anaphylaxis": (
+        "I flagged this because your symptoms match signs of a severe allergic reaction."
+    ),
+    "severe_abdominal_pain": (
+        "I flagged this because you described unbearable stomach pain, "
+        "which can indicate a serious problem that needs immediate attention."
+    ),
+    "meningitis_signs": (
+        "I flagged this because you mentioned a stiff neck along with a high fever, "
+        "which can indicate a serious infection."
+    ),
+    "diabetic_emergency": (
+        "I flagged this because you mentioned diabetes along with signs like confusion, "
+        "heavy sweating, or passing out, which can indicate a dangerous blood sugar emergency."
+    ),
+    "severe_asthma": (
+        "I flagged this because you described a severe asthma attack, "
+        "which can quickly become life-threatening."
+    ),
+    "child_high_fever": (
+        "I flagged this because you mentioned a baby or young child with a very high fever, "
+        "which needs immediate medical attention."
+    ),
+    "pregnancy_emergency": (
+        "I flagged this because you mentioned pregnancy along with heavy bleeding, "
+        "severe pain, or fainting, which needs immediate attention."
+    ),
+    "severe_chest_pain": (
+        "I flagged this because you described severe or crushing chest pain, "
+        "which can indicate a heart attack."
+    ),
+    "breathing_crisis": (
+        "I flagged this because you described being unable to breathe or a severe breathing "
+        "crisis, which needs immediate attention."
+    ),
+    "unconsciousness": (
+        "I flagged this because you mentioned being unconscious, fainting, or collapsing, "
+        "which needs immediate attention."
+    ),
+    "severe_bleeding": (
+        "I flagged this because you described severe bleeding, such as coughing up or "
+        "vomiting blood, which needs immediate attention."
+    ),
+    "stroke": (
+        "I flagged this because you mentioned signs of a stroke, such as face drooping, "
+        "slurred speech, or sudden numbness, which need immediate attention."
+    ),
+    "seizure": (
+        "I flagged this because you mentioned a seizure or fits, which needs immediate attention."
+    ),
+    "heart_attack": (
+        "I flagged this because you mentioned a possible heart attack or cardiac arrest, "
+        "which needs immediate emergency care."
+    ),
+    "poisoning": (
+        "I flagged this because you mentioned poisoning or an overdose, "
+        "which needs immediate emergency care."
+    ),
+    "self_harm": (
+        "I flagged this because you mentioned harming yourself, "
+        "and your safety right now is the most important thing."
+    ),
+}
+
+_DEFAULT_EMERGENCY_EXPLANATION = (
+    "I flagged this because your symptoms match a pattern that needs immediate medical attention."
+)
+
+
+def _emergency_category(text: str) -> Optional[str]:
+    """Return the category key of the first emergency rule that matches text."""
     if not text or not text.strip():
         return None
     blob = text.lower()
 
     # Rule 1: Chest discomfort + ANY breathing distress
     if _CHEST_PATTERN.search(blob) and _BREATHING_PATTERN.search(blob):
-        return "chest_pain_with_breathing_distress"
+        return "chest_breathing"
 
     # Rule 2: Chest pain radiating to arm, jaw, neck, back, or shoulder
     if _CHEST_PATTERN.search(blob) and _CHEST_RADIATION_PATTERN.search(blob):
-        return "chest_pain_radiating"
+        return "chest_radiation"
 
     # Rule 3: Worsening chest pain
     if _CHEST_WORSENING_PATTERN.search(blob):
-        return "worsening_chest_pain"
+        return "chest_worsening"
     if _CHEST_PATTERN.search(blob) and _WORSENING_FOLLOWUP_PATTERN.search(blob):
-        return "worsening_chest_pain"
+        return "chest_worsening"
 
     # Rule 4: Active bleeding, serious trauma, fractures, burns, deep wounds
     if _BLEEDING_PATTERN.search(blob):
-        return "severe_bleeding"
-    if _FRACTURE_PATTERN.search(blob) or _FALL_INJURY_PATTERN.search(blob):
-        return "serious_trauma"
-    if _BURN_PATTERN.search(blob) or _DEEP_CUT_PATTERN.search(blob):
-        return "serious_trauma"
+        return "bleeding"
+    if _FRACTURE_PATTERN.search(blob):
+        return "fracture"
+    if _FALL_INJURY_PATTERN.search(blob):
+        return "fall_injury"
+    if _BURN_PATTERN.search(blob):
+        return "burn"
+    if _DEEP_CUT_PATTERN.search(blob):
+        return "deep_cut"
 
     # Rule 5: Head injury with red-flag symptoms
     if _HEAD_INJURY_PATTERN.search(blob) and _HEAD_RED_FLAG_PATTERN.search(blob):
-        return "head_injury_red_flag"
+        return "head_injury"
 
     # Rule 6: Anaphylaxis warning signs
     if _ANAPHYLAXIS_EXPOSURE_PATTERN.search(blob) and (
         _BREATHING_PATTERN.search(blob) or _THROAT_SWELLING_PATTERN.search(blob)
         or re.search(r"\bhives?\b|\burticaria\b|\bchhote\s+daane\b", blob, re.IGNORECASE)
     ):
-        return "anaphylaxis_red_flag"
+        return "anaphylaxis"
 
-    # Rule 7: Severe abdominal pain, meningitis, diabetic crises, asthma, child fever, pregnancy
-    if _SEVERE_ABDOMINAL_PATTERN.search(blob):
-        return "severe_abdominal_pain"
-    if _MENINGITIS_PATTERN.search(blob) and _FEVER_PATTERN.search(blob):
-        return "meningitis_red_flag"
-    if _DIABETES_PATTERN.search(blob) and _DIABETIC_RED_FLAG_PATTERN.search(blob):
-        return "diabetic_red_flag"
+    # Rule 7: Specific combined-condition emergencies — checked before the broader
+    # standalone groups so that e.g. "asthma + dam ghut" fires severe_asthma rather
+    # than the generic breathing_crisis wording.
     if _SEVERE_ASTHMA_PATTERN.search(blob):
         return "severe_asthma"
     if _CHILD_FEVER_PATTERN.search(blob):
@@ -345,15 +470,42 @@ def _emergency_reason(text: str) -> Optional[str]:
     if _PREGNANCY_EMERGENCY_PATTERN.search(blob):
         return "pregnancy_emergency"
 
-    # Rule 8: Standalone acute emergency patterns
-    if any(re.search(p, blob, flags=re.IGNORECASE) for p in _STANDALONE_EMERGENCY_PATTERNS):
-        return "standalone_emergency_pattern"
+    # Rule 8: Severe abdominal pain, meningitis signs, and diabetic crises.
+    if _SEVERE_ABDOMINAL_PATTERN.search(blob):
+        return "severe_abdominal_pain"
+    if _MENINGITIS_PATTERN.search(blob) and _FEVER_PATTERN.search(blob):
+        return "meningitis_signs"
+    if _DIABETES_PATTERN.search(blob) and _DIABETIC_RED_FLAG_PATTERN.search(blob):
+        return "diabetic_emergency"
+
+    # Rule 9: Standalone acute emergency patterns
+    for category, patterns in _STANDALONE_EMERGENCY_GROUPS:
+        if any(re.search(p, blob, flags=re.IGNORECASE) for p in patterns):
+            return category
 
     return None
 
 
 def is_emergency(text: str) -> bool:
-    return _emergency_reason(text) is not None
+    return _emergency_category(text) is not None
+
+
+# Backward-compatibility alias: existing callers that import _emergency_reason
+# keep working without code changes.
+_emergency_reason = _emergency_category
+
+
+def emergency_explanation(text: str) -> str:
+    """One plain-language sentence naming the pattern that triggered the alert."""
+    category = _emergency_category(text)
+    return _EMERGENCY_EXPLANATIONS.get(category or "", _DEFAULT_EMERGENCY_EXPLANATION)
+
+
+def emergency_alert_with(explanation: Optional[str]) -> str:
+    """Append the tailored explanation after the unchanged core emergency alert."""
+    if not explanation:
+        return EMERGENCY_ALERT
+    return f"{EMERGENCY_ALERT}\n\n{explanation}"
 
 
 def recommend_specialty(text: str) -> Optional[str]:
@@ -451,7 +603,7 @@ FOLLOW_UP_QUESTIONS = {
         "Have you already tried any creams or medication for it?",
     ],
     SPECIALTY_ENT: [
-        "Which area is bothering you most — ear, nose, or throat?",
+        "Which area is bothering you most ΓÇö ear, nose, or throat?",
         "Do you have fever, or is it mainly pain or congestion?",
         "How long have these symptoms lasted?",
     ],

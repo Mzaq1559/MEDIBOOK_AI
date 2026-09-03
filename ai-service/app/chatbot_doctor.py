@@ -1,12 +1,13 @@
 """Doctor-only chat flow for appointment management and lookup."""
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Any, Optional
 
 from app import backend_client
-from app.chatbot_handlers import _appointment_selection_message, _appointment_time_label, _select_appointment_from_text
+from app.chatbot_handlers import _appointment_selection_message, _appointment_time_label, _select_appointment_from_text, build_patient_summary
 from app.chatbot_nlu import classify
 from app.chatbot_slots import fetch_doctor_slots, find_slot_by_ts, format_appointment_for_ui, match_slot_from_text, slots_ui_data
 from app.chatbot_state import S
@@ -124,6 +125,7 @@ def _reschedule_error_message(error: backend_client.BackendError) -> str:
 def _doctor_show_appointments(doctor_id: str, authorization: str, message: str, session: dict[str, Any]) -> dict[str, Any]:
     appointments = backend_client.fetch_doctor_appointments(doctor_id, authorization)
     session["doctor_appointments"] = appointments
+    session["last_doctor_action"] = "lookup"
     if not appointments:
         return {"bot_message": "You have no appointments.", "next_action": "doctor_appointments", "ui_data": {"appointments": []}}
     formatted = [format_appointment_for_ui(a) for a in appointments]
@@ -157,13 +159,30 @@ def _doctor_patient_details(
     if len(matches) == 1:
         appointment = matches[0]
         detail = backend_client.get_appointment_details(str(appointment.get("appointment_id") or appointment.get("id") or ""), authorization) or appointment
+        # Build the base detail message
+        bot_lines = [
+            f"Appointment for {detail.get('patient_name') or 'Patient'} on {detail.get('appointment_time') or 'the scheduled time'}:",
+            f"Symptoms: {detail.get('symptoms_reported') or 'Not provided'}",
+            f"Urgency: {detail.get('urgency_level') or 'normal'}",
+        ]
+        # Append patient medical history summary if present (doctor-only)
+        raw_history = detail.get("patient_history")
+        if raw_history:
+            try:
+                history = json.loads(raw_history) if isinstance(raw_history, str) else raw_history
+                summary = build_patient_summary(
+                    detail.get("symptoms_reported") or "",
+                    detail.get("urgency_level") or "normal",
+                    history,
+                )
+                bot_lines.append("")
+                bot_lines.append("\U0001f4cb Patient Medical Summary:")
+                bot_lines.append(summary)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        bot_lines.append(f"Notes: {detail.get('notes') or 'No notes'}")
         return {
-            "bot_message": (
-                f"Appointment for {detail.get('patient_name') or 'Patient'} on {detail.get('appointment_time') or 'the scheduled time'}:\n"
-                f"Symptoms: {detail.get('symptoms_reported') or 'Not provided'}\n"
-                f"Urgency: {detail.get('urgency_level') or 'normal'}\n"
-                f"Notes: {detail.get('notes') or 'No notes'}"
-            ),
+            "bot_message": "\n".join(bot_lines),
             "next_action": "doctor_appointment_details",
             "ui_data": {"appointment": detail},
         }
@@ -183,7 +202,7 @@ def _doctor_patient_details(
     }
 
 
-def _resolve_doctor_selection(session: dict[str, Any], appointments: list[dict[str, Any]], message: str) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]]]:
+def _resolve_doctor_selection(session: dict[str, Any], appointments: list[dict[str, Any]], message: str, nlu: Optional[dict[str, Any]] = None) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]]]:
     selected_id = _extract_selected_appointment_id(message) or session.get("doctor_selected_appointment_id")
     if selected_id:
         selected = next(
@@ -200,7 +219,7 @@ def _resolve_doctor_selection(session: dict[str, Any], appointments: list[dict[s
         session["doctor_selected_appointment_id"] = str(selected.get("appointment_id") or selected.get("id") or "")
         return selected, []
 
-    selected, ambiguous = _select_appointment_from_text(message, appointments)
+    selected, ambiguous = _select_appointment_from_text(message, appointments, nlu or {})
     if selected:
         session["doctor_selected_appointment_id"] = str(selected.get("appointment_id") or selected.get("id") or "")
     elif session.get("doctor_selected_appointment_id"):
@@ -328,7 +347,11 @@ def handle_doctor_message(
     nlu = classify(message, session.get("messages") or [], session.get("state") or S.IDLE)
     intent = nlu.get("intent") or ""
 
-    # Pending selection logic (unchanged)
+    # Pending selection handling — fires for ANY appointment selection,
+    # not only after cancel/reschedule.  When the doctor clicks an
+    # appointment card from the "Show my appointments" list (without a
+    # preceding cancel/reschedule), last_action is None; we route to
+    # patient details as a sensible default.
     last_action = session.get("last_doctor_action")
     selected_id = _extract_selected_appointment_id(message)
     has_pending_doctor_selection = bool(
@@ -343,11 +366,13 @@ def handle_doctor_message(
         lower,
         sorted(session.keys()),
     )
-    if last_action in {"cancel", "reschedule"} and has_pending_doctor_selection:
+    if has_pending_doctor_selection:
         if last_action == "cancel":
             return _doctor_cancel(doctor_id, authorization, message, session, doctor_name)
         if last_action == "reschedule":
             return _doctor_reschedule(doctor_id, authorization, message, session, doctor_name)
+        # No pending action context — show the appointment details
+        return _doctor_patient_details(doctor_id, authorization, message, session, nlu=nlu)
 
     # Route based on NLU intent
     if intent == "reschedule":

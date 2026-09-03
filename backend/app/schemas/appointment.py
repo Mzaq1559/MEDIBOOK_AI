@@ -12,6 +12,11 @@ class AppointmentCreate(BaseModel):
     urgency_level: str = Field(..., description="low, normal, high, critical")
     urgency_reason: Optional[str] = Field(None, max_length=100, description="Machine-readable triage reason code")
     appointment_type: Optional[str] = "in_person"
+    patient_history: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="Structured patient-shared medical history (JSON string). Doctor-only visibility.",
+    )
 
     @field_validator("urgency_level")
     @classmethod
@@ -65,6 +70,7 @@ class AppointmentListItem(BaseModel):
     urgency_reason: Optional[str] = None
     appointment_type: str
     doctor_notes: Optional[str] = None
+    patient_history: Optional[str] = None
     feedback_score: Optional[int] = None
     feedback_text: Optional[str] = None
     feedback_submitted: Optional[bool] = None
@@ -96,6 +102,7 @@ class AppointmentDetailResponse(BaseModel):
     urgency_reason: Optional[str] = None
     appointment_type: str
     notes: Optional[str] = None
+    patient_history: Optional[str] = None
     feedback_score: Optional[int] = None
     feedback_text: Optional[str] = None
     google_calendar_event_id: Optional[str] = None

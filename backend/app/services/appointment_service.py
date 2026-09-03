@@ -1,4 +1,4 @@
-import uuid
+﻿import uuid
 from datetime import datetime, timedelta, time
 from typing import Optional, Tuple
 import pytz
@@ -275,6 +275,7 @@ def create_appointment(
         symptoms_reported=payload.symptoms_reported,
         urgency_level=payload.urgency_level.lower(),
         urgency_reason=getattr(payload, 'urgency_reason', None),
+        patient_history=payload.patient_history,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )

@@ -18,13 +18,34 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
   isLoading, 
   disabled 
 }) => {
-  const doctorName = booking.doctor.name.replace(/^Dr\.\s*/i, '');
+  // Guard: if booking data is incomplete, show a safe fallback
+  const doctor = booking?.doctor;
+  if (!doctor?.name) {
+    return (
+      <div className="p-5 bg-white rounded-2xl border-2 border-error/20 shadow-soft-md animate-fadeIn">
+        <p className="text-sm text-textPrimary">
+          {booking?.isConfirmed
+            ? 'Your appointment was booked but we could not load the details. Please check your appointments page.'
+            : 'Something went wrong loading the booking details. Please try again.'}
+        </p>
+        {!booking?.isConfirmed && (
+          <div className="pt-3">
+            <Button variant="secondary" size="sm" onClick={onChange} disabled={disabled}>
+              Start Over
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const doctorName = doctor.name.replace(/^Dr\.\s*/i, '');
   const displayDoctorName = `Dr. ${doctorName}`;
   const gcalUrl = generateGoogleCalendarUrl({
     title: `MediBook: ${displayDoctorName}`,
-    startTime: booking.selectedSlot,
-    description: `Doctor: ${displayDoctorName} (${booking.doctor.specialization || 'Consultant'})\nClinic: ${booking.doctor.clinic_name || 'Clinic'}\nAddress: ${booking.doctor.clinic_address || 'Clinic address unavailable'}`,
-    location: `${booking.doctor.clinic_name || ''}, ${booking.doctor.clinic_address || ''}`.trim().replace(/^,\s*/, ''),
+    startTime: booking.selectedSlot || undefined,
+    description: `Doctor: ${displayDoctorName} (${doctor.specialization || 'Consultant'})\nClinic: ${doctor.clinic_name || 'Clinic'}\nAddress: ${doctor.clinic_address || 'Clinic address unavailable'}`,
+    location: `${doctor.clinic_name || ''}, ${doctor.clinic_address || ''}`.trim().replace(/,\s*$/, ''),
   });
 
   return (
@@ -45,10 +66,10 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
         <div className="p-3 bg-surfaceContainer rounded-xl">
           <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">Doctor</span>
           <span className="font-bold text-textPrimary text-sm block">
-            {booking.doctor.name}
+            {doctor.name}
           </span>
-          {booking.doctor.specialization && (
-            <span className="text-textSecondary text-[11px] block">{booking.doctor.specialization}</span>
+          {doctor.specialization && (
+            <span className="text-textSecondary text-[11px] block">{doctor.specialization}</span>
           )}
         </div>
 
@@ -59,25 +80,25 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           </span>
         </div>
 
-        {(booking.doctor.clinic_name || booking.doctor.consultation_fee) && (
+        {(doctor.clinic_name || doctor.consultation_fee) && (
           <div className="p-3 bg-surfaceContainer rounded-xl sm:col-span-2 flex items-center justify-between">
-            {booking.doctor.clinic_name && (
+            {doctor.clinic_name && (
               <div>
                 <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">Location</span>
                 <span className="font-semibold text-textPrimary text-xs block">
-                  {booking.doctor.clinic_name}
+                  {doctor.clinic_name}
                 </span>
-                {booking.doctor.clinic_address && (
+                {doctor.clinic_address && (
                   <span className="text-textSecondary text-[11px] block mt-0.5 max-w-[200px] truncate">
-                    {booking.doctor.clinic_address}
+                    {doctor.clinic_address}
                   </span>
                 )}
               </div>
             )}
-            {booking.doctor.consultation_fee && (
+            {doctor.consultation_fee && (
               <div className="text-right">
                 <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">Consultation Fee</span>
-                <span className="font-bold text-primary text-sm">Rs. {booking.doctor.consultation_fee}</span>
+                <span className="font-bold text-primary text-sm">Rs. {doctor.consultation_fee}</span>
               </div>
             )}
           </div>

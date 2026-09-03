@@ -9,8 +9,8 @@ from uuid import uuid4
 from app import backend_client
 from app.schemas import MessageItem, OptionItem
 from app.chatbot_state import get_session, new_session, append_msg, S
-from app.chatbot_nlu import classify
-from app.symptom_triage import is_emergency, EMERGENCY_ALERT
+from app.chatbot_nlu import classify, RESCHEDULE_RE, LOOKUP_RE, CANCEL_RE
+from app.symptom_triage import emergency_alert_with, emergency_explanation, is_emergency
 from app.chatbot_handlers import (
     handle_new_booking,
     handle_reschedule,
@@ -197,8 +197,10 @@ def handle_message(
     combined = f"{session.get('symptoms_text') or ''} {message}".strip()
     
     if is_emergency(message) or is_emergency(combined):
+        trigger_text = message if is_emergency(message) else combined
         session["state"] = S.EMERGENCY
-        bot = EMERGENCY_ALERT
+        session["emergency_explanation"] = emergency_explanation(trigger_text)
+        bot = emergency_alert_with(session["emergency_explanation"])
         action = "emergency_redirect"
         ui_data = {}
     else:
@@ -209,6 +211,21 @@ def handle_message(
             if validated_specialty:
                 session["specialty"] = validated_specialty
         session["last_intent"] = intent
+
+        # Safety net: if NLU misclassifies "reschedule"/"cancel" as
+        # "appointment", the text-based regex catches it.  Correct the
+        # intent so the dispatcher routes to the right handler.
+        if intent == "appointment":
+            if RESCHEDULE_RE.search(message):
+                intent = "reschedule"
+                nlu["intent"] = "reschedule"
+                session["last_intent"] = "reschedule"
+                logger.info("Intent corrected: 'appointment' → 'reschedule' (text match)")
+            elif CANCEL_RE.search(message):
+                intent = "cancel"
+                nlu["intent"] = "cancel"
+                session["last_intent"] = "cancel"
+                logger.info("Intent corrected: 'appointment' → 'cancel' (text match)")
         
         state = session["state"]
         lower_message = message.lower().strip()
@@ -229,7 +246,12 @@ def handle_message(
                 intent = "symptom"
                 state = S.IDLE
         
-        if nlu.get("wants_doctor_list") or intent == "show_doctors":
+        # Direct "show doctors" shortcut — only from non-active states.
+        # Active flows (booking, slots, confirm, cancel, reschedule) fall through
+        # to their own state handlers so the workflow is not interrupted.
+        if state in (S.IDLE, S.FAQ, S.LOOKUP) and (
+            nlu.get("wants_doctor_list") or intent == "show_doctors"
+        ):
             bot, action, ui_data = _show_doctors_response(session)
             append_msg(session, "assistant", bot, _utc_now())
             return {
@@ -251,12 +273,35 @@ def handle_message(
             intent in ("appointment", "cancel", "reschedule")
             or (intent == "lookup" and is_lookup)
         )
-        if is_top_level_command and not is_selection_message and state not in (S.AWAIT_CONFIRM, S.CANCEL_CONFIRM, S.RESCHEDULE_CONFIRM):
+        # Text-based fallback: catch clear intent-switch phrases even when
+        # the NLU misclassifies (e.g. "Reschedule appointment" → intent="appointment").
+        if not is_top_level_command:
+            if RESCHEDULE_RE.search(message) or LOOKUP_RE.search(message) or CANCEL_RE.search(message):
+                is_top_level_command = True
+        # Active booking-flow states: the NLU may misclassify follow-up
+        # answers (e.g. "3 hours ago" → intent="appointment") after a
+        # Groq 400→200 retry.  Never reset the workflow while the user
+        # is mid-conversation in one of these states.
+        _active_booking_states = (
+            S.ASKING_SYMPTOMS, S.ASKING_FOLLOWUP, S.ASKING_HISTORY,
+            S.SHOWING_DOCTORS, S.SHOWING_SLOTS,
+            S.AWAIT_CONFIRM, S.CANCEL_CONFIRM, S.RESCHEDULE_CONFIRM,
+        )
+        if is_top_level_command and not is_selection_message and state not in _active_booking_states:
+            logger.info(
+                "Top-level intent '%s' resets workflow (prev state=%s)", intent, state,
+            )
             _reset_patient_workflow(session, intent)
             state = session["state"]
+        elif is_top_level_command and state in _active_booking_states:
+            logger.info(
+                "Suppressing top-level intent '%s' during active state %s — "
+                "treating as follow-up answer",
+                intent, state,
+            )
         
         if state == S.EMERGENCY:
-            bot = EMERGENCY_ALERT
+            bot = emergency_alert_with(session.get("emergency_explanation"))
             action = "emergency_redirect"
             ui_data = {}
             

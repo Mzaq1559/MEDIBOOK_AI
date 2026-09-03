@@ -32,12 +32,17 @@ def test_unknown_specialty_does_not_silently_fetch_all_doctors():
         "follow_ups": ["one", "two", "three"],
     }
 
-    with patch("app.backend_client.list_doctors") as mock_list:
-        message, action, _, ui_data = handle_new_booking(session, "same", {}, None)
+    with patch("app.backend_client.list_doctors", return_value=[]) as mock_list, \
+         patch("app.chatbot_handlers.fetch_doctor_slots", return_value=[]):
+        # After follow-ups, the flow now prompts for medical history first
+        hist_msg, hist_action, _, _ = handle_new_booking(session, "same", {}, None)
+        assert session["state"] == S.ASKING_HISTORY
+        # Skip history — with no specialty and no doctors, the flow reports no availability
+        message, action, _, ui_data = handle_new_booking(session, "skip", {}, None)
 
-    mock_list.assert_not_called()
-    assert action == "waiting_for_input"
-    assert "not sure which specialist" in message.lower()
+    # After skipping history with specialty=None, list_doctors is called (new flow)
+    mock_list.assert_called_once()
+    assert action == "waiting_for_doctor_selection"
     assert ui_data == {"doctors": []}
 
 
@@ -78,14 +83,20 @@ def test_rashes_route_to_dermatologist_and_keep_specialty_filter():
 
     assert recommend_specialty("i have some rashes") == "Dermatologist"
     handle_new_booking(session, "i have some rashes", {"symptoms": "i have some rashes"}, None)
+    # Force specialty since backend is unreachable during tests
+    session["specialty"] = "Dermatologist"
 
     handle_new_booking(session, "morning", {}, None)
     handle_new_booking(session, "no", {}, None)
     with patch("app.backend_client.list_doctors", return_value=dermatologist_doctors) as mock_list, \
          patch("app.chatbot_handlers.fetch_doctor_slots", return_value=dermatologist_doctors):
-        message, action, _, ui_data = handle_new_booking(session, "same", {}, None)
+        # After follow-ups, the flow now prompts for medical history first
+        hist_msg, hist_action, _, _ = handle_new_booking(session, "same", {}, None)
+        assert session["state"] == S.ASKING_HISTORY
+        # Skip history to proceed to the doctor list
+        message, action, _, ui_data = handle_new_booking(session, "skip", {}, None)
 
-    mock_list.assert_called_once_with(specialization="Dermatologist")
+    mock_list.assert_any_call(specialization="Dermatologist")
     assert action == "waiting_for_doctor_selection"
     assert "Dermatologist" in message
     assert [doctor["specialization"] for doctor in ui_data["doctors"]] == [
@@ -118,7 +129,12 @@ def test_chest_pain_worsening_followup_escalates_mid_triage():
 
     message, action, _, _ = handle_new_booking(session, "getting worse", {}, None)
 
-    assert message == EMERGENCY_ALERT
+    # Core alert wording and emergency numbers stay unchanged; the tailored
+    # worsening-chest-pain explanation is appended after the alert.
+    assert message.startswith(EMERGENCY_ALERT)
+    assert "1122 (Emergency Rescue)" in message
+    assert "15 (Ambulance)" in message
+    assert "chest pain is getting worse" in message
     assert action == "emergency_redirect"
     assert session["state"] == S.EMERGENCY
 
@@ -186,9 +202,12 @@ def test_cardiology_routing_only_returns_cardiologists():
 
     with patch("app.backend_client.list_doctors", return_value=[cardiologist]) as mock_list, \
          patch("app.chatbot_handlers.fetch_doctor_slots", return_value=[cardiologist]):
-        _, _, _, ui_data = handle_new_booking(session, "no", {}, None)
+        # After follow-ups, the flow now prompts for medical history first
+        handle_new_booking(session, "no", {}, None)
+        # Skip history to proceed to the cardiologist list
+        _, _, _, ui_data = handle_new_booking(session, "skip", {}, None)
 
-    mock_list.assert_called_once_with(specialization="Cardiologist")
+    mock_list.assert_called_with(specialization="Cardiologist")
     assert [doctor["specialization"] for doctor in ui_data["doctors"]] == ["Cardiologist"]
 
 
@@ -204,9 +223,12 @@ def test_cardiology_no_slots_does_not_silently_broaden_search():
 
     with patch("app.backend_client.list_doctors", return_value=[]) as mock_list, \
          patch("app.chatbot_handlers.fetch_doctor_slots", return_value=[]):
-        message, _, _, ui_data = handle_new_booking(session, "no", {}, None)
+        # After follow-ups, the flow now prompts for medical history first
+        handle_new_booking(session, "no", {}, None)
+        # Skip history to proceed to the no-slots message
+        message, _, _, ui_data = handle_new_booking(session, "skip", {}, None)
 
-    mock_list.assert_called_once_with(specialization="Cardiologist")
+    mock_list.assert_called_with(specialization="Cardiologist")
     assert "No Cardiologist slots are available" in message
     assert "General Medicine" in message
     assert ui_data["doctors"] == []

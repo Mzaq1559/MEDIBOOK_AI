@@ -20,6 +20,7 @@ class Appointment(Base):
     urgency_level = Column(String(20), nullable=False)  # 'low', 'normal', 'high', 'critical'
     urgency_reason = Column(String(100), nullable=True)  # machine-readable triage reason code
     notes = Column(Text, nullable=True)
+    patient_history = Column(Text, nullable=True)
     prescription_id = Column(Uuid(as_uuid=True), nullable=True)
     is_walk_in = Column(Boolean, default=False)
     reminder_sent_24h = Column(Boolean, default=False)

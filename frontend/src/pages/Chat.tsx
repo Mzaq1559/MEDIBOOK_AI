@@ -39,14 +39,20 @@ function formatUiDataSlots(uiData: ChatUiData | null | undefined): ChatUiData | 
     booking: uiData.booking
       ? {
           ...uiData.booking,
-          selectedSlot: formatSlotDisplay(uiData.booking.selectedSlot)
+          selectedSlot: uiData.booking.selectedSlot
+            ? formatSlotDisplay(uiData.booking.selectedSlot)
+            : uiData.booking.selectedSlot,
         }
       : undefined,
     reschedule: uiData.reschedule
       ? {
           ...uiData.reschedule,
-          oldSlot: formatSlotDisplay(uiData.reschedule.oldSlot),
-          newSlot: formatSlotDisplay(uiData.reschedule.newSlot)
+          oldSlot: uiData.reschedule.oldSlot
+            ? formatSlotDisplay(uiData.reschedule.oldSlot)
+            : uiData.reschedule.oldSlot,
+          newSlot: uiData.reschedule.newSlot
+            ? formatSlotDisplay(uiData.reschedule.newSlot)
+            : uiData.reschedule.newSlot,
         }
       : undefined
   };
@@ -63,7 +69,7 @@ function mapApiResponseToBotMessage(
     timestamp: formatChatTimestamp(response.timestamp),
     isEmergency,
     requiresLogin,
-    optionItems: response.options.length > 0 ? response.options : undefined,
+    optionItems: (response.options?.length ?? 0) > 0 ? response.options : undefined,
     uiData: formatUiDataSlots(response.ui_data),
     nextAction: response.next_action,
   };

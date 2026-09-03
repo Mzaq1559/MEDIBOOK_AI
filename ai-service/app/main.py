@@ -159,10 +159,10 @@ def send_chat_message(
     except Exception as exc:
         logger.error("Unexpected error in send_chat_message: %s", exc, exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
-                "message": "Invalid or expired conversation_id",
-                "error_code": "INVALID_CONVERSATION",
+                "message": "An unexpected error occurred. Please try again.",
+                "error_code": "INTERNAL_ERROR",
             },
         )
 

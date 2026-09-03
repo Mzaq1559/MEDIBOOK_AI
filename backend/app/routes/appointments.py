@@ -145,6 +145,13 @@ def list_appointments(
 
     items: List[AppointmentListItem] = []
     for a in appts:
+        # patient_history is visible only to the assigned doctor; strip for
+        # patients and other non-doctor users.
+        history_for_user = (
+            a.patient_history
+            if current_user.user_type == "doctor"
+            else None
+        )
         items.append(
             AppointmentListItem(
                 appointment_id=a.id,
@@ -162,6 +169,7 @@ def list_appointments(
                 urgency_reason=a.urgency_reason,
                 appointment_type=a.appointment_type,
                 doctor_notes=a.notes,
+                patient_history=history_for_user,
                 feedback_score=a.feedback_score,
                 feedback_text=a.feedback_text,
                 feedback_submitted=bool(a.feedback_score),
@@ -205,6 +213,18 @@ def get_appointment_details(
                 detail={"message": "Access forbidden. Cannot view this appointment.", "error_code": "FORBIDDEN"}
             )
 
+    # Permission check for doctors — only the assigned doctor may view the detail
+    if current_user.user_type == "doctor":
+        doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+        if not doc or appt.doctor_id != doc.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "Access forbidden. You are not the assigned doctor for this appointment.", "error_code": "FORBIDDEN"}
+            )
+
+    # patient_history is visible only to the assigned doctor; strip for all other users
+    history = appt.patient_history if current_user.user_type == "doctor" else None
+
     return AppointmentDetailResponse(
         appointment_id=appt.id,
         clinic_id=appt.clinic_id,
@@ -223,6 +243,7 @@ def get_appointment_details(
         urgency_reason=appt.urgency_reason,
         appointment_type=appt.appointment_type,
         notes=appt.notes,
+        patient_history=history,
         feedback_score=appt.feedback_score,
         feedback_text=appt.feedback_text,
         google_calendar_event_id=appt.google_calendar_event_id,

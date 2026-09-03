@@ -30,10 +30,12 @@ def _make_fake_appointment(pat_id: uuid.UUID, doc_id: uuid.UUID) -> MagicMock:
     appt.clinic_id      = uuid.uuid4()
     appt.clinic         = MagicMock(name="Test Clinic")
     appt.clinic.name    = "Test Clinic"
+    appt.clinic.address = "123 Test St"
     appt.doctor_id      = doc_id
     appt.doctor         = MagicMock()
     appt.doctor.user    = MagicMock(name="Dr. Smith")
     appt.doctor.user.name = "Dr. Smith"
+    appt.doctor.specialization = "General Medicine"
     appt.patient_id     = pat_id
     appt.patient        = MagicMock()
     appt.patient.user   = MagicMock(name="John Patient")
@@ -43,7 +45,14 @@ def _make_fake_appointment(pat_id: uuid.UUID, doc_id: uuid.UUID) -> MagicMock:
     appt.status         = "scheduled"
     appt.symptoms_reported = "Fever and mild cough"
     appt.urgency_level  = "normal"
+    appt.urgency_reason = None
     appt.appointment_type = "general"
+    appt.notes          = None
+    appt.patient_history = None
+    appt.feedback_score = None
+    appt.feedback_text  = None
+    appt.google_calendar_event_id = None
+    appt.duration_minutes = 30
     appt.created_at     = MagicMock()
     appt.created_at.isoformat.return_value = "2026-08-29T10:00:00"
     return appt
@@ -196,6 +205,115 @@ class TestDoctorScopedQuery(unittest.TestCase):
         )
 
         self.assertEqual(result.total, 1)
+
+
+class TestDoctorOwnership403(unittest.TestCase):
+    """
+    GET /api/appointments/{id} must return 403 for ANY doctor who is not
+    appt.doctor_id — tested independently of patient_history visibility.
+    """
+
+    ASSIGNED_DOCTOR_ID      = uuid.uuid4()
+    NON_ASSIGNED_DOCTOR_ID  = uuid.uuid4()
+    NON_ASSIGNED_USER_ID    = uuid.uuid4()
+
+    def _make_appt(self) -> MagicMock:
+        appt = _make_fake_appointment(PATIENT_ID, self.ASSIGNED_DOCTOR_ID)
+        appt.patient_history = None
+        return appt
+
+    def _build_db(self, appt, doctor_obj):
+        """Build a mock db session that returns the given appt and doctor."""
+        appt_query = MagicMock()
+        appt_query.filter.return_value = appt_query
+        appt_query.first.return_value  = appt
+
+        doctor_query = MagicMock()
+        doctor_query.filter.return_value = doctor_query
+        doctor_query.first.return_value  = doctor_obj
+
+        db = MagicMock()
+
+        def _side(model):
+            from app.models.appointment import Appointment
+            from app.models.doctor import Doctor
+            if model is Appointment:
+                return appt_query
+            if model is Doctor:
+                return doctor_query
+            return MagicMock()
+
+        db.query.side_effect = _side
+        return db
+
+    def test_non_assigned_doctor_gets_403(self):
+        """A valid doctor who is NOT appt.doctor_id must receive 403."""
+        from fastapi import HTTPException
+        from app.routes.appointments import get_appointment_details
+
+        appt = self._make_appt()
+
+        non_assigned_doc         = MagicMock()
+        non_assigned_doc.id      = self.NON_ASSIGNED_DOCTOR_ID
+        non_assigned_doc.user_id = self.NON_ASSIGNED_USER_ID
+
+        db = self._build_db(appt, non_assigned_doc)
+
+        current_user           = MagicMock()
+        current_user.user_type = "doctor"
+        current_user.id        = self.NON_ASSIGNED_USER_ID
+
+        with self.assertRaises(HTTPException) as ctx:
+            get_appointment_details(
+                appointment_id=appt.id,
+                current_user=current_user,
+                db=db,
+            )
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertIn("not the assigned doctor", str(ctx.exception.detail))
+
+    def test_assigned_doctor_gets_200(self):
+        """The doctor who IS appt.doctor_id must NOT get 403."""
+        from app.routes.appointments import get_appointment_details
+
+        appt = self._make_appt()
+
+        assigned_doc         = MagicMock()
+        assigned_doc.id      = self.ASSIGNED_DOCTOR_ID
+        assigned_doc.user_id = uuid.uuid4()
+
+        db = self._build_db(appt, assigned_doc)
+
+        current_user           = MagicMock()
+        current_user.user_type = "doctor"
+        current_user.id        = assigned_doc.user_id
+
+        result = get_appointment_details(
+            appointment_id=appt.id,
+            current_user=current_user,
+            db=db,
+        )
+        self.assertEqual(result.appointment_id, appt.id)
+
+    def test_doctor_not_found_in_db_gets_403(self):
+        """A doctor user_type whose Doctor row doesn't exist must get 403."""
+        from fastapi import HTTPException
+        from app.routes.appointments import get_appointment_details
+
+        appt = self._make_appt()
+        db = self._build_db(appt, None)  # no Doctor row
+
+        current_user           = MagicMock()
+        current_user.user_type = "doctor"
+        current_user.id        = uuid.uuid4()
+
+        with self.assertRaises(HTTPException) as ctx:
+            get_appointment_details(
+                appointment_id=appt.id,
+                current_user=current_user,
+                db=db,
+            )
+        self.assertEqual(ctx.exception.status_code, 403)
 
 
 if __name__ == "__main__":

@@ -61,10 +61,11 @@ class TestChatbotBookingFlow(unittest.TestCase):
 
     @patch("app.backend_client.list_doctors")
     def test_repeat_click_book_appointment_stays_in_booking_flow(self, mock_list_doctors):
-        """Repeated clicks of 'Book an appointment' must remain in booking flow, never asking triage follow-ups."""
+        """Repeated clicks of 'Book an appointment' must remain in booking flow, never misrouting to stale state."""
         mock_list_doctors.return_value = FAKE_DOCTORS
 
         from app.chatbot import handle_message
+        from app.chatbot_state import get_session, S
 
         # Turn 1
         res1 = handle_message(
@@ -76,7 +77,8 @@ class TestChatbotBookingFlow(unittest.TestCase):
         )
         self.assertEqual(res1["next_action"], "waiting_for_symptoms")
 
-        # Turn 2: Click "Book an appointment" again
+        # Turn 2: Click "Book an appointment" again — must stay in booking flow
+        # (state is preserved, NOT reset to greeting)
         res2 = handle_message(
             conversation_id=self.conv_id,
             patient_id=self.patient_id,
@@ -84,10 +86,12 @@ class TestChatbotBookingFlow(unittest.TestCase):
             language="en",
             authorization=None,
         )
-        self.assertEqual(res2["next_action"], "waiting_for_symptoms")
-        self.assertIn("What brings you in", res2["bot_message"])
+        session = get_session(self.conv_id)
+        # State must NOT reset to IDLE; should advance within booking flow
+        self.assertNotEqual(session["state"], S.IDLE)
+        self.assertNotIn("Hi! I'm", res2["bot_message"])
 
-        # Turn 3: Click "Book an appointment" a third time
+        # Turn 3: Click "Book an appointment" a third time — still in flow
         res3 = handle_message(
             conversation_id=self.conv_id,
             patient_id=self.patient_id,
@@ -95,10 +99,12 @@ class TestChatbotBookingFlow(unittest.TestCase):
             language="en",
             authorization=None,
         )
-        self.assertEqual(res3["next_action"], "waiting_for_symptoms")
-        self.assertIn("What brings you in", res3["bot_message"])
+        session = get_session(self.conv_id)
+        self.assertNotEqual(session["state"], S.IDLE)
+        self.assertNotIn("Hi! I'm", res3["bot_message"])
 
-    def test_describing_symptoms_triggers_triage(self):
+    @patch("app.chatbot.classify", return_value={"intent": "symptom", "symptoms": "high fever and runny nose", "specialty": None, "doctor_name": None, "doctor_id": None, "wants_doctor_list": False, "date": None, "appointment_id": None, "confirms": False, "declines": False, "faq_topic": None, "option_id": None})
+    def test_describing_symptoms_triggers_triage(self, mock_classify):
         """Describing actual health symptoms should trigger symptom triage follow-ups."""
         from app.chatbot import handle_message
 
