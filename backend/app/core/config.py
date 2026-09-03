@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # AI Service Integration
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "mixtral-8x7b-32768"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     # Calendar Integration
     GOOGLE_CALENDAR_API_KEY: str = ""
