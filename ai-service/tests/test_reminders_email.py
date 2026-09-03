@@ -1071,7 +1071,7 @@ def test_non_patient_user_is_redirected_before_symptom_triage():
     mock_list_doctors.assert_called_once_with()
     mock_patient_profile.assert_not_called()
     mock_classify.assert_not_called()
-    assert result["bot_message"] == "Unable to load your doctor profile — please contact support"
+    assert result["bot_message"] == "Unable to load your doctor profile - please contact support"
     assert result["next_action"] == "doctor_profile_error"
 
 

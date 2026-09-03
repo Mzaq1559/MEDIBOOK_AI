@@ -395,8 +395,31 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         # If the user sends a clearly unrelated request (lookup, reschedule,
         # cancel) while we're collecting follow-up answers, detect and route
         # instead of blindly consuming the message as a symptom answer.
+        #
+        # Guard: NLU intent alone is NOT enough — Groq may classify a
+        # follow-up answer (e.g. "3 hours ago") as intent="cancel" from
+        # conversation context.  Require text-based confirmation (regex or
+        # explicit keywords) before breaking out of the follow-up flow.
         _intent = nlu.get("intent")
-        _is_switch = _intent in ("reschedule", "cancel", "lookup")
+        _is_switch = False
+        if _intent in ("reschedule", "cancel", "lookup"):
+            if (
+                RESCHEDULE_RE.search(text)
+                or CANCEL_RE.search(text)
+                or LOOKUP_RE.search(text)
+            ):
+                _is_switch = True
+            else:
+                lower = text.lower()
+                if any(
+                    kw in lower
+                    for kw in (
+                        "my appointment", "cancel my", "reschedule my",
+                        "show my", "view my", "check my",
+                        "start over", "help",
+                    )
+                ):
+                    _is_switch = True
         if not _is_switch:
             lower = text.lower()
             if (
@@ -451,9 +474,12 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             session["state"] = S.ASKING_HISTORY
             return _history_prompt_message(), "waiting_for_input", [], {}
 
-        named_selection = _handle_named_selection(session, nlu)
-        if named_selection:
-            return named_selection
+        # ── Follow-up answer processing ──
+        # NOTE: _handle_named_selection is NOT called here because Groq's NLU
+        # may extract specialty/doctor_name from conversation context (e.g., the
+        # original symptom description), causing a false positive that bypasses
+        # the remaining follow-up questions and ASKING_HISTORY step entirely.
+        # The wants_doctor_list check above already handles explicit doctor requests.
         
         idx = int(session.get("follow_up_index") or 0) + 1
         session["follow_up_index"] = idx
@@ -466,9 +492,29 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
         return _history_prompt_message(), "waiting_for_input", [], {}
 
     if state == S.ASKING_HISTORY:
-        # ── Intent-switch escape hatch (same logic as ASKING_FOLLOWUP) ──
+        # ── Intent-switch escape hatch (same guarded logic as ASKING_FOLLOWUP) ──
+        # NLU intent alone is NOT enough — require text-based confirmation
+        # before breaking out of the medical history flow.
         _intent_h = nlu.get("intent")
-        _is_switch_h = _intent_h in ("reschedule", "cancel", "lookup")
+        _is_switch_h = False
+        if _intent_h in ("reschedule", "cancel", "lookup"):
+            if (
+                RESCHEDULE_RE.search(text)
+                or CANCEL_RE.search(text)
+                or LOOKUP_RE.search(text)
+            ):
+                _is_switch_h = True
+            else:
+                lower_h = text.lower()
+                if any(
+                    kw in lower_h
+                    for kw in (
+                        "my appointment", "cancel my", "reschedule my",
+                        "show my", "view my", "check my",
+                        "start over", "help",
+                    )
+                ):
+                    _is_switch_h = True
         if not _is_switch_h:
             lower_h = text.lower()
             if (

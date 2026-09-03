@@ -7,6 +7,7 @@ formats reminder payloads (WhatsApp/Email ready), and dispatches to n8n workflow
 from __future__ import annotations
 
 import logging
+import re
 import smtplib
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
@@ -19,6 +20,13 @@ from app.config import settings
 from integrations.n8n_webhook import send_n8n_webhook, EVENT_REMINDER_TRIGGERED
 
 logger = logging.getLogger("medibook.ai.reminders")
+
+
+def _doctor_display_name(raw_name: str) -> str:
+    """Normalize a doctor's display name to always have exactly one 'Dr.' prefix."""
+    name = (raw_name or "Doctor").strip()
+    name = re.sub(r"^dr\.\s*", "", name, flags=re.IGNORECASE).strip()
+    return f"Dr. {name}" if name else "Dr. Doctor"
 
 
 def _format_appointment_time(time_value: Any) -> str:
@@ -61,8 +69,7 @@ def send_confirmation_email(appointment: dict[str, Any]) -> bool:
         return False
 
     try:
-        doctor_name = appointment.get("doctor_name") or "Doctor"
-        raw_doc = doctor_name if doctor_name.startswith("Dr.") else f"Dr. {doctor_name}"
+        doctor_name = _doctor_display_name(appointment.get("doctor_name"))
         patient_name = appointment.get("patient_name") or "Valued Patient"
         clinic_name = appointment.get("clinic_name") or "MediBook Clinic"
         clinic_address = appointment.get("clinic_address") or "Clinic Address"
@@ -70,7 +77,7 @@ def send_confirmation_email(appointment: dict[str, Any]) -> bool:
         appt_id = appointment.get("appointment_id") or appointment.get("id") or ""
         frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
 
-        subject = f"✅ Appointment Confirmed: {raw_doc} on {when}"
+        subject = f"✅ Appointment Confirmed: {doctor_name} on {when}"
 
         html_content = f"""<!DOCTYPE html>
 <html>
@@ -88,14 +95,14 @@ def send_confirmation_email(appointment: dict[str, Any]) -> bool:
 <body>
     <div class="container">
         <div class="header">
-            <h2 style="margin: 0; font-size: 20px;">MediBook AI — Appointment Confirmation</h2>
+            <h2 style="margin: 0; font-size: 20px;">MediBook AI - Appointment Confirmation</h2>
         </div>
         <div class="content">
             <p>Dear <strong>{patient_name}</strong>,</p>
-            <p>Your appointment with <strong>{raw_doc}</strong> has been successfully confirmed.</p>
+            <p>Your appointment with <strong>{doctor_name}</strong> has been successfully confirmed.</p>
             
             <div class="details-box">
-                <p style="margin: 5px 0;"><strong>Doctor:</strong> {raw_doc}</p>
+                <p style="margin: 5px 0;"><strong>Doctor:</strong> {doctor_name}</p>
                 <p style="margin: 5px 0;"><strong>Clinic:</strong> {clinic_name}</p>
                 <p style="margin: 5px 0;"><strong>Address:</strong> {clinic_address}</p>
                 <p style="margin: 5px 0;"><strong>Date & Time:</strong> {when}</p>
@@ -184,6 +191,7 @@ def format_reminder_message(
 ) -> str:
     """Format human-readable reminder text suitable for WhatsApp or Email."""
     doctor_name = appointment.get("doctor_name") or "Doctor"
+    display_name = _doctor_display_name(doctor_name)
     when = _format_appointment_time(appointment.get("appointment_time"))
     clinic = appointment.get("clinic_name") or "Prime Care Clinic Taxila"
     appt_id = appointment.get("appointment_id") or appointment.get("id") or ""
@@ -192,7 +200,7 @@ def format_reminder_message(
 
     return (
         f"📅 MediBook Reminder: You have an appointment {window_label}!\n\n"
-        f"👨‍⚕️ Doctor: Dr. {doctor_name}\n"
+        f"👨‍⚕️ Doctor: {display_name}\n"
         f"⏰ Date & Time: {when}\n"
         f"📍 Location: {clinic}\n"
         f"🔖 Appointment ID: {appt_id}\n\n"

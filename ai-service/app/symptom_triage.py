@@ -603,7 +603,7 @@ FOLLOW_UP_QUESTIONS = {
         "Have you already tried any creams or medication for it?",
     ],
     SPECIALTY_ENT: [
-        "Which area is bothering you most ΓÇö ear, nose, or throat?",
+        "Which area is bothering you most - ear, nose, or throat?",
         "Do you have fever, or is it mainly pain or congestion?",
         "How long have these symptoms lasted?",
     ],

@@ -83,8 +83,13 @@ def validate_booking_slot(
             detail={"message": "Appointment time must be in the future", "error_code": "INVALID_TIME"}
         )
 
+    # Convert naive-UTC appt_dt to clinic-local (Karachi) time for all
+    # date/time-of-day checks (working days, holidays, working hours, breaks).
+    # DB overlap queries at the end use appt_dt (naive UTC) directly.
+    appt_karachi = pytz.UTC.localize(appt_dt).astimezone(KARACHI_TZ)
+
     # 1. Clinic working days
-    target_date = appt_dt.date()
+    target_date = appt_karachi.date()
     weekday_idx = target_date.weekday()
     day_abbr = DAY_ABBR_MAP[weekday_idx]
     working_days = [d.strip() for d in clinic.working_days.split(",") if d.strip()]
@@ -132,7 +137,7 @@ def validate_booking_slot(
     break_start_t = schedule.break_start if schedule else None
     break_end_t = schedule.break_end if schedule else None
 
-    slot_time = appt_dt.time()
+    slot_time = appt_karachi.time()
     slot_end_time = (datetime.combine(target_date, slot_time) + timedelta(minutes=duration_mins)).time()
 
     if slot_time < start_t or slot_end_time > end_t:
@@ -150,8 +155,11 @@ def validate_booking_slot(
 
     # 6. Max daily capacity
     daily_limit = (schedule.max_patients if schedule and schedule.max_patients else doctor.max_patients_per_day) or 20
-    start_of_day = datetime.combine(target_date, time.min)
-    end_of_day = datetime.combine(target_date, time.max)
+    # Convert Karachi day boundaries to naive UTC for DB query
+    karachi_day_start = KARACHI_TZ.localize(datetime.combine(target_date, time.min))
+    karachi_day_end = KARACHI_TZ.localize(datetime.combine(target_date, time.max))
+    start_of_day = karachi_day_start.astimezone(pytz.UTC).replace(tzinfo=None)
+    end_of_day = karachi_day_end.astimezone(pytz.UTC).replace(tzinfo=None)
 
     booked_query = db.query(Appointment).filter(
         Appointment.doctor_id == doctor.id,

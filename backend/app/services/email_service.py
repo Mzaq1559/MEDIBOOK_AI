@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 KARACHI_TZ = pytz.timezone(settings.TIMEZONE)
 
 
+def _doctor_display_name(raw_name: str) -> str:
+    """Normalize a doctor's display name to always have exactly one 'Dr.' prefix.
+
+    Strips any existing 'Dr.' prefix (case-insensitive) before re-adding it,
+    so the result is always 'Dr. <Name>' regardless of whether the stored
+    name already includes the title.
+    """
+    import re
+    name = (raw_name or "Doctor").strip()
+    name = re.sub(r"^dr\.\s*", "", name, flags=re.IGNORECASE).strip()
+    return f"Dr. {name}" if name else "Dr. Doctor"
+
+
 def _format_appointment_time(time_value) -> str:
     """Format appointment time to human-readable string in Karachi timezone.
     
@@ -91,8 +104,9 @@ def send_appointment_confirmation(appointment_id: UUID, db: Session) -> bool:
 
         patient_email = appointment.patient.user.email if (appointment.patient and appointment.patient.user) else None
         patient_name = appointment.patient.user.name if (appointment.patient and appointment.patient.user) else "Valued Patient"
-        raw_doc_name = appointment.doctor.user.name if (appointment.doctor and appointment.doctor.user) else "Doctor"
-        doctor_name = raw_doc_name if raw_doc_name.startswith("Dr.") else f"Dr. {raw_doc_name}"
+        doctor_name = _doctor_display_name(
+            appointment.doctor.user.name if (appointment.doctor and appointment.doctor.user) else "Doctor"
+        )
         doctor_spec = appointment.doctor.specialization if appointment.doctor else "General Physician"
         clinic_name = appointment.clinic.name if appointment.clinic else "MediBook Clinic"
         clinic_address = appointment.clinic.address if appointment.clinic else "Clinic Address"
@@ -122,14 +136,14 @@ def send_appointment_confirmation(appointment_id: UUID, db: Session) -> bool:
         <body>
             <div class="container">
                 <div class="header">
-                    <h2 style="margin: 0; font-size: 20px;">MediBook AI — Appointment Confirmed</h2>
+                    <h2 style="margin: 0; font-size: 20px;">MediBook AI - Appointment Confirmed</h2>
                 </div>
                 <div class="content">
                     <p>Dear <strong>{patient_name}</strong>,</p>
                     <p>Your appointment has been successfully booked and confirmed. Below are your appointment details:</p>
 
                     <div class="details-box">
-                        <p style="margin: 5px 0;"><strong>Doctor:</strong> Dr. {doctor_name} ({doctor_spec})</p>
+                        <p style="margin: 5px 0;"><strong>Doctor:</strong> {doctor_name} ({doctor_spec})</p>
                         <p style="margin: 5px 0;"><strong>Date & Time:</strong> {formatted_time}</p>
                         <p style="margin: 5px 0;"><strong>Clinic:</strong> {clinic_name}</p>
                         <p style="margin: 5px 0;"><strong>Address:</strong> {clinic_address}</p>
@@ -170,8 +184,9 @@ def send_appointment_rescheduled(appointment_id: UUID, db: Session) -> bool:
 
         patient_email = appointment.patient.user.email if (appointment.patient and appointment.patient.user) else None
         patient_name = appointment.patient.user.name if (appointment.patient and appointment.patient.user) else "Valued Patient"
-        raw_doc_name = appointment.doctor.user.name if (appointment.doctor and appointment.doctor.user) else "Doctor"
-        doctor_name = raw_doc_name if raw_doc_name.startswith("Dr.") else f"Dr. {raw_doc_name}"
+        doctor_name = _doctor_display_name(
+            appointment.doctor.user.name if (appointment.doctor and appointment.doctor.user) else "Doctor"
+        )
         clinic_name = appointment.clinic.name if appointment.clinic else "MediBook Clinic"
 
         if not patient_email:
@@ -198,7 +213,7 @@ def send_appointment_rescheduled(appointment_id: UUID, db: Session) -> bool:
         <body>
             <div class="container">
                 <div class="header">
-                    <h2 style="margin: 0; font-size: 20px;">MediBook AI — Appointment Rescheduled</h2>
+                    <h2 style="margin: 0; font-size: 20px;">MediBook AI - Appointment Rescheduled</h2>
                 </div>
                 <div class="content">
                     <p>Dear <strong>{patient_name}</strong>,</p>
@@ -235,8 +250,9 @@ def send_appointment_cancelled(appointment_id: UUID, db: Session) -> bool:
 
         patient_email = appointment.patient.user.email if (appointment.patient and appointment.patient.user) else None
         patient_name = appointment.patient.user.name if (appointment.patient and appointment.patient.user) else "Valued Patient"
-        raw_doc_name = appointment.doctor.user.name if (appointment.doctor and appointment.doctor.user) else "Doctor"
-        doctor_name = raw_doc_name if raw_doc_name.startswith("Dr.") else f"Dr. {raw_doc_name}"
+        doctor_name = _doctor_display_name(
+            appointment.doctor.user.name if (appointment.doctor and appointment.doctor.user) else "Doctor"
+        )
 
         if not patient_email:
             return False
@@ -259,7 +275,7 @@ def send_appointment_cancelled(appointment_id: UUID, db: Session) -> bool:
         <body>
             <div class="container">
                 <div class="header">
-                    <h2 style="margin: 0; font-size: 20px;">MediBook AI — Appointment Cancelled</h2>
+                    <h2 style="margin: 0; font-size: 20px;">MediBook AI - Appointment Cancelled</h2>
                 </div>
                 <div class="content">
                     <p>Dear <strong>{patient_name}</strong>,</p>
@@ -292,8 +308,9 @@ def send_reminder(appointment_id: UUID, reminder_type: str, db: Session) -> bool
 
         patient_email = appointment.patient.user.email if (appointment.patient and appointment.patient.user) else None
         patient_name = appointment.patient.user.name if (appointment.patient and appointment.patient.user) else "Valued Patient"
-        raw_doc_name = appointment.doctor.user.name if (appointment.doctor and appointment.doctor.user) else "Doctor"
-        doctor_name = raw_doc_name if raw_doc_name.startswith("Dr.") else f"Dr. {raw_doc_name}"
+        doctor_name = _doctor_display_name(
+            appointment.doctor.user.name if (appointment.doctor and appointment.doctor.user) else "Doctor"
+        )
         clinic_name = appointment.clinic.name if appointment.clinic else "MediBook Clinic"
         clinic_address = appointment.clinic.address if appointment.clinic else "Clinic Address"
 
@@ -305,7 +322,7 @@ def send_reminder(appointment_id: UUID, reminder_type: str, db: Session) -> bool
         reschedule_url = f"{settings.FRONTEND_URL}/appointments"
 
         time_frame = "24 hours" if reminder_type == "24h" else "1 hour"
-        subject = f"Reminder: Upcoming Appointment with Dr. {doctor_name} in {time_frame}"
+        subject = f"Reminder: Upcoming Appointment with {doctor_name} in {time_frame}"
 
         html_content = f"""
         <!DOCTYPE html>
@@ -331,7 +348,7 @@ def send_reminder(appointment_id: UUID, reminder_type: str, db: Session) -> bool
                     <p>This is a friendly reminder that your appointment is scheduled in approximately <strong>{time_frame}</strong>.</p>
 
                     <div class="details-box">
-                        <p style="margin: 5px 0;"><strong>Doctor:</strong> Dr. {doctor_name}</p>
+                        <p style="margin: 5px 0;"><strong>Doctor:</strong> {doctor_name}</p>
                         <p style="margin: 5px 0;"><strong>Date & Time:</strong> {formatted_time}</p>
                         <p style="margin: 5px 0;"><strong>Clinic:</strong> {clinic_name}</p>
                         <p style="margin: 5px 0;"><strong>Address:</strong> {clinic_address}</p>
@@ -376,8 +393,7 @@ def send_doctor_approval_email(doctor_email: str, doctor_name: str) -> bool:
         if not doctor_email:
             return False
 
-        raw_name = doctor_name or "Doctor"
-        formatted_name = raw_name if raw_name.startswith("Dr.") else f"Dr. {raw_name}"
+        formatted_name = _doctor_display_name(doctor_name)
         login_url = f"{settings.FRONTEND_URL}/login"
         subject = f"🎉 Doctor Application Approved: Welcome to MediBook AI, {formatted_name}"
 
@@ -398,7 +414,7 @@ def send_doctor_approval_email(doctor_email: str, doctor_name: str) -> bool:
         <body>
             <div class="container">
                 <div class="header">
-                    <h2 style="margin: 0; font-size: 20px;">MediBook AI — Doctor Application Approved</h2>
+                    <h2 style="margin: 0; font-size: 20px;">MediBook AI - Doctor Application Approved</h2>
                 </div>
                 <div class="content">
                     <p>Dear <strong>{formatted_name}</strong>,</p>

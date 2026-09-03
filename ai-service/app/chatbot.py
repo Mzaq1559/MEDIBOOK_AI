@@ -135,7 +135,7 @@ def handle_message(
                     "updated_at": _utc_now(),
                 }
 
-            bot = "Unable to load your doctor profile — please contact support"
+            bot = "Unable to load your doctor profile - please contact support"
             action = "doctor_profile_error"
             ui_data = {}
             now_ts = _utc_now()
@@ -300,6 +300,15 @@ def handle_message(
                 intent, state,
             )
         
+        # ── Cancel / Reschedule routing ──
+        # Suppress intent-based routing during active booking states
+        # (ASKING_FOLLOWUP, AWAIT_CONFIRM, etc.) unless the state
+        # itself is a cancel/reschedule-specific state.
+        _cancel_states = (S.CANCEL_FETCH, S.CANCEL_PICK, S.CANCEL_CONFIRM)
+        _reschedule_states = (S.RESCHEDULE_FETCH, S.RESCHEDULE_PICK, S.RESCHEDULE_SLOTS, S.RESCHEDULE_CONFIRM)
+        _route_cancel = (state in _cancel_states) or (intent == "cancel" and state not in _active_booking_states)
+        _route_reschedule = (state in _reschedule_states) or (intent == "reschedule" and state not in _active_booking_states)
+
         if state == S.EMERGENCY:
             bot = emergency_alert_with(session.get("emergency_explanation"))
             action = "emergency_redirect"
@@ -311,11 +320,11 @@ def handle_message(
             ui_data = {}
             if state in (S.IDLE, S.BOOKED, S.FAQ):
                 session["state"] = S.FAQ
-                
-        elif intent == "cancel" or state in (S.CANCEL_FETCH, S.CANCEL_PICK, S.CANCEL_CONFIRM):
+
+        elif _route_cancel:
             bot, action, _, ui_data = handle_cancel(session, message, nlu, authorization)
             
-        elif intent == "reschedule" or state in (S.RESCHEDULE_FETCH, S.RESCHEDULE_PICK, S.RESCHEDULE_SLOTS, S.RESCHEDULE_CONFIRM):
+        elif _route_reschedule:
             bot, action, _, ui_data = handle_reschedule(session, message, nlu, authorization)
 
         elif intent == "lookup" or state == S.LOOKUP:

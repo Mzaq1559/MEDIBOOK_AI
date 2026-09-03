@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.appointment import Appointment
+from app.services.email_service import _doctor_display_name
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,9 @@ def sync_appointment(appointment_id: UUID, db: Session) -> bool:
             return False
 
         calendar_id = getattr(settings, 'GOOGLE_CALENDAR_ID', 'primary') or 'primary'
-        doctor_name = appointment.doctor.user.name if (appointment.doctor and appointment.doctor.user) else "Doctor"
+        doctor_name = _doctor_display_name(
+            appointment.doctor.user.name if (appointment.doctor and appointment.doctor.user) else "Doctor"
+        )
         patient_name = appointment.patient.user.name if (appointment.patient and appointment.patient.user) else "Patient"
         patient_email = appointment.patient.user.email if (appointment.patient and appointment.patient.user) else None
         doctor_email = appointment.doctor.user.email if (appointment.doctor and appointment.doctor.user) else None
@@ -88,10 +91,10 @@ def sync_appointment(appointment_id: UUID, db: Session) -> bool:
         end_dt = start_dt + timedelta(minutes=duration)
 
         event_payload = {
-            'summary': f"Appointment with Dr. {doctor_name} ({clinic_name})",
+            'summary': f"Appointment with {doctor_name} ({clinic_name})",
             'description': (
                 f"Patient: {patient_name}" + (f" ({patient_email})" if patient_email else "") + "\n"
-                f"Doctor: Dr. {doctor_name}" + (f" ({doctor_email})" if doctor_email else "") + "\n"
+                f"Doctor: {doctor_name}" + (f" ({doctor_email})" if doctor_email else "") + "\n"
                 f"Clinic: {clinic_name}\n"
                 f"Symptoms: {appointment.symptoms_reported or 'N/A'}\n"
                 f"Urgency: {appointment.urgency_level or 'normal'}\n"

@@ -131,7 +131,7 @@ def _doctor_show_appointments(doctor_id: str, authorization: str, message: str, 
     formatted = [format_appointment_for_ui(a) for a in appointments]
     return {
         "bot_message": "Here are your appointments:\n" + "\n".join(
-            f"{idx}. {a.get('patient_name') or 'Patient'} — {a.get('appointment_time') or ''} — {a.get('symptoms_reported') or 'No symptoms provided'}"
+            f"{idx}. {a.get('patient_name') or 'Patient'} - {a.get('appointment_time') or ''} - {a.get('symptoms_reported') or 'No symptoms provided'}"
             for idx, a in enumerate(appointments[:10], start=1)
         ),
         "next_action": "doctor_appointments",
@@ -189,7 +189,7 @@ def _doctor_patient_details(
     if len(matches) > 1:
         return {
             "bot_message": "I found multiple matches. Please pick one:\n" + "\n".join(
-                f"{idx + 1}. {a.get('patient_name') or 'Patient'} — {a.get('appointment_time') or ''}"
+                f"{idx + 1}. {a.get('patient_name') or 'Patient'} - {a.get('appointment_time') or ''}"
                 for idx, a in enumerate(matches[:5])
             ),
             "next_action": "doctor_appointment_details",
@@ -334,11 +334,11 @@ def handle_doctor_message(
     doctor_context: dict[str, Any],
 ) -> dict[str, Any]:
     if not authorization or not authorization.lower().startswith("bearer "):
-        return {"bot_message": "Unable to load your doctor profile — please contact support", "next_action": "doctor_profile_error", "ui_data": {}}
+        return {"bot_message": "Unable to load your doctor profile - please contact support", "next_action": "doctor_profile_error", "ui_data": {}}
 
     doctor_id = str(doctor_context.get("doctor_id") or "")
     if not doctor_id:
-        return {"bot_message": "Unable to load your doctor profile — please contact support", "next_action": "doctor_profile_error", "ui_data": {}}
+        return {"bot_message": "Unable to load your doctor profile - please contact support", "next_action": "doctor_profile_error", "ui_data": {}}
 
     doctor_name = _doctor_name_from_context(doctor_context)
     lower = message.lower()
