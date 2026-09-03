@@ -39,12 +39,11 @@ DAY_ABBR_MAP = {
 
 
 def parse_and_validate_time(time_str: str) -> datetime:
-    """Parse ISO 8601 string and convert to naive UTC/Karachi-normalized datetime."""
+    """Parse ISO 8601 string and convert to naive Karachi-normalized datetime."""
     try:
         dt = date_parser.parse(time_str)
         if dt.tzinfo is not None:
-            # Convert to UTC or strip tz while normalizing
-            dt = dt.astimezone(pytz.utc).replace(tzinfo=None)
+            dt = dt.astimezone(KARACHI_TZ).replace(tzinfo=None)
         return dt
     except Exception:
         raise HTTPException(
@@ -63,8 +62,8 @@ def validate_booking_slot(
     exclude_appointment_id: Optional[uuid.UUID] = None
 ):
     """Validate all clinic, doctor, schedule, overlap, and capacity constraints."""
-    now_utc = datetime.utcnow()
-    if appt_dt <= now_utc:
+    now_karachi = datetime.now(KARACHI_TZ).replace(tzinfo=None)
+    if appt_dt <= now_karachi:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"message": "Appointment time must be in the future", "error_code": "INVALID_TIME"}

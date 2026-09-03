@@ -56,7 +56,9 @@ class LoginResponse(BaseModel):
     access_token: str
     refresh_token: str
     expires_in: int = 3600
+    patient_id: Optional[str] = None
     patientId: Optional[str] = None
+
 
 
 class RefreshTokenRequest(BaseModel):

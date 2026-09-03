@@ -501,21 +501,3 @@ def update_doctor(
         clinic_name=doc.clinic.name if doc.clinic else "Clinic"
     )
 
-@router.get("/doctors")
-async def get_doctors(
-    specialization: str = None,
-    clinic_id: str = None,
-    db: Session = Depends(get_db)
-):
-    """Get doctors with optional filtering"""
-    query = db.query(Doctor).filter(Doctor.is_available == True)
-    
-    if specialization:
-        query = query.filter(
-            Doctor.specialization.ilike(f"%{specialization}%")
-        )
-    
-    if clinic_id:
-        query = query.filter(Doctor.clinic_id == clinic_id)
-    
-    return query.all()

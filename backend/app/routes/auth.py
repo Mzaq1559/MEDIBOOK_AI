@@ -173,9 +173,11 @@ def login_user(request: Request, payload: LoginRequest, db: Session = Depends(ge
     if user.user_type == "patient":
         patient = db.query(Patient).filter(Patient.user_id == user.id).first()
 
+    pid_str = str(patient.id) if user.user_type == "patient" and patient else None
     return {
         "user_id": str(user.id),
-        "patientId": str(patient.id) if user.user_type == "patient" and patient else None,
+        "patient_id": pid_str,
+        "patientId": pid_str,
         "email": user.email,
         "name": user.name,
         "user_type": user.user_type,

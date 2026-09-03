@@ -40,4 +40,6 @@ Thumbs.db
 
 # Google Calendar credentials
 google-calendar-credentials.json
-credentials.jsonbackend/env
+credentials.json
+backend/env
+
