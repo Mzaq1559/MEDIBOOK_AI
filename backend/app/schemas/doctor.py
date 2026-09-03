@@ -19,6 +19,7 @@ class DoctorListItem(BaseModel):
     languages_spoken: List[str] = Field(default_factory=list)
     clinic_id: UUID
     clinic_name: str
+    clinic_address: str
 
     @field_validator("languages_spoken", mode="before")
     @classmethod

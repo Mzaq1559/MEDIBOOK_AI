@@ -25,6 +25,10 @@ from app.routes.chat import router as chat_router
 from app.routes.users import router as users_router
 from app.routes.prescriptions import router as prescriptions_router
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger("uvicorn.error")
 
 

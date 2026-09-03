@@ -60,6 +60,7 @@ def register_user(request: Request, payload: RegisterRequest, db: Session = Depe
 
     # 4. Hash password and create user
     hashed_pwd = get_password_hash(payload.password)
+    is_doctor = payload.user_type == "doctor"
     new_user = User(
         id=uuid.uuid4(),
         email=payload.email,
@@ -68,6 +69,7 @@ def register_user(request: Request, payload: RegisterRequest, db: Session = Depe
         password_hash=hashed_pwd,
         user_type=payload.user_type,
         is_active=True,
+        is_verified=False if is_doctor else True,  # Doctors need admin verification
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -86,10 +88,47 @@ def register_user(request: Request, payload: RegisterRequest, db: Session = Depe
             preferred_notification="whatsapp"
         )
         db.add(patient_rec)
+    elif is_doctor:
+        # Assign initial default clinic to satisfy NOT NULL foreign key constraint
+        from app.models.clinic import Clinic
+        first_clinic = db.query(Clinic).first()
+        if not first_clinic:
+            first_clinic = Clinic(
+                id=uuid.uuid4(),
+                name="Central Medical Clinic",
+                address="Main Medical Center, Healthcare Ave",
+                city="Central City",
+                phone="+1 (555) 012-3456",
+                email="clinic@medibook.com",
+                is_active=True,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(first_clinic)
+            db.flush()
 
-    # Generate JWT tokens
-    access_token = create_access_token(new_user.id, new_user.email, new_user.user_type)
-    refresh_token = create_refresh_token(new_user.id, new_user.email, new_user.user_type)
+        # Create initial pending Doctor profile record linked to the user
+        doctor_rec = Doctor(
+            id=uuid.uuid4(),
+            user_id=new_user.id,
+            clinic_id=first_clinic.id,
+            specialization="General Medicine",
+            consultation_fee=1500.0,
+            is_available=False,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(doctor_rec)
+
+    # Generate JWT tokens (only for non-doctor verified users; doctors must wait for admin verification)
+    if is_doctor:
+        access_token = ""
+        refresh_token = ""
+        msg = "Doctor registration submitted. Your application is pending administrator verification. Please check back in a few days."
+    else:
+        access_token = create_access_token(new_user.id, new_user.email, new_user.user_type)
+        refresh_token = create_refresh_token(new_user.id, new_user.email, new_user.user_type)
+        msg = "Registration successful"
 
     # Log audit event
     ip = request.client.host if request.client else None
@@ -100,7 +139,7 @@ def register_user(request: Request, payload: RegisterRequest, db: Session = Depe
         table_name="users",
         record_id=new_user.id,
         user_id=new_user.id,
-        new_values={"email": new_user.email, "user_type": new_user.user_type, "name": new_user.name},
+        new_values={"email": new_user.email, "user_type": new_user.user_type, "name": new_user.name, "is_verified": new_user.is_verified},
         ip_address=ip,
         user_agent=user_agent
     )
@@ -115,8 +154,8 @@ def register_user(request: Request, payload: RegisterRequest, db: Session = Depe
         user_type=new_user.user_type,
         access_token=access_token,
         refresh_token=refresh_token,
-        expires_in=3600,
-        message="Registration successful"
+        expires_in=3600 if not is_doctor else 0,
+        message=msg
     )
 
 
@@ -146,6 +185,13 @@ def login_user(request: Request, payload: LoginRequest, db: Session = Depends(ge
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"message": "User account is disabled", "error_code": "FORBIDDEN"}
+        )
+
+    # Check if doctor is verified (doctors must be verified by admin before login)
+    if user.user_type == "doctor" and not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Your doctor account is pending admin verification. Please contact the clinic administrator.", "error_code": "DOCTOR_NOT_VERIFIED"}
         )
 
     # Update last login timestamp

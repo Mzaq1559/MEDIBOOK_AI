@@ -17,6 +17,7 @@ interface BackendDoctorAppointment {
   urgency_level?: string;
   symptoms_reported?: string;
   doctor_notes?: string;
+  patient_history?: string;
 }
 
 export const DoctorDashboard: React.FC = () => {
@@ -33,8 +34,8 @@ export const DoctorDashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch all upcoming scheduled appointments (not just today — avoids UTC/PKT date boundary issues)
-      const res = await listAppointments({ status: 'scheduled' });
+      // Fetch all appointments for doctor so queue, completed stats, and history calculate accurately
+      const res = await listAppointments();
       setSchedule(res.appointments || []);
     } catch (err: any) {
       console.error('Failed to load doctor schedule:', err);
@@ -49,7 +50,7 @@ export const DoctorDashboard: React.FC = () => {
   }, []);
 
   const doctorName = currentUser?.userType === 'doctor' ? currentUser.name : 'Dr. Attending Physician';
-  const doctorSpecialty = currentUser?.specialization || 'Clinical Specialist';
+  const doctorSpecialty = (currentUser as any)?.specialization || 'Clinical Specialist';
 
   // Format today's date nicely
   const todayFormatted = new Date().toLocaleDateString('en-US', {
@@ -59,15 +60,41 @@ export const DoctorDashboard: React.FC = () => {
     year: 'numeric',
   });
 
+  const formatTime = (isoString: string) => {
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return isoString;
+    }
+  };
+
+  const isAppointmentToday = (appointmentTime: string): boolean => {
+    try {
+      const aptDate = new Date(appointmentTime).toDateString();
+      const today = new Date().toDateString();
+      return aptDate === today;
+    } catch {
+      return false;
+    }
+  };
+
+  const todaysAppointments = schedule.filter(
+    (apt) => isAppointmentToday(apt.appointment_time) &&
+      (apt.status.toLowerCase() === 'scheduled' || apt.status.toLowerCase() === 'confirmed' || apt.status.toLowerCase() === 'upcoming')
+  );
+
   // Calculate stats dynamically
-  const totalUpcoming = schedule.length;
+  const upcomingQueue = schedule.filter(
+    (s) => s.status.toLowerCase() === 'scheduled' || s.status.toLowerCase() === 'confirmed' || s.status.toLowerCase() === 'upcoming'
+  );
+  const totalUpcoming = upcomingQueue.length;
   const completedCount = schedule.filter((s) => s.status.toLowerCase() === 'completed').length;
   const noShowCount = schedule.filter((s) => s.status.toLowerCase() === 'no_show' || s.status.toLowerCase() === 'no-show').length;
-  const upcomingCount = schedule.filter(
-    (s) => s.status.toLowerCase() === 'scheduled' || s.status.toLowerCase() === 'confirmed' || s.status.toLowerCase() === 'upcoming'
-  ).length;
+  const upcomingCount = todaysAppointments.length;
 
-  const utilizationPct = totalUpcoming > 0 ? Math.round(((completedCount + noShowCount) / totalUpcoming) * 100) : 0;
+  const totalProcessed = totalUpcoming + completedCount + noShowCount;
+  const utilizationPct = totalProcessed > 0 ? Math.round(((completedCount + noShowCount) / totalProcessed) * 100) : 0;
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -169,15 +196,6 @@ export const DoctorDashboard: React.FC = () => {
     }
   };
 
-  const formatTime = (isoString: string) => {
-    try {
-      const d = new Date(isoString);
-      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return isoString;
-    }
-  };
-
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 space-y-10">
       {/* Toast */}
@@ -248,12 +266,12 @@ export const DoctorDashboard: React.FC = () => {
 
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>Upcoming</span>
-            <span>⏳</span>
+            <span>Today's Queue</span>
+            <span>📋</span>
           </div>
           <div className="mt-3">
             <span className="font-heading font-extrabold text-3xl text-primary">{upcomingCount}</span>
-            <p className="text-[11px] text-textSecondary mt-0.5">Remaining in queue</p>
+            <p className="text-[11px] text-textSecondary mt-0.5">Scheduled for today</p>
           </div>
         </Card>
 
@@ -279,25 +297,25 @@ export const DoctorDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* 3. Appointment List (Rows/Cards) */}
+      {/* 3a. Today's Queue Section */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
-            Patient Appointments Queue
+            Today's Queue
           </h2>
           <span className="text-xs font-mono text-textSecondary bg-surfaceContainer px-3 py-1 rounded-pill">
-            Live Clinical List
+            {todaysAppointments.length} appointments
           </span>
         </div>
 
         {loading ? (
           <Card radius="2xl" shadow="sm" className="p-12 text-center bg-white border border-surfaceContainerHigh">
             <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-xs text-textSecondary font-medium">Fetching upcoming clinical queue...</p>
+            <p className="text-xs text-textSecondary font-medium">Fetching today's clinical queue...</p>
           </Card>
-        ) : schedule.length > 0 ? (
+        ) : todaysAppointments.length > 0 ? (
           <div className="space-y-4">
-            {schedule.map((apt) => {
+            {todaysAppointments.map((apt) => {
               const statusLower = apt.status.toLowerCase();
               const isCompleted = statusLower === 'completed';
               const isNoShow = statusLower === 'no_show' || statusLower === 'no-show';
@@ -312,11 +330,10 @@ export const DoctorDashboard: React.FC = () => {
                   key={apt.appointment_id}
                   radius="2xl"
                   shadow="sm"
-                  className={`p-5 sm:p-6 bg-white border transition-all duration-200 ${
-                    isCritical && isPending
+                  className={`p-5 sm:p-6 bg-white border transition-all duration-200 ${isCritical && isPending
                       ? 'border-error/50 shadow-soft-md ring-2 ring-error/15'
                       : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
-                  }`}
+                    }`}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
                     {/* Left Column: Time & Patient Info */}
@@ -349,6 +366,218 @@ export const DoctorDashboard: React.FC = () => {
                             <strong className="text-textPrimary">Symptoms / Reason:</strong> {apt.symptoms_reported}
                           </div>
                         )}
+
+                        {/* Patient-shared Medical History (doctor-only) */}
+                        {apt.patient_history && (() => {
+                          try {
+                            const hist = typeof apt.patient_history === 'string' ? JSON.parse(apt.patient_history) : apt.patient_history;
+                            const parts: string[] = [];
+                            if (hist.conditions?.length) parts.push(`Conditions: ${hist.conditions.join(', ')}`);
+                            if (hist.allergies?.length) parts.push(`Allergies: ${hist.allergies.join(', ')}`);
+                            if (hist.past_issues?.length) parts.push(`History: ${hist.past_issues.join(', ')}`);
+                            if (parts.length === 0) return null;
+                            return (
+                              <div className="mt-2 p-3 bg-blue-50 rounded-xl text-xs border border-blue-200 space-y-0.5">
+                                <span className="font-bold text-blue-700 uppercase text-[10px] tracking-wider block">
+                                  📋 Patient Medical History
+                                </span>
+                                {parts.map((p, i) => (
+                                  <p key={i} className="text-textPrimary">{p}</p>
+                                ))}
+                              </div>
+                            );
+                          } catch {
+                            return null;
+                          }
+                        })()}
+
+                        {/* Completed Notes View */}
+                        {apt.doctor_notes && !isEditingNotes && (
+                          <div className="mt-2.5 p-3 bg-surfaceContainer/80 rounded-xl text-xs border border-surfaceContainerHigh space-y-0.5">
+                            <span className="font-bold text-secondary uppercase text-[10px] tracking-wider block">
+                              Saved Clinical Notes:
+                            </span>
+                            <p className="text-textPrimary italic">{apt.doctor_notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right Column: Actions */}
+                    <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between lg:justify-start gap-2.5 pt-3 lg:pt-0 border-t lg:border-t-0 border-surfaceContainerHigh shrink-0">
+                      {isPending && !isEditingNotes && (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => handleStartComplete(apt)}
+                          >
+                            Mark Complete
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="hover:border-error hover:text-error"
+                            onClick={() => handleMarkNoShowAction(apt.appointment_id)}
+                          >
+                            Mark No-show
+                          </Button>
+                        </div>
+                      )}
+
+                      {isCompleted && (
+                        <div className="flex items-center gap-2 text-xs font-semibold text-secondary bg-secondaryContainer/30 px-3 py-1.5 rounded-pill border border-secondary/20">
+                          <span>✓ Record Finalized</span>
+                        </div>
+                      )}
+
+                      {isNoShow && (
+                        <div className="flex items-center gap-2 text-xs font-semibold text-error bg-errorContainer/40 px-3 py-1.5 rounded-pill border border-error/20">
+                          <span>✗ Marked No-Show</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Inline Notes Expansion when Mark Complete is clicked */}
+                  {isEditingNotes && (
+                    <div className="mt-4 pt-4 border-t border-surfaceContainerHigh bg-surfaceContainer/50 -mx-5 sm:-mx-6 -mb-5 sm:-mb-6 p-5 rounded-b-2xl animate-fadeIn space-y-3">
+                      <label className="block text-xs font-bold text-textPrimary">
+                        Add Clinical Notes & Prescription for {apt.patient_name}:
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={notesText}
+                        onChange={(e) => setNotesText(e.target.value)}
+                        placeholder="Enter clinical findings, vital interpretations, prescriptions, and follow-up instructions..."
+                        className="w-full text-xs bg-white rounded-xl border border-outline/40 p-3 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary placeholder:text-textSecondary/60"
+                      />
+                      <div className="flex items-center justify-end gap-2.5">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setActiveNotesId(null);
+                            setNotesText('');
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => handleSaveNotesAndFinalize(apt.appointment_id)}
+                        >
+                          Save Notes & Finalize
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <Card radius="2xl" shadow="sm" className="p-10 text-center bg-white border border-surfaceContainerHigh space-y-2">
+            <p className="font-heading font-bold text-base text-textPrimary">No appointments scheduled for today</p>
+            <p className="text-xs text-textSecondary">Your queue for today is clear. Check back later.</p>
+          </Card>
+        )}
+      </section>
+
+      {/* 3b. All Upcoming Appointments Section */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
+            Patient Appointments Queue
+          </h2>
+          <span className="text-xs font-mono text-textSecondary bg-surfaceContainer px-3 py-1 rounded-pill">
+            Live Clinical List
+          </span>
+        </div>
+
+        {loading ? (
+          <Card radius="2xl" shadow="sm" className="p-12 text-center bg-white border border-surfaceContainerHigh">
+            <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-xs text-textSecondary font-medium">Fetching upcoming clinical queue...</p>
+          </Card>
+        ) : schedule.length > 0 ? (
+          <div className="space-y-4">
+            {schedule.map((apt) => {
+              const statusLower = apt.status.toLowerCase();
+              const isCompleted = statusLower === 'completed';
+              const isNoShow = statusLower === 'no_show' || statusLower === 'no-show';
+              const isPending = statusLower === 'scheduled' || statusLower === 'confirmed' || statusLower === 'upcoming';
+              const isEditingNotes = activeNotesId === apt.appointment_id;
+              const isCritical = apt.urgency_level?.toLowerCase() === 'critical';
+
+              const formattedTime = formatTime(apt.appointment_time);
+
+              return (
+                <Card
+                  key={apt.appointment_id}
+                  radius="2xl"
+                  shadow="sm"
+                  className={`p-5 sm:p-6 bg-white border transition-all duration-200 ${isCritical && isPending
+                      ? 'border-error/50 shadow-soft-md ring-2 ring-error/15'
+                      : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
+                    }`}
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
+                    {/* Left Column: Time & Patient Info */}
+                    <div className="flex items-start gap-4 sm:gap-5 flex-1">
+                      {/* Time Display */}
+                      <div className="w-20 sm:w-24 text-center shrink-0 p-2.5 bg-surfaceContainer rounded-2xl border border-surfaceContainerHigh">
+                        <span className="block font-heading font-extrabold text-sm sm:text-base text-textPrimary">
+                          {formattedTime.split(' ')[0]}
+                        </span>
+                        <span className="text-[10px] uppercase font-bold text-textSecondary">
+                          {formattedTime.split(' ')[1] || ''}
+                        </span>
+                      </div>
+
+                      {/* Patient & Symptom Details */}
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <h3 className="font-heading font-bold text-base sm:text-lg text-textPrimary">
+                            {apt.patient_name}
+                          </h3>
+                          <span className="text-xs text-textSecondary">
+                            • <code className="text-[10px] font-mono text-primary bg-surfaceContainer px-1.5 py-0.5 rounded">{`PT-${apt.patient_id.slice(0, 6)}`}</code>
+                          </span>
+                          {getUrgencyBadge(apt.urgency_level)}
+                          {getStatusBadge(apt.status)}
+                        </div>
+
+                        {apt.symptoms_reported && (
+                          <div className="text-xs text-textSecondary leading-relaxed pt-1">
+                            <strong className="text-textPrimary">Symptoms / Reason:</strong> {apt.symptoms_reported}
+                          </div>
+                        )}
+
+                        {/* Patient-shared Medical History (doctor-only) */}
+                        {apt.patient_history && (() => {
+                          try {
+                            const hist = typeof apt.patient_history === 'string' ? JSON.parse(apt.patient_history) : apt.patient_history;
+                            const parts: string[] = [];
+                            if (hist.conditions?.length) parts.push(`Conditions: ${hist.conditions.join(', ')}`);
+                            if (hist.allergies?.length) parts.push(`Allergies: ${hist.allergies.join(', ')}`);
+                            if (hist.past_issues?.length) parts.push(`History: ${hist.past_issues.join(', ')}`);
+                            if (parts.length === 0) return null;
+                            return (
+                              <div className="mt-2 p-3 bg-blue-50 rounded-xl text-xs border border-blue-200 space-y-0.5">
+                                <span className="font-bold text-blue-700 uppercase text-[10px] tracking-wider block">
+                                  📋 Patient Medical History
+                                </span>
+                                {parts.map((p, i) => (
+                                  <p key={i} className="text-textPrimary">{p}</p>
+                                ))}
+                              </div>
+                            );
+                          } catch {
+                            return null;
+                          }
+                        })()}
 
                         {/* Completed Notes View */}
                         {apt.doctor_notes && !isEditingNotes && (

@@ -18,29 +18,29 @@ MediBook AI is developed as **three complete, independently runnable implementat
 | Version | Branch | Description |
 |---|---|---|
 | **Agentic RAG** | [`main`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/main) | The latest implementation. A Groq tool-calling agent reasons over the conversation and uses clinic tools for doctor lookup, availability, appointments, and RAG-grounded medical guidance. All write actions use a backend-enforced propose → confirm → execute flow. |
+
 | **RAG-enabled (this branch) ⭐** | [`rag`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/rag) | Builds on the baseline with a ChromaDB-backed medical RAG layer for grounded symptom triage while retaining the deterministic conversation state machine. |
 | **Baseline / Non-RAG** | [`baseline`](https://github.com/Mzaq1559/MEDIBOOK_AI/tree/baseline) | Original clinic platform with deterministic conversation handling and symptom triage, without retrieval or vector search. |
+
 
 All three branches are **complete, independently runnable implementations**.
 
 ### Development Flow
 
 ```text
-main
 Baseline / Non-RAG
       │
       │ Bug fixes & improvements
       ▼
-rag
-RAG-Enabled
+RAG-Enabled (this branch)
       │
       │ Agentic architecture
       ▼
-agentic-rag
 Agentic RAG
 ```
 
-Bug fixes and improvements made to the baseline implementation are regularly merged into `rag`, ensuring that the RAG implementation remains aligned with the latest stable clinic platform. The `agentic-rag` branch builds on the same core platform while introducing the agentic architecture.
+Bug fixes and improvements made to the baseline implementation are regularly merged into `rag`, ensuring that the RAG implementation remains aligned with the latest stable clinic platform.
+
 
 
 ## Table of Contents

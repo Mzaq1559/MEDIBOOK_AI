@@ -89,13 +89,17 @@ def list_appointments(
         else:
             return AppointmentListResponse(total=0, limit=limit, offset=offset, appointments=[])
     elif current_user.user_type == "doctor":
-        # Doctors can view their own appointments
+        # Doctors can ONLY view their own appointments (force restriction, ignore doctor_id param)
         doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
-        if doc and not doctor_id:
+        if doc:
             query = query.filter(Appointment.doctor_id == doc.id)
-
-    if doctor_id:
-        query = query.filter(Appointment.doctor_id == doctor_id)
+        else:
+            return AppointmentListResponse(total=0, limit=limit, offset=offset, appointments=[])
+        # NOTE: doctor_id query param is ignored for security; doctors cannot view other doctors' appointments
+    else:
+        # Admin/receptionist can filter by doctor_id if provided
+        if doctor_id:
+            query = query.filter(Appointment.doctor_id == doctor_id)
     if patient_id:
         # Resolve patient_id: caller may supply patients.id OR users.id (the
         # chatbot and some frontend paths send users.id).  Resolve through the
@@ -141,6 +145,13 @@ def list_appointments(
 
     items: List[AppointmentListItem] = []
     for a in appts:
+        # patient_history is visible only to the assigned doctor; strip for
+        # patients and other non-doctor users.
+        history_for_user = (
+            a.patient_history
+            if current_user.user_type == "doctor"
+            else None
+        )
         items.append(
             AppointmentListItem(
                 appointment_id=a.id,
@@ -148,13 +159,20 @@ def list_appointments(
                 clinic_name=a.clinic.name if a.clinic else "Clinic",
                 doctor_id=a.doctor_id,
                 doctor_name=a.doctor.user.name if (a.doctor and a.doctor.user) else "Doctor",
+                doctor_specialization=a.doctor.specialization if a.doctor else None,
                 patient_id=a.patient_id,
                 patient_name=a.patient.user.name if (a.patient and a.patient.user) else "Patient",
                 appointment_time=a.appointment_time.isoformat() + "Z",
                 status=a.status,
                 symptoms_reported=a.symptoms_reported,
                 urgency_level=a.urgency_level,
+                urgency_reason=a.urgency_reason,
                 appointment_type=a.appointment_type,
+                doctor_notes=a.notes,
+                patient_history=history_for_user,
+                feedback_score=a.feedback_score,
+                feedback_text=a.feedback_text,
+                feedback_submitted=bool(a.feedback_score),
                 created_at=a.created_at.isoformat() + "Z"
             )
         )
@@ -195,6 +213,18 @@ def get_appointment_details(
                 detail={"message": "Access forbidden. Cannot view this appointment.", "error_code": "FORBIDDEN"}
             )
 
+    # Permission check for doctors — only the assigned doctor may view the detail
+    if current_user.user_type == "doctor":
+        doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+        if not doc or appt.doctor_id != doc.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "Access forbidden. You are not the assigned doctor for this appointment.", "error_code": "FORBIDDEN"}
+            )
+
+    # patient_history is visible only to the assigned doctor; strip for all other users
+    history = appt.patient_history if current_user.user_type == "doctor" else None
+
     return AppointmentDetailResponse(
         appointment_id=appt.id,
         clinic_id=appt.clinic_id,
@@ -210,8 +240,10 @@ def get_appointment_details(
         status=appt.status,
         symptoms_reported=appt.symptoms_reported,
         urgency_level=appt.urgency_level,
+        urgency_reason=appt.urgency_reason,
         appointment_type=appt.appointment_type,
         notes=appt.notes,
+        patient_history=history,
         feedback_score=appt.feedback_score,
         feedback_text=appt.feedback_text,
         google_calendar_event_id=appt.google_calendar_event_id,

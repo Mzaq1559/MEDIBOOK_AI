@@ -8,16 +8,22 @@ import type { DoctorListItem } from '../services/doctors'
 import { listClinics, createClinic, updateClinic } from '../services/clinics'
 import type { ClinicListItem } from '../services/clinics'
 
+import axios from 'axios';
+import { getAccessToken } from '../services/tokenStorage';
+
 type AdminTab = 'doctors' | 'applications' | 'clinics';
 
 interface DoctorApplication {
   id: string;
+  doctor_id?: string;
+  user_id?: string;
   name: string;
   email: string;
   phone: string;
   specialization: string;
-  medicalLicense: string;
-  yearsOfExperience: number;
+  consultation_fee?: number;
+  clinic_id?: string;
+  max_patients_per_day?: number;
   submittedDate: string;
   status: 'Pending';
 }
@@ -56,6 +62,17 @@ export const Admin: React.FC = () => {
     maxPatientsPerDay: 16,
   });
 
+  // Doctor Application Approval Modal State
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+  const [selectedApp, setSelectedApp] = useState<DoctorApplication | null>(null);
+  const [approvalForm, setApprovalForm] = useState({
+    specialization: 'General Medicine',
+    fee: 1500,
+    clinicId: '',
+    maxPatientsPerDay: 16,
+    bio: '',
+  });
+
   // Clinic Modal State
   const [isClinicModalOpen, setIsClinicModalOpen] = useState(false);
   const [editingClinic, setEditingClinic] = useState<ClinicListItem | null>(null);
@@ -72,22 +89,33 @@ export const Admin: React.FC = () => {
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
   const fetchAdminData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [mRes, dRes, cRes] = await Promise.allSettled([
+      const token = getAccessToken();
+      const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const [mRes, dRes, cRes, aRes] = await Promise.allSettled([
         getDashboardMetrics(),
         listDoctors(),
         listClinics(),
+        axios.get('/api/doctors/pending/applications', { headers: authHeaders }),
       ]);
 
       if (mRes.status === 'fulfilled') setMetrics(mRes.value);
       if (dRes.status === 'fulfilled') setDoctors(dRes.value.doctors || []);
-      if (cRes.status === 'fulfilled') setClinics(cRes.value.clinics || []);
+      if (cRes.status === 'fulfilled') {
+        const cl = cRes.value.clinics || [];
+        setClinics(cl);
+        if (cl.length > 0 && !approvalForm.clinicId) {
+          setApprovalForm((prev) => ({ ...prev, clinicId: cl[0].clinic_id }));
+        }
+      }
+      if (aRes.status === 'fulfilled') setApplications(aRes.value.data || []);
 
       if (dRes.status === 'rejected' && cRes.status === 'rejected') {
         setError('Failed to connect to backend administration services.');
@@ -184,16 +212,61 @@ export const Admin: React.FC = () => {
     }
   };
 
-  // --- Doctor Application Actions ---
-  const handleApproveApplication = (app: DoctorApplication) => {
-    setApplications((prev) => prev.filter((a) => a.id !== app.id));
-    showToast(`Doctor ${app.name} approved!`);
+  // --- Doctor Application Review & Approval Actions ---
+  const handleOpenApproveModal = (app: DoctorApplication) => {
+    setSelectedApp(app);
+    setApprovalForm({
+      specialization: app.specialization || 'General Medicine',
+      fee: app.consultation_fee || 1500,
+      clinicId: app.clinic_id || clinics[0]?.clinic_id || '',
+      maxPatientsPerDay: app.max_patients_per_day || 16,
+      bio: '',
+    });
+    setIsApprovalModalOpen(true);
   };
 
-  const handleRejectApplication = (app: DoctorApplication) => {
+  const handleConfirmApproval = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedApp) return;
+
+    try {
+      const token = getAccessToken();
+      const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const targetId = selectedApp.doctor_id || selectedApp.id;
+      const res = await axios.patch(
+        `/api/doctors/${targetId}/verify`,
+        {
+          specialization: approvalForm.specialization.trim(),
+          clinic_id: approvalForm.clinicId || clinics[0]?.clinic_id,
+          consultation_fee: Number(approvalForm.fee),
+          max_patients_per_day: Number(approvalForm.maxPatientsPerDay),
+          bio: approvalForm.bio.trim() || undefined,
+        },
+        { headers: authHeaders }
+      );
+
+      setIsApprovalModalOpen(false);
+      setSelectedApp(null);
+      showToast(res.data?.message || `Doctor ${selectedApp.name} approved and notified via email!`);
+      fetchAdminData();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail?.message || 'Failed to approve doctor application');
+    }
+  };
+
+  const handleRejectApplication = async (app: DoctorApplication) => {
     if (window.confirm(`Are you sure you want to reject the application for ${app.name}?`)) {
-      setApplications((prev) => prev.filter((a) => a.id !== app.id));
-      showToast(`Application for ${app.name} rejected.`);
+      try {
+        const token = getAccessToken();
+        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+        const targetId = app.doctor_id || app.id;
+        await axios.delete(`/api/doctors/${targetId}/reject`, { headers: authHeaders });
+        showToast(`Application for ${app.name} rejected and removed.`);
+        fetchAdminData();
+      } catch (err: any) {
+        alert(err?.response?.data?.detail?.message || 'Failed to reject application');
+      }
     }
   };
 
@@ -636,10 +709,10 @@ export const Admin: React.FC = () => {
                     <div className="flex items-center gap-2.5 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-surfaceContainerHigh">
                       <button
                         type="button"
-                        onClick={() => handleApproveApplication(app)}
-                        className="px-4 py-2 rounded-pill text-xs font-semibold bg-[#006B5F] hover:bg-[#005249] text-white shadow-soft-sm transition-all"
+                        onClick={() => handleOpenApproveModal(app)}
+                        className="px-4 py-2 rounded-pill text-xs font-semibold bg-[#006B5F] hover:bg-[#005249] text-white shadow-soft-sm transition-all flex items-center gap-1.5"
                       >
-                        ✓ Approve Application
+                        <span>✓</span> Review & Approve
                       </button>
                       <button
                         type="button"
@@ -759,7 +832,7 @@ export const Admin: React.FC = () => {
 
       {/* --- ADD / EDIT DOCTOR MODAL --- */}
       {isDoctorModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 py-8 overflow-y-auto animate-fadeIn">
           <div className="w-full max-w-lg">
             <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
               <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
@@ -853,7 +926,7 @@ export const Admin: React.FC = () => {
 
       {/* --- ADD / EDIT CLINIC MODAL --- */}
       {isClinicModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 py-8 overflow-y-auto animate-fadeIn">
           <div className="w-full max-w-lg">
             <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
               <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
@@ -962,6 +1035,123 @@ export const Admin: React.FC = () => {
                   </Button>
                   <Button type="submit" variant="primary">
                     {editingClinic ? 'Save Changes' : 'Create Clinic'}
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* --- DOCTOR APPLICATION APPROVAL & CONFIGURATION MODAL --- */}
+      {isApprovalModalOpen && selectedApp && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 py-8 overflow-y-auto animate-fadeIn">
+          <div className="w-full max-w-lg">
+            <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
+              <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
+                <div>
+                  <h3 className="font-heading font-bold text-xl text-textPrimary">
+                    Configure & Verify Doctor
+                  </h3>
+                  <p className="text-xs text-textSecondary mt-0.5">
+                    Configure clinical details for <strong>{selectedApp.name}</strong> before approving.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsApprovalModalOpen(false)}
+                  className="p-1 rounded-pill text-textSecondary hover:text-textPrimary"
+                >
+                  ✕
+                </button>
+              </div>
+
+                            <form onSubmit={handleConfirmApproval} className="space-y-4">
+                <Input
+                  label="Full Name & Title"
+                  value={selectedApp.name}
+                  disabled
+                />
+
+                <Input
+                  label="Email Address"
+                  type="email"
+                  value={selectedApp.email}
+                  disabled
+                />
+
+                <Input
+                  label="Phone Number"
+                  value={selectedApp.phone}
+                  disabled
+                />
+
+                <Input
+                  label="Specialization"
+                  placeholder="e.g. Cardiology & Vascular Medicine"
+                  value={approvalForm.specialization}
+                  onChange={(e) => setApprovalForm({ ...approvalForm, specialization: e.target.value })}
+                  required
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input
+                    label="Consultation Fee ($)"
+                    type="number"
+                    min={0}
+                    value={approvalForm.fee}
+                    onChange={(e) => setApprovalForm({ ...approvalForm, fee: Number(e.target.value) })}
+                    required
+                  />
+
+                  <Input
+                    label="Max Patients / Day"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={approvalForm.maxPatientsPerDay}
+                    onChange={(e) => setApprovalForm({ ...approvalForm, maxPatientsPerDay: Number(e.target.value) })}
+                    required
+                  />
+                </div>
+
+                {/* Clinic Facility Dropdown */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-textPrimary">Assigned Clinic Facility</label>
+                  <select
+                    value={approvalForm.clinicId}
+                    onChange={(e) => setApprovalForm({ ...approvalForm, clinicId: e.target.value })}
+                    className="w-full rounded-xl bg-surfaceContainer text-textPrimary text-sm border border-outline/40 h-11 px-4 outline-none focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/15"
+                  >
+                    {clinics.map((c) => (
+                      <option key={c.clinic_id} value={c.clinic_id}>
+                        {c.name} ({c.city})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-textPrimary">Doctor Bio / Note (Optional)</label>
+                  <textarea
+                    rows={2}
+                    value={approvalForm.bio}
+                    onChange={(e) => setApprovalForm({ ...approvalForm, bio: e.target.value })}
+                    placeholder="Brief background or clinical summary..."
+                    className="w-full rounded-xl bg-surfaceContainer text-textPrimary text-xs border border-outline/40 p-3 outline-none focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/15"
+                  />
+                </div>
+
+                <div className="p-3 bg-secondaryContainer/20 rounded-xl text-[11px] text-secondary border border-secondary/20 flex items-center gap-2">
+                  <span>✉️</span>
+                  <span>An approval confirmation and login link will be emailed to {selectedApp.email} upon verification.</span>
+                </div>
+
+                <div className="pt-3 flex items-center justify-end gap-2.5">
+                  <Button type="button" variant="ghost" onClick={() => setIsApprovalModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" variant="primary">
+                    Confirm & Approve Doctor
                   </Button>
                 </div>
               </form>

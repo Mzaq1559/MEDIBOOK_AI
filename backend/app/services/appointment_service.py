@@ -1,4 +1,4 @@
-import uuid
+﻿import uuid
 from datetime import datetime, timedelta, time
 from typing import Optional, Tuple
 import pytz
@@ -23,7 +23,20 @@ from app.schemas.appointment import (
     AppointmentNoShowResponse,
     AppointmentFeedbackResponse
 )
+import logging
 from app.core.audit import log_audit_event
+from app.services.calendar_service import (
+    sync_appointment,
+    update_calendar_appointment,
+    cancel_calendar_appointment
+)
+from app.services.email_service import (
+    send_appointment_confirmation,
+    send_appointment_rescheduled,
+    send_appointment_cancelled
+)
+
+logger = logging.getLogger(__name__)
 
 KARACHI_TZ = pytz.timezone(settings.TIMEZONE)
 
@@ -39,12 +52,12 @@ DAY_ABBR_MAP = {
 
 
 def parse_and_validate_time(time_str: str) -> datetime:
-    """Parse ISO 8601 string and convert to naive UTC/Karachi-normalized datetime."""
+    """Parse ISO 8601 string and convert to naive UTC datetime."""
     try:
         dt = date_parser.parse(time_str)
         if dt.tzinfo is not None:
-            # Convert to UTC or strip tz while normalizing
-            dt = dt.astimezone(pytz.utc).replace(tzinfo=None)
+            # Convert to UTC and make naive for storage
+            dt = dt.astimezone(pytz.UTC).replace(tzinfo=None)
         return dt
     except Exception:
         raise HTTPException(
@@ -63,15 +76,20 @@ def validate_booking_slot(
     exclude_appointment_id: Optional[uuid.UUID] = None
 ):
     """Validate all clinic, doctor, schedule, overlap, and capacity constraints."""
-    now_utc = datetime.utcnow()
-    if appt_dt <= now_utc:
+    now_clinic = datetime.utcnow()
+    if appt_dt <= now_clinic:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"message": "Appointment time must be in the future", "error_code": "INVALID_TIME"}
         )
 
+    # Convert naive-UTC appt_dt to clinic-local (Karachi) time for all
+    # date/time-of-day checks (working days, holidays, working hours, breaks).
+    # DB overlap queries at the end use appt_dt (naive UTC) directly.
+    appt_karachi = pytz.UTC.localize(appt_dt).astimezone(KARACHI_TZ)
+
     # 1. Clinic working days
-    target_date = appt_dt.date()
+    target_date = appt_karachi.date()
     weekday_idx = target_date.weekday()
     day_abbr = DAY_ABBR_MAP[weekday_idx]
     working_days = [d.strip() for d in clinic.working_days.split(",") if d.strip()]
@@ -119,7 +137,7 @@ def validate_booking_slot(
     break_start_t = schedule.break_start if schedule else None
     break_end_t = schedule.break_end if schedule else None
 
-    slot_time = appt_dt.time()
+    slot_time = appt_karachi.time()
     slot_end_time = (datetime.combine(target_date, slot_time) + timedelta(minutes=duration_mins)).time()
 
     if slot_time < start_t or slot_end_time > end_t:
@@ -137,8 +155,11 @@ def validate_booking_slot(
 
     # 6. Max daily capacity
     daily_limit = (schedule.max_patients if schedule and schedule.max_patients else doctor.max_patients_per_day) or 20
-    start_of_day = datetime.combine(target_date, time.min)
-    end_of_day = datetime.combine(target_date, time.max)
+    # Convert Karachi day boundaries to naive UTC for DB query
+    karachi_day_start = KARACHI_TZ.localize(datetime.combine(target_date, time.min))
+    karachi_day_end = KARACHI_TZ.localize(datetime.combine(target_date, time.max))
+    start_of_day = karachi_day_start.astimezone(pytz.UTC).replace(tzinfo=None)
+    end_of_day = karachi_day_end.astimezone(pytz.UTC).replace(tzinfo=None)
 
     booked_query = db.query(Appointment).filter(
         Appointment.doctor_id == doctor.id,
@@ -261,6 +282,8 @@ def create_appointment(
         appointment_type=payload.appointment_type or "in_person",
         symptoms_reported=payload.symptoms_reported,
         urgency_level=payload.urgency_level.lower(),
+        urgency_reason=getattr(payload, 'urgency_reason', None),
+        patient_history=payload.patient_history,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -290,6 +313,18 @@ def create_appointment(
     db.commit()
     db.refresh(appt)
 
+    # 1. Trigger immediate Google Calendar synchronization (fail-safe)
+    try:
+        sync_appointment(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Immediate Google Calendar sync failed for appointment {appt.id}: {e}")
+
+    # 2. Trigger immediate Email confirmation (fail-safe)
+    try:
+        send_appointment_confirmation(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Immediate confirmation email delivery failed for appointment {appt.id}: {e}")
+
     doc_name = doctor.user.name if doctor.user else "Doctor"
     reminder_1 = (appt_dt - timedelta(hours=24)).isoformat() + "Z"
     reminder_2 = (appt_dt - timedelta(hours=1)).isoformat() + "Z"
@@ -304,6 +339,7 @@ def create_appointment(
         status=appt.status,
         symptoms_reported=appt.symptoms_reported,
         urgency_level=appt.urgency_level,
+        urgency_reason=appt.urgency_reason,
         confirmation_message=f"Your appointment with {doc_name} is confirmed for {appt_dt.strftime('%A, %B %d at %I:%M %p')}",
         reminder_time_1=reminder_1,
         reminder_time_2=reminder_2,
@@ -366,6 +402,18 @@ def reschedule_appointment(
     db.commit()
     db.refresh(appt)
 
+    # 1. Update Google Calendar event (fail-safe)
+    try:
+        update_calendar_appointment(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Google Calendar update failed for appointment {appt.id}: {e}")
+
+    # 2. Send reschedule notification email (fail-safe)
+    try:
+        send_appointment_rescheduled(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Reschedule email delivery failed for appointment {appt.id}: {e}")
+
     reminder_1 = (new_dt - timedelta(hours=24)).isoformat() + "Z"
     reminder_2 = (new_dt - timedelta(hours=1)).isoformat() + "Z"
 
@@ -419,6 +467,18 @@ def cancel_appointment(
 
     db.commit()
     db.refresh(appt)
+
+    # 1. Cancel Google Calendar event (fail-safe)
+    try:
+        cancel_calendar_appointment(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Google Calendar cancellation failed for appointment {appt.id}: {e}")
+
+    # 2. Send cancellation email (fail-safe)
+    try:
+        send_appointment_cancelled(appt.id, db)
+    except Exception as e:
+        logger.warning(f"Cancellation email delivery failed for appointment {appt.id}: {e}")
 
     return AppointmentCancelResponse(
         appointment_id=appt.id,

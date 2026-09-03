@@ -139,8 +139,11 @@ def compute_doctor_availability(
         working_hours_str = f"{start_t.strftime('%H:%M')}-{end_t.strftime('%H:%M')}"
 
         # 5. Fetch existing active appointments for this doctor on target_date
-        start_of_day = datetime.combine(target_date, time.min)
-        end_of_day = datetime.combine(target_date, time.max)
+        # DB stores naive UTC, so convert Karachi day bounds to UTC for query
+        karachi_day_start = KARACHI_TZ.localize(datetime.combine(target_date, time.min))
+        karachi_day_end = KARACHI_TZ.localize(datetime.combine(target_date, time.max))
+        start_of_day = karachi_day_start.astimezone(pytz.UTC).replace(tzinfo=None)
+        end_of_day = karachi_day_end.astimezone(pytz.UTC).replace(tzinfo=None)
 
         existing_appts = db.query(Appointment).filter(
             Appointment.doctor_id == doctor.id,
@@ -154,8 +157,9 @@ def compute_doctor_availability(
 
         # 6. Generate time slots
         slots: List[AvailabilitySlot] = []
-        current_dt = datetime.combine(target_date, start_t)
-        end_dt = datetime.combine(target_date, end_t)
+        # Generate slots in Karachi time, convert each to UTC for DB comparison
+        current_dt = datetime.combine(target_date, start_t)  # naive Karachi
+        end_dt = datetime.combine(target_date, end_t)        # naive Karachi
 
         while current_dt + duration_delta <= end_dt:
             slot_start_time = current_dt.time()
@@ -165,6 +169,9 @@ def compute_doctor_availability(
             slot_localized = KARACHI_TZ.localize(current_dt)
             slot_iso = slot_localized.isoformat()
             time_str = slot_start_time.strftime("%H:%M")
+
+            # Convert slot to naive UTC for DB comparison
+            current_dt_utc = slot_localized.astimezone(pytz.UTC).replace(tzinfo=None)
 
             is_slot_available = True
             slot_status = "free"
@@ -181,15 +188,15 @@ def compute_doctor_availability(
                     is_slot_available = False
                     slot_status = "booked"
 
-            # Check if overlapping any scheduled appointment
+            # Check if overlapping any scheduled appointment (both in UTC now)
             if is_slot_available:
                 for appt in existing_appts:
-                    appt_start = appt.appointment_time
+                    appt_start = appt.appointment_time  # naive UTC
                     appt_duration = timedelta(minutes=appt.duration_minutes or 30)
                     appt_end = appt_start + appt_duration
 
-                    # Overlap check
-                    if current_dt < appt_end and (current_dt + duration_delta) > appt_start:
+                    # Overlap check (both sides naive UTC)
+                    if current_dt_utc < appt_end and (current_dt_utc + duration_delta) > appt_start:
                         is_slot_available = False
                         slot_status = "booked"
                         break

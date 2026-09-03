@@ -6,6 +6,7 @@
 backend/env
 ai-service/env
 
+
 # Python
 __pycache__/
 *.py[cod]

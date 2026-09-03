@@ -66,26 +66,41 @@ def fetch_doctor_slots(doctors: list[dict[str, Any]], next_days: int = 3) -> lis
 
 def doctors_ui_data(enriched: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Serialize enriched doctor list for the frontend ui_data.doctors payload."""
-    return [
-        {
-            "doctor_id": d["doctor_id"],
-            "name": d["name"],
-            "specialization": d["specialization"],
-            "rating": d["rating"],
-            "consultation_fee": d["consultation_fee"],
-            "clinic_name": d["clinic_name"],
-            "clinic_address": d["clinic_address"],
-        }
-        for d in enriched
-    ]
+    result = []
+    for d in enriched:
+        doc_id = d.get("doctor_id")
+        if not doc_id:
+            logger.warning("Skipping malformed doctor entry (missing doctor_id)")
+            continue
+        result.append({
+            "doctor_id": doc_id,
+            "name": d.get("name") or "Doctor",
+            "specialization": d.get("specialization") or "",
+            "rating": d.get("rating") or 0.0,
+            "consultation_fee": d.get("consultation_fee") or 0,
+            "clinic_name": d.get("clinic_name") or "Prime Care Clinic",
+            "clinic_address": d.get("clinic_address") or "",
+        })
+    return result
 
 
 def slots_ui_data(doctor: dict[str, Any]) -> list[dict[str, Any]]:
     """Serialize slot list for the frontend ui_data.slots payload."""
-    return [
-        {"time": s["time"], "date": s["date"], "timestamp": s["timestamp"], "label": s["label"]}
-        for s in doctor.get("slots") or []
-    ]
+    result = []
+    for s in doctor.get("slots") or []:
+        time_val = s.get("time")
+        date_val = s.get("date")
+        ts_val = s.get("timestamp")
+        if not time_val or not ts_val:
+            logger.warning("Skipping malformed slot entry: %s", s)
+            continue
+        result.append({
+            "time": time_val,
+            "date": date_val or "",
+            "timestamp": ts_val,
+            "label": s.get("label") or f"{date_val or ''} at {time_val}",
+        })
+    return result
 
 
 def find_doctor_by_id(doctor_id: str, candidates: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -118,7 +133,7 @@ def format_appointment_for_ui(appt: dict[str, Any]) -> dict[str, Any]:
     return {
         "appointment_id": str(appt.get("appointment_id") or appt.get("id") or ""),
         "doctor_name": appt.get("doctor_name") or "Doctor",
-        "doctor_specialization": appt.get("doctor_specialization") or "",
+        "doctor_specialization": appt.get("doctor_specialization") or appt.get("specialization") or "",
         "appointment_time": appt.get("appointment_time") or "",
         "status": appt.get("status") or "scheduled",
         "clinic_name": appt.get("clinic_name") or "Prime Care Clinic",

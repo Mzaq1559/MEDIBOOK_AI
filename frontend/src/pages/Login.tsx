@@ -103,11 +103,28 @@ export const Login: React.FC = () => {
 
           {errorMessage && (
             <div className="mb-6 animate-fadeIn">
-              <ErrorBanner
-                title="Login Failed"
-                message={errorMessage}
-                onDismiss={() => setErrorMessage(null)}
-              />
+              {errorMessage.toLowerCase().includes('verification') || errorMessage.toLowerCase().includes('pending') ? (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
+                  <span className="text-xl shrink-0">⏳</span>
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                      Application Pending Review
+                    </h4>
+                    <p className="text-xs text-amber-900 leading-relaxed">
+                      {errorMessage}
+                    </p>
+                    <p className="text-[11px] text-amber-700 pt-0.5">
+                      Please wait a few days while clinic administration reviews your credentials. You will receive an email upon approval.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <ErrorBanner
+                  title="Login Failed"
+                  message={errorMessage}
+                  onDismiss={() => setErrorMessage(null)}
+                />
+              )}
             </div>
           )}
 

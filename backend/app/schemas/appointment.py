@@ -10,7 +10,13 @@ class AppointmentCreate(BaseModel):
     appointment_time: str  # ISO 8601 string
     symptoms_reported: str = Field(..., min_length=3, max_length=1000)
     urgency_level: str = Field(..., description="low, normal, high, critical")
+    urgency_reason: Optional[str] = Field(None, max_length=100, description="Machine-readable triage reason code")
     appointment_type: Optional[str] = "in_person"
+    patient_history: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="Structured patient-shared medical history (JSON string). Doctor-only visibility.",
+    )
 
     @field_validator("urgency_level")
     @classmethod
@@ -41,6 +47,7 @@ class AppointmentCreateResponse(BaseModel):
     status: str
     symptoms_reported: str
     urgency_level: str
+    urgency_reason: Optional[str] = None
     confirmation_message: str
     reminder_time_1: str
     reminder_time_2: str
@@ -53,13 +60,20 @@ class AppointmentListItem(BaseModel):
     clinic_name: str
     doctor_id: UUID
     doctor_name: str
+    doctor_specialization: Optional[str] = None
     patient_id: UUID
     patient_name: str
     appointment_time: str
     status: str
     symptoms_reported: str
     urgency_level: str
+    urgency_reason: Optional[str] = None
     appointment_type: str
+    doctor_notes: Optional[str] = None
+    patient_history: Optional[str] = None
+    feedback_score: Optional[int] = None
+    feedback_text: Optional[str] = None
+    feedback_submitted: Optional[bool] = None
     created_at: str
 
 
@@ -85,8 +99,10 @@ class AppointmentDetailResponse(BaseModel):
     status: str
     symptoms_reported: str
     urgency_level: str
+    urgency_reason: Optional[str] = None
     appointment_type: str
     notes: Optional[str] = None
+    patient_history: Optional[str] = None
     feedback_score: Optional[int] = None
     feedback_text: Optional[str] = None
     google_calendar_event_id: Optional[str] = None
