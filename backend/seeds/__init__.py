@@ -1,1 +1,0 @@
-# Runtime demo seeds (appointments only). Users/clinics/doctors stay in Alembic.

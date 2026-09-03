@@ -1,3 +1,9 @@
+# Environment Variables
+.env
+.env.local
+.env.*.local
+*.env
+
 # Python
 __pycache__/
 *.py[cod]
@@ -7,8 +13,6 @@ __pycache__/
 env/
 venv/
 ENV/
-.env
-*.env
 .venv
 
 # Testing & Coverage
@@ -16,11 +20,24 @@ ENV/
 .coverage
 htmlcov/
 
-# Logs
+# Logs and Temp
 *.log
+*.tmp
+*~
+
+# Node
+node_modules/
+build/
+dist/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
 # Google Calendar credentials
 google-calendar-credentials.json
+credentials.json
