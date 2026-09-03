@@ -615,7 +615,6 @@ def handle_new_booking(session: dict[str, Any], text: str, nlu: dict, auth: Opti
             history = extract_medical_history(text)
             session["medical_history"] = history
         return _proceed_to_show_doctors(session)
->>>>>>> baseline
 
     if state == S.SHOWING_DOCTORS:
         if session.pop("awaiting_general_fallback", False):
