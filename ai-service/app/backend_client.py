@@ -3,13 +3,45 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+_status_emitter: Callable[[str], None] | None = None
+
+def set_status_emitter(emitter: Callable[[str], None] | None) -> None:
+    """Set the status emitter for the current request."""
+    global _status_emitter
+    _status_emitter = emitter
+
+def _emit_status(message: str) -> None:
+    """Emit a status message if an emitter is configured."""
+    if _status_emitter:
+        try:
+            _status_emitter(message)
+        except Exception as e:
+            logger.debug("Status emitter raised exception: %s", e)
 
 import httpx
 
 from app.config import settings
 
 logger = logging.getLogger("medibook.ai.backend")
+
+# Global status emitter callable, set per request
+_status_emitter: Callable[[str], None] | None = None
+
+def set_status_emitter(emitter: Callable[[str], None] | None) -> None:
+    """Set the status emitter for the current request.
+    The emitter should accept a single string message describing the current operation.
+    """
+    global _status_emitter
+    _status_emitter = emitter
+
+def _emit_status(message: str) -> None:
+    """Emit a status message if an emitter is configured."""
+    if _status_emitter:
+        try:
+            _status_emitter(message)
+        except Exception as e:
+            logger.debug("Status emitter raised exception: %s", e)
+
 
 TIMEOUT = 8.0
 
@@ -82,7 +114,12 @@ def list_doctors(specialization: Optional[str] = None) -> list[dict[str, Any]]:
     params: dict[str, Any] = {"limit": 50, "is_available": True}
     if specialization:
         params["specialization"] = specialization
+def list_doctors(specialization: Optional[str] = None) -> list[dict[str, Any]]:
+    params: dict[str, Any] = {"limit": 50, "is_available": True}
+    if specialization:
+        params["specialization"] = specialization
     try:
+        _emit_status("Fetching list of doctors…")
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.get(
                 f"{settings.backend_base}/doctors",
@@ -101,12 +138,17 @@ def list_doctors(specialization: Optional[str] = None) -> list[dict[str, Any]]:
 
 def get_availability(doctor_id: str, date: str, next_days: int = 3) -> Optional[dict[str, Any]]:
     try:
+    _emit_status(f"Checking availability for doctor {doctor_id} on {date}…")
+    try:
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.get(
                 f"{settings.backend_base}/doctors/{doctor_id}/availability",
                 params={"date": date, "next_days": next_days},
                 headers=_headers(),
             )
+    except httpx.HTTPError:
+        logger.warning("Availability request could not reach backend")
+        return None
         if res.status_code >= 400:
             logger.warning("Availability request failed with HTTP %s", res.status_code)
             return None
@@ -118,12 +160,16 @@ def get_availability(doctor_id: str, date: str, next_days: int = 3) -> Optional[
 
 def create_appointment(payload: dict[str, Any], authorization: str) -> dict[str, Any]:
     try:
+    _emit_status("Creating new appointment…")
+    try:
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.post(
                 f"{settings.backend_base}/appointments",
                 json=payload,
                 headers=_headers(authorization),
             )
+    except httpx.HTTPError:
+        raise BackendError(503, "INTERNAL_ERROR", "Could not reach the booking service. Please try again.")
     except httpx.HTTPError:
         raise BackendError(503, "INTERNAL_ERROR", "Could not reach the booking service. Please try again.")
     if res.status_code >= 400:
@@ -133,12 +179,16 @@ def create_appointment(payload: dict[str, Any], authorization: str) -> dict[str,
 
 def reschedule_appointment(appointment_id: str, appointment_time: str, authorization: str) -> dict[str, Any]:
     try:
+    _emit_status("Rescheduling appointment…")
+    try:
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.put(
                 f"{settings.backend_base}/appointments/{appointment_id}",
                 json={"appointment_time": appointment_time},
                 headers=_headers(authorization),
             )
+    except httpx.HTTPError:
+        raise BackendError(503, "INTERNAL_ERROR", "Could not reach the booking service. Please try again.")
     except httpx.HTTPError:
         raise BackendError(503, "INTERNAL_ERROR", "Could not reach the booking service. Please try again.")
     if res.status_code >= 400:
@@ -156,12 +206,17 @@ def fetch_patient_appointments(
     if status_filter:
         params["status"] = status_filter
     try:
+    _emit_status("Fetching patient appointments…")
+    try:
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.get(
                 f"{settings.backend_base}/appointments",
                 params=params,
                 headers=_headers(authorization),
             )
+    except httpx.HTTPError:
+        logger.warning("Fetch patient appointments could not reach backend")
+        return []
         if res.status_code >= 400:
             logger.warning("Fetch patient appointments failed with HTTP %s", res.status_code)
             return []
@@ -185,12 +240,17 @@ def fetch_doctor_appointments(
     if date:
         params["date"] = date
     try:
+    _emit_status("Fetching doctor appointments…")
+    try:
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.get(
                 f"{settings.backend_base}/appointments",
                 params=params,
                 headers=_headers(authorization),
             )
+    except httpx.HTTPError:
+        logger.warning("Fetch doctor appointments could not reach backend")
+        return []
         if res.status_code >= 400:
             logger.warning("Fetch doctor appointments failed with HTTP %s", res.status_code)
             return []
@@ -204,11 +264,16 @@ def fetch_doctor_appointments(
 def get_appointment_details(appointment_id: str, authorization: str) -> Optional[dict[str, Any]]:
     """Fetch a single appointment's full details."""
     try:
+    _emit_status(f"Getting details for appointment {appointment_id}…")
+    try:
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.get(
                 f"{settings.backend_base}/appointments/{appointment_id}",
                 headers=_headers(authorization),
             )
+    except httpx.HTTPError:
+        logger.warning("Get appointment details could not reach backend")
+        return None
         if res.status_code >= 400:
             logger.warning("Get appointment details failed with HTTP %s", res.status_code)
             return None
@@ -221,11 +286,15 @@ def get_appointment_details(appointment_id: str, authorization: str) -> Optional
 def cancel_appointment(appointment_id: str, authorization: str) -> dict[str, Any]:
     """Cancel an appointment via DELETE /api/appointments/{id}."""
     try:
+    _emit_status(f"Cancelling appointment {appointment_id}…")
+    try:
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.delete(
                 f"{settings.backend_base}/appointments/{appointment_id}",
                 headers=_headers(authorization),
             )
+    except httpx.HTTPError:
+        raise BackendError(503, "INTERNAL_ERROR", "Could not reach the booking service. Please try again.")
     except httpx.HTTPError:
         raise BackendError(503, "INTERNAL_ERROR", "Could not reach the booking service. Please try again.")
     if res.status_code >= 400:

@@ -147,6 +147,10 @@ def rag_health_check():
     }
 
 
+import json, asyncio
+from fastapi.responses import StreamingResponse
+from app.backend_client import set_status_emitter
+
 @app.post(
     "/api/chat/message",
     response_model=ChatMessageResponse,
@@ -154,11 +158,16 @@ def rag_health_check():
     tags=["Chat"],
 )
 @limiter.limit("60/minute")
-def send_chat_message(
+async def send_chat_message(
     request: Request,
     payload: ChatMessageRequest,
     authorization: Optional[str] = Header(default=None),
-):
+) -> StreamingResponse:
+    """Handle chat message with streaming status updates.
+
+    Emits intermediate status strings (e.g., "Fetching list of doctors…") as
+    Server‑Sent Events, then yields the final ChatMessageResponse JSON.
+    """
     if not payload.message or not payload.message.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -167,10 +176,19 @@ def send_chat_message(
                 "error_code": "INVALID_INPUT",
             },
         )
-    
+
     conversation_id = payload.conversation_id or str(uuid4())
 
+    # Queue for interim status strings
+    q: asyncio.Queue = asyncio.Queue()
+
+    def status_emitter(msg: str) -> None:
+        q.put_nowait(msg)
+
+    # Register emitter for the duration of this request
+    set_status_emitter(status_emitter)
     try:
+        # Synchronous call – FastAPI will run it in a thread pool if needed
         result = handle_message(
             conversation_id=conversation_id,
             patient_id=str(payload.patient_id) if payload.patient_id else None,
@@ -195,24 +213,38 @@ def send_chat_message(
                 "error_code": "INTERNAL_ERROR",
             },
         )
+    finally:
+        # Ensure no further emitters are called for this request
+        set_status_emitter(None)
 
-    patient_uuid = None
-    if result.get("patient_id"):
-        try:
-            patient_uuid = UUID(str(result["patient_id"]))
-        except (ValueError, TypeError):
-            patient_uuid = payload.patient_id
+    async def event_stream() -> AsyncGenerator[str, None]:
+        # Emit any status messages that were queued during handling
+        while not q.empty():
+            msg = await q.get()
+            yield f"data: {msg}\n\n"
+        # Build final response object
+        patient_uuid = None
+        if result.get("patient_id"):
+            try:
+                patient_uuid = UUID(str(result["patient_id"]))
+            except (ValueError, TypeError):
+                patient_uuid = payload.patient_id
+        response_obj = ChatMessageResponse(
+            conversation_id=result["conversation_id"],
+            patient_id=patient_uuid,
+            timestamp=result["timestamp"],
+            bot_message=result["bot_message"],
+            next_action=result["next_action"],
+            options=result["options"],
+            ui_data=result.get("ui_data"),
+            conversation_history=result["conversation_history"],
+        )
+        # Emit final JSON payload
+        yield f"data: {json.dumps(response_obj.dict())}\n\n"
+        # End of stream marker
+        yield "event: end\n\n"
 
-    return ChatMessageResponse(
-        conversation_id=result["conversation_id"],
-        patient_id=patient_uuid,
-        timestamp=result["timestamp"],
-        bot_message=result["bot_message"],
-        next_action=result["next_action"],
-        options=result["options"],
-        ui_data=result.get("ui_data"),
-        conversation_history=result["conversation_history"],
-    )
+# Legacy duplicated streaming code removed
 
 
 @app.get(
