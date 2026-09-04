@@ -304,6 +304,7 @@ REQUIRED_PARAMS: dict[str, list[str]] = {
     "propose_book_appointment": ["patient_id", "doctor_id", "datetime", "symptoms"],
     "get_doctors_by_specialty": ["specialty"],
     "get_availability": ["doctor_id", "date"],
+    "get_doctor_availability": ["doctor_id", "date"],
     "get_patient_info": ["patient_id"],
     "retrieve_medical_knowledge": ["symptoms"],
 }
@@ -587,6 +588,8 @@ def tool_get_availability(
                     }
                 )
     doc = _load_doctor(session, doctor_id)
+    if isinstance(session.get("last_ui_data"), dict):
+        session["last_ui_data"].pop("doctors", None)
     if not labels and doc:
         for s in doc.get("availability_slots") or doc.get("slots") or []:
             labels.append(s.get("label") or s.get("timestamp") or "")
@@ -902,10 +905,62 @@ def tool_retrieve_medical_knowledge(
         history.append(f"{role}: {message}")
     context = "\n".join(history)
     
-    result = pipeline.triage_symptoms(
-        message=symptoms,
-        conversation_context=context,
-        request_id=session.get("conversation_id"),
+    embed_ms = 0.0
+    vector_db_ms = 0.0
+    gen_ms = 0.0
+    rag_start = time.perf_counter()
+
+    try:
+        from app.rag import retriever as rag_retriever_mod
+        from app.rag import embeddings as rag_embeddings_mod
+        from app.rag import vector_db as rag_vectordb_mod
+
+        real_embed = rag_embeddings_mod.embed_query
+        real_query = rag_vectordb_mod.query_vectors
+        real_generate = pipeline.generator.generate
+
+        def timed_embed(q):
+            nonlocal embed_ms
+            t0 = time.perf_counter()
+            res = real_embed(q)
+            embed_ms = (time.perf_counter() - t0) * 1000
+            return res
+
+        def timed_query(*args, **kwargs):
+            nonlocal vector_db_ms
+            t0 = time.perf_counter()
+            res = real_query(*args, **kwargs)
+            vector_db_ms = (time.perf_counter() - t0) * 1000
+            return res
+
+        def timed_generate(*args, **kwargs):
+            nonlocal gen_ms
+            t0 = time.perf_counter()
+            res = real_generate(*args, **kwargs)
+            gen_ms = (time.perf_counter() - t0) * 1000
+            return res
+
+        rag_retriever_mod.embed_query = timed_embed
+        rag_retriever_mod.query_vectors = timed_query
+        pipeline.generator.generate = timed_generate
+
+        result = pipeline.triage_symptoms(
+            message=symptoms,
+            conversation_context=context,
+            request_id=session.get("conversation_id"),
+        )
+    finally:
+        try:
+            rag_retriever_mod.embed_query = real_embed
+            rag_retriever_mod.query_vectors = real_query
+            pipeline.generator.generate = real_generate
+        except Exception:
+            pass
+
+    rag_total_ms = (time.perf_counter() - rag_start) * 1000
+    logger.info(
+        "[PERF RAG BREAKDOWN] retrieve_medical_knowledge total=%.2f ms (embed=%.2f ms, vector_db=%.2f ms, groq_gen=%.2f ms)",
+        rag_total_ms, embed_ms, vector_db_ms, gen_ms
     )
     
     return {
@@ -927,6 +982,7 @@ HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "execute_confirmed_action": tool_execute_confirmed_action,
     "get_doctors_by_specialty": tool_get_doctors_by_specialty,
     "get_availability": tool_get_availability,
+    "get_doctor_availability": tool_get_availability,
     "get_patient_info": tool_get_patient_info,
     "retrieve_medical_knowledge": tool_retrieve_medical_knowledge,
 }
@@ -959,14 +1015,23 @@ def execute_tool(
     if name in ("get_patient_appointments", "propose_book_appointment", "get_patient_info"):
         if not args.get("patient_id") and session.get("patient_id"):
             args["patient_id"] = str(session["patient_id"])
-    if name == "get_availability" and not args.get("date"):
+    if name in ("get_availability", "get_doctor_availability") and not args.get("date"):
         args["date"] = today_karachi()
     missing = [p for p in required if args.get(p) in (None, "")]
     if missing:
         return {"ok": False, "error": f"Missing required parameters: {', '.join(missing)}"}
     logger.info("Executing tool=%s", name)
     try:
+        t_tool_start = time.perf_counter()
+        backend_client.reset_turn_http_metrics()
         result = handler(session, args, authorization)
+        dur_ms = (time.perf_counter() - t_tool_start) * 1000
+        http_ms = backend_client.last_http_calls_total_ms
+        local_ms = max(0.0, dur_ms - http_ms)
+        logger.info(
+            "[PERF TOOL] tool=%s total=%.2f ms (backend_http=%.2f ms [%d calls], local_proc=%.2f ms)",
+            name, dur_ms, http_ms, backend_client.last_http_call_count, local_ms
+        )
     except Exception as exc:
         logger.exception("Tool %s failed: %s", name, exc)
         return {"ok": False, "error": "Tool execution failed. Please try again."}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, Optional
 
 from groq import Groq
@@ -47,8 +48,11 @@ def complete(
 
     for attempt in range(1, retries + 1):
         try:
+            t0 = time.perf_counter()
             client = _client()
             response = client.chat.completions.create(**create_kwargs)
+            dur_ms = (time.perf_counter() - t0) * 1000
+            logger.info("[PERF GROQ API] complete model=%s took %.2f ms", settings.GROQ_MODEL, dur_ms)
             choice = response.choices[0].message
             content = (choice.content or "").strip()
             if not content:
@@ -73,11 +77,7 @@ def complete_with_tools(
     max_tokens: int = 800,
     retries: int = 3,
 ) -> Any:
-    """Call Groq chat completions with tool definitions. Returns choice message object.
-
-    Do not set response_format json_object here: Groq function calling is incompatible
-    with JSON-object mode. The model returns either assistant text or tool_calls.
-    """
+    """Call Groq chat completions with tool definitions. Returns choice message object."""
     last_error: Optional[Exception] = None
     create_kwargs: dict[str, Any] = {
         "model": settings.GROQ_MODEL,
@@ -90,8 +90,11 @@ def complete_with_tools(
 
     for attempt in range(1, retries + 1):
         try:
+            t0 = time.perf_counter()
             client = _client()
             response = client.chat.completions.create(**create_kwargs)
+            dur_ms = (time.perf_counter() - t0) * 1000
+            logger.info("[PERF GROQ API] complete_with_tools model=%s took %.2f ms", settings.GROQ_MODEL, dur_ms)
             return response.choices[0].message
         except LLMError as exc:
             last_error = exc

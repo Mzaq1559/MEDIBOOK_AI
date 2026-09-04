@@ -126,14 +126,14 @@ def _default_greeting(session: dict[str, Any]) -> str:
 def _next_action_from_ui(session: dict[str, Any], ui_data: dict[str, Any], bot: str) -> str:
     if session.get("appointment_booked") and "confirmed" in (bot or "").lower():
         return "appointment_booked"
-    if ui_data.get("doctors"):
-        return "waiting_for_doctor_selection"
-    if ui_data.get("slots"):
-        return "waiting_for_slot_selection"
-    if ui_data.get("appointments"):
-        return "show_appointments"
     if ui_data.get("booking") and not (ui_data.get("booking") or {}).get("isConfirmed"):
         return "waiting_for_confirmation"
+    if ui_data.get("slots"):
+        return "waiting_for_slot_selection"
+    if ui_data.get("doctors"):
+        return "waiting_for_doctor_selection"
+    if ui_data.get("appointments"):
+        return "show_appointments"
     return "waiting_for_input"
 
 
@@ -187,17 +187,26 @@ def run_agent_loop_stream(
     for m in session["messages"]:
         messages.append({"role": m.role, "content": m.message})
 
-    ui_data: dict[str, Any] = dict(session.get("last_ui_data") or {})
+    ui_data: dict[str, Any] = {}
     this_turn_ui_keys: set[str] = set()
     bot = ""
 
+    turn_groq_calls = 0
+    turn_groq_total_ms = 0.0
+
     for _round in range(MAX_TOOL_ROUNDS):
+        t_groq_start = time.perf_counter()
         response_message = groq_client.complete_with_tools(
             messages=messages,
             tools=TOOL_DEFINITIONS,
             tool_choice="auto",
             temperature=0.4,
         )
+        groq_round_ms = (time.perf_counter() - t_groq_start) * 1000
+        turn_groq_calls += 1
+        turn_groq_total_ms += groq_round_ms
+        logger.info("[PERF TURN ROUND] round=%d Groq API call took %.2f ms", turn_groq_calls, groq_round_ms)
+
         tool_calls = getattr(response_message, "tool_calls", None) or []
         content = (getattr(response_message, "content", None) or "").strip()
 
@@ -231,6 +240,14 @@ def run_agent_loop_stream(
             continue
     else:
         bot = strip_markdown(content or "I've got what I need — what would you like to do next?")
+
+    # Ensure slot selection clears stale doctor list cards from earlier turns
+    if "slots" in this_turn_ui_keys:
+        if "doctors" not in this_turn_ui_keys:
+            ui_data.pop("doctors", None)
+            last = session.get("last_ui_data")
+            if isinstance(last, dict):
+                last.pop("doctors", None)
 
     # Listing appointments should not keep leftover doctor/slot cards from an earlier turn.
     if "appointments" in this_turn_ui_keys:
@@ -273,6 +290,7 @@ def handle_message(
     language: str,
     authorization: Optional[str],
 ) -> dict[str, Any]:
+    t_req_start = time.perf_counter()
     conv_id = conversation_id or str(uuid4())
     session = get_session(conv_id)
     if not session:
@@ -282,11 +300,18 @@ def handle_message(
 
     append_msg(session, "user", message, _utc_now())
 
-    if is_emergency(message):
+    t_em_start = time.perf_counter()
+    em_check = is_emergency(message)
+    em_ms = (time.perf_counter() - t_em_start) * 1000
+    logger.info("[PERF EMERGENCY GUARD] check took %.2f ms (is_emergency=%s)", em_ms, em_check)
+
+    if em_check:
         bot = EMERGENCY_ALERT
         action = "emergency_redirect"
         ui_data: dict[str, Any] = {}
         append_msg(session, "assistant", bot, _utc_now())
+        total_turn_ms = (time.perf_counter() - t_req_start) * 1000
+        logger.info("[PERF TURN SUMMARY] emergency turn completed in %.2f ms", total_turn_ms)
         return {
             "conversation_id": conv_id,
             "patient_id": session.get("patient_id"),
@@ -316,6 +341,9 @@ def handle_message(
     ui_data = _strip_listed_appointment_cards(bot, ui_data, session)
     action = _next_action_from_ui(session, ui_data, bot)
     append_msg(session, "assistant", bot, _utc_now())
+
+    total_turn_ms = (time.perf_counter() - t_req_start) * 1000
+    logger.info("[PERF TURN SUMMARY] message='%s' total_turn_ms=%.2f ms", message[:40], total_turn_ms)
 
     return {
         "conversation_id": conv_id,

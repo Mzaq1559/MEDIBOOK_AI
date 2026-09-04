@@ -64,8 +64,9 @@ function mapApiResponseToBotMessage(
     'waiting_for_cancel_confirm'
   ].includes(response.next_action || '');
 
-  const listReply =
-    listsAppointmentDetails(text) && response.next_action !== 'show_appointments';
+  if (response.next_action === 'waiting_for_slot_selection' && uiData) {
+    delete uiData.doctors;
+  }
 
   if (listReply && uiData && !isBookingAction) {
     delete uiData.appointments;

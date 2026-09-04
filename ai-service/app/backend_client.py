@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Optional
 
 import httpx
@@ -12,6 +13,22 @@ from app.config import settings
 logger = logging.getLogger("medibook.ai.backend")
 
 TIMEOUT = 8.0
+last_http_call_ms = 0.0
+last_http_calls_total_ms = 0.0
+last_http_call_count = 0
+
+def reset_turn_http_metrics() -> None:
+    global last_http_calls_total_ms, last_http_call_count
+    last_http_calls_total_ms = 0.0
+    last_http_call_count = 0
+
+def _record_http(duration_ms: float, label: str) -> None:
+    global last_http_call_ms, last_http_calls_total_ms, last_http_call_count
+    last_http_call_ms = duration_ms
+    last_http_calls_total_ms += duration_ms
+    last_http_call_count += 1
+    logger.info("[PERF BACKEND HTTP] %s took %.2f ms", label, duration_ms)
+
 
 
 class BackendError(Exception):
@@ -51,12 +68,14 @@ def list_doctors(specialization: Optional[str] = None) -> list[dict[str, Any]]:
     if specialization:
         params["specialization"] = specialization
     try:
+        t0 = time.perf_counter()
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.get(
                 f"{settings.backend_base}/doctors",
                 params=params,
                 headers=_headers(),
             )
+        _record_http((time.perf_counter() - t0) * 1000, "GET /doctors")
         if res.status_code >= 400:
             logger.warning("Doctor list request failed with HTTP %s", res.status_code)
             return []
@@ -69,12 +88,14 @@ def list_doctors(specialization: Optional[str] = None) -> list[dict[str, Any]]:
 
 def get_availability(doctor_id: str, date: str, next_days: int = 3) -> Optional[dict[str, Any]]:
     try:
+        t0 = time.perf_counter()
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.get(
                 f"{settings.backend_base}/doctors/{doctor_id}/availability",
                 params={"date": date, "next_days": next_days},
                 headers=_headers(),
             )
+        _record_http((time.perf_counter() - t0) * 1000, f"GET /doctors/{doctor_id}/availability")
         if res.status_code >= 400:
             logger.warning("Availability request failed with HTTP %s", res.status_code)
             return None
@@ -124,12 +145,14 @@ def fetch_patient_appointments(
     if status_filter:
         params["status"] = status_filter
     try:
+        t0 = time.perf_counter()
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.get(
                 f"{settings.backend_base}/appointments",
                 params=params,
                 headers=_headers(authorization),
             )
+        _record_http((time.perf_counter() - t0) * 1000, "GET /appointments")
         if res.status_code >= 400:
             logger.warning("Fetch patient appointments failed with HTTP %s", res.status_code)
             return []
@@ -162,12 +185,14 @@ def search_patient_appointments(
     if date_to:
         params["date_to"] = date_to
     try:
+        t0 = time.perf_counter()
         with httpx.Client(timeout=TIMEOUT) as client:
             res = client.get(
                 f"{settings.backend_base}/appointments/search",
                 params=params,
                 headers=_headers(authorization),
             )
+        _record_http((time.perf_counter() - t0) * 1000, "GET /appointments/search")
         if res.status_code >= 400:
             logger.warning("Search patient appointments failed with HTTP %s", res.status_code)
             return []
