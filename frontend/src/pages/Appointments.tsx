@@ -86,14 +86,14 @@ export const Appointments: React.FC = () => {
       // Doctors: filtered server-side to their own appointments automatically.
       // Patients: filtered by patient_id (resolves user_id → patient.id in backend).
       // Admin/Receptionist: system-wide, no filter.
-      if (currentUser.userType === 'doctor') {
+      if (currentUser.userType === "patient") {
+        const data = await getPatientAppointments(currentUser.id);
+        setAppointments(Array.isArray(data) ? data : data.appointments || []);
+      } else if (currentUser.userType === "doctor") {
         const data = await listAppointments();
         setAppointments(Array.isArray(data) ? data : data.appointments || []);
-      } else if (currentUser.userType === 'admin' || currentUser.userType === 'receptionist') {
-        const data = await listAppointments({ limit: 200 });
-        setAppointments(Array.isArray(data) ? data : data.appointments || []);
       } else {
-        const data = await listAppointments({ patient_id: currentUser.id });
+        const data = await listAppointments({ limit: 200 });
         setAppointments(Array.isArray(data) ? data : data.appointments || []);
       }
     } catch (err: any) {
