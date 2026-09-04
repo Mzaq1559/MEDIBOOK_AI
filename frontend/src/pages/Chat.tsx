@@ -4,6 +4,7 @@ import { Card, Button, Badge, LoadingSpinner } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import {
   sendChatMessage,
+  sendChatMessageStream,
   formatChatTimestamp,
   getChatErrorMessage,
   isValidUuid,
@@ -103,6 +104,7 @@ export const Chat: React.FC = () => {
 
   const [inputVal, setInputVal] = useState('');
   const [isBotTyping, setIsBotTyping] = useState(false);
+  const [currentStatusLabel, setCurrentStatusLabel] = useState<string | null>(null);
   const [isBookingInProgress, setIsBookingInProgress] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
 
@@ -139,16 +141,20 @@ export const Chat: React.FC = () => {
       const isConfirmMessage = /^(yes|confirm|yes,\s*confirm)/i.test(text.trim());
 
       setIsBotTyping(true);
+      setCurrentStatusLabel(null);
       if (isConfirmMessage) {
         setIsBookingInProgress(true);
       }
 
       try {
         const messagePayload = optionId ? `${text} ${optionId}` : text;
-        const response = await sendChatMessage({
+        const response = await sendChatMessageStream({
           message: messagePayload,
           conversation_id: conversationId,
           patient_id: patientId,
+          onStatus: (label) => {
+            setCurrentStatusLabel(label);
+          },
         });
 
         setConversationId(response.conversation_id);
@@ -160,18 +166,19 @@ export const Chat: React.FC = () => {
         };
 
         setMessages((prev) => [...prev, botMessage]);
-      } catch (error) {
+      } catch (error: any) {
         setMessages((prev) => [
           ...prev,
           {
             id: `bot-error-${Date.now()}`,
             sender: 'bot',
-            text: getChatErrorMessage(error),
+            text: error?.message || getChatErrorMessage(error),
             timestamp: formatChatTimestamp(),
           },
         ]);
       } finally {
         setIsBotTyping(false);
+        setCurrentStatusLabel(null);
         setIsBookingInProgress(false);
       }
     },
@@ -415,7 +422,9 @@ export const Chat: React.FC = () => {
           {isBotTyping && (
             <div className="flex items-center gap-2.5 text-xs text-textSecondary animate-fadeIn pl-2">
               <LoadingSpinner size="sm" color="primary" />
-              <span>AI is thinking...</span>
+              <span className="transition-all duration-200 font-medium text-textPrimary">
+                {currentStatusLabel || 'AI is thinking...'}
+              </span>
             </div>
           )}
 

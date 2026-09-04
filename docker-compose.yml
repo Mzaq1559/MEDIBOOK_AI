@@ -67,7 +67,7 @@ services:
       - DATABASE_URL=postgresql://medibook:password123@db:5432/medibook_db
       - BACKEND_API_URL=http://backend:8000/api
       - GROQ_API_KEY=${GROQ_API_KEY}
-      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-20b}
       - AI_SERVICE_PORT=8001
       - AI_SERVICE_HOST=0.0.0.0
       - N8N_URL=http://n8n:5678

@@ -21,6 +21,7 @@ class ChatMessageRequest(BaseModel):
     conversation_id: Optional[str] = None
     message: str
     language: Optional[str] = "english"
+    stream: Optional[bool] = False
 
     @field_validator("message")
     @classmethod

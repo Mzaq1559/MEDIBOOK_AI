@@ -6,12 +6,12 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.chatbot import get_session, handle_message
+from app.chatbot import get_session, handle_message, handle_message_stream
 from app.config import settings
 from app.groq_client import LLMError, LLM_FALLBACK
 from app.response_format import lists_appointment_details, strip_markdown
@@ -166,6 +166,24 @@ def send_chat_message(
         )
     
     conversation_id = payload.conversation_id or str(uuid4())
+
+    is_stream = bool(payload.stream or request.headers.get("accept") == "text/event-stream")
+    if is_stream:
+        return StreamingResponse(
+            handle_message_stream(
+                conversation_id=conversation_id,
+                patient_id=str(payload.patient_id) if payload.patient_id else None,
+                message=payload.message,
+                language=payload.language or "english",
+                authorization=authorization,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     try:
         result = handle_message(

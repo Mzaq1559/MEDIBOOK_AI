@@ -1,5 +1,6 @@
 import axios from 'axios'
-import { chatApiClient } from './api'
+import { chatApiClient, CHAT_API_BASE_URL } from './api'
+import { getAccessToken } from './tokenStorage'
 
 export interface ChatOptionItem {
   option_id: string
@@ -154,3 +155,138 @@ export async function sendChatMessage(payload: {
   const { data } = await chatApiClient.post<ChatMessageResponse>('/message', body)
   return data
 }
+
+export interface SendChatMessageStreamOptions {
+  message: string
+  conversation_id?: string | null
+  patient_id?: string | null
+  onStatus?: (label: string) => void
+}
+
+export async function sendChatMessageStream(
+  options: SendChatMessageStreamOptions
+): Promise<ChatMessageResponse> {
+  const body: Record<string, any> = {
+    message: options.message,
+    stream: true,
+  }
+
+  if (options.conversation_id) {
+    body.conversation_id = options.conversation_id
+  }
+  if (options.patient_id) {
+    body.patient_id = options.patient_id
+  }
+
+  const token = getAccessToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'text/event-stream',
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  const response = await fetch(`${CHAT_API_BASE_URL}/message`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    let errorMsg = 'Something went wrong while contacting the AI assistant.'
+    try {
+      const errorJson = await response.json()
+      if (errorJson.detail?.message) errorMsg = errorJson.detail.message
+      else if (typeof errorJson.detail === 'string') errorMsg = errorJson.detail
+    } catch {
+      // ignore json parse error
+    }
+    throw new Error(errorMsg)
+  }
+
+  if (!response.body) {
+    throw new Error('No response body received from chat service.')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  let finalResponse: ChatMessageResponse | null = null
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() || ''
+
+    for (const block of blocks) {
+      if (!block.trim()) continue
+      const lines = block.split('\n')
+      let eventType = ''
+      let dataStr = ''
+
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventType = line.replace(/^event:\s*/, '').trim()
+        } else if (line.startsWith('data:')) {
+          dataStr = line.replace(/^data:\s*/, '').trim()
+        }
+      }
+
+      if (!dataStr) continue
+
+      try {
+        const parsed = JSON.parse(dataStr)
+        if (eventType === 'status') {
+          if (parsed.label && options.onStatus) {
+            options.onStatus(parsed.label)
+          }
+        } else if (eventType === 'final') {
+          finalResponse = parsed as ChatMessageResponse
+        } else if (eventType === 'error') {
+          throw new Error(parsed.message || 'Error from AI assistant.')
+        }
+      } catch (err: any) {
+        if (eventType === 'error' || (err.message && err.message.includes('Error from AI assistant'))) {
+          throw err
+        }
+        console.warn('Failed to parse SSE event chunk:', block, err)
+      }
+    }
+  }
+
+  if (buffer.trim()) {
+    const lines = buffer.split('\n')
+    let eventType = ''
+    let dataStr = ''
+    for (const line of lines) {
+      if (line.startsWith('event:')) {
+        eventType = line.replace(/^event:\s*/, '').trim()
+      } else if (line.startsWith('data:')) {
+        dataStr = line.replace(/^data:\s*/, '').trim()
+      }
+    }
+    if (dataStr) {
+      try {
+        const parsed = JSON.parse(dataStr)
+        if (eventType === 'final') {
+          finalResponse = parsed as ChatMessageResponse
+        } else if (eventType === 'error') {
+          throw new Error(parsed.message || 'Error from AI assistant.')
+        }
+      } catch (err: any) {
+        if (eventType === 'error') throw err
+      }
+    }
+  }
+
+  if (!finalResponse) {
+    throw new Error('Failed to receive completed message from AI assistant.')
+  }
+
+  return finalResponse
+}
+

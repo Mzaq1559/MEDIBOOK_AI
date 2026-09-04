@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 from uuid import uuid4
 
 from app import groq_client
@@ -21,6 +21,22 @@ logger = logging.getLogger("medibook.ai.agent")
 SESSION_TTL = 2 * 60 * 60
 MAX_HISTORY = 20
 MAX_TOOL_ROUNDS = 8
+
+TOOL_FRIENDLY_LABELS: dict[str, str] = {
+    "list_doctors": "Looking up available doctors...",
+    "get_doctors_by_specialty": "Looking up available doctors...",
+    "get_doctor_availability": "Checking availability...",
+    "get_availability": "Checking availability...",
+    "get_patient_appointments": "Checking your appointments...",
+    "search_patient_appointments": "Checking your appointments...",
+    "get_clinic_info": "Getting clinic information...",
+    "get_patient_info": "Getting clinic information...",
+    "retrieve_medical_knowledge": "Looking into that for you...",
+    "propose_book_appointment": "Preparing your booking...",
+    "propose_reschedule_appointment": "Preparing your reschedule...",
+    "propose_cancel_appointment": "Preparing your cancellation...",
+    "execute_confirmed_action": "Confirming your appointment...",
+}
 
 _sessions: dict[str, dict[str, Any]] = {}
 
@@ -137,12 +153,12 @@ def _strip_listed_appointment_cards(
     return ui_data
 
 
-def run_agent_loop(
+def run_agent_loop_stream(
     session: dict[str, Any],
     authorization: Optional[str],
     language: str = "english",
-) -> tuple[str, dict[str, Any]]:
-    """Send history + tools to Groq, execute tool calls, repeat until a final reply."""
+) -> Iterator[dict[str, Any]]:
+    """Send history + tools to Groq, execute tool calls, and yield status events as each tool starts."""
     messages: list[dict[str, Any]] = [{"role": "system", "content": build_system_prompt()}]
     patient_context = load_patient_context(session, authorization, language)
     if patient_context:
@@ -194,6 +210,11 @@ def run_agent_loop(
             fn = getattr(tool_call, "function", None)
             fn_name = getattr(fn, "name", "") if fn is not None else ""
             fn_args = getattr(fn, "arguments", "{}") if fn is not None else "{}"
+
+            # Emit intermediate status event before tool execution resolves
+            label = TOOL_FRIENDLY_LABELS.get(fn_name, "Looking into that for you...")
+            yield {"event": "status", "data": {"label": label}}
+
             result = execute_tool(fn_name, fn_args, session, authorization)
             if isinstance(result, dict) and result.get("ui_data"):
                 fresh = result["ui_data"]
@@ -226,6 +247,21 @@ def run_agent_loop(
 
     ui_data = _strip_listed_appointment_cards(bot, ui_data, session)
 
+    yield {"event": "result", "bot": bot, "ui_data": ui_data}
+
+
+def run_agent_loop(
+    session: dict[str, Any],
+    authorization: Optional[str],
+    language: str = "english",
+) -> tuple[str, dict[str, Any]]:
+    """Send history + tools to Groq, execute tool calls, repeat until a final reply."""
+    bot = ""
+    ui_data = {}
+    for ev in run_agent_loop_stream(session, authorization, language=language):
+        if ev.get("event") == "result":
+            bot = ev.get("bot", "")
+            ui_data = ev.get("ui_data", {})
     return bot, ui_data
 
 
@@ -295,3 +331,83 @@ def handle_message(
         "created_at": session.get("created_at") or _utc_now(),
         "updated_at": session.get("updated_at") or _utc_now(),
     }
+
+
+def handle_message_stream(
+    *,
+    conversation_id: Optional[str],
+    patient_id: Optional[str],
+    message: str,
+    language: str,
+    authorization: Optional[str],
+) -> Iterator[str]:
+    """Execute agent loop with streaming status updates via SSE."""
+    conv_id = conversation_id or str(uuid4())
+    session = get_session(conv_id)
+    if not session:
+        session = new_session(conv_id, patient_id)
+    if patient_id:
+        session["patient_id"] = patient_id
+
+    append_msg(session, "user", message, _utc_now())
+
+    if is_emergency(message):
+        bot = EMERGENCY_ALERT
+        action = "emergency_redirect"
+        ui_data: dict[str, Any] = {}
+        append_msg(session, "assistant", bot, _utc_now())
+        final_payload = {
+            "conversation_id": conv_id,
+            "patient_id": session.get("patient_id"),
+            "timestamp": _utc_now(),
+            "bot_message": bot,
+            "next_action": action,
+            "options": [],
+            "ui_data": ui_data,
+            "conversation_history": session["messages"],
+            "status": session.get("status", "ongoing"),
+            "appointment_booked": session.get("appointment_booked"),
+            "created_at": session.get("created_at") or _utc_now(),
+            "updated_at": session.get("updated_at") or _utc_now(),
+        }
+        yield f"event: final\ndata: {json.dumps(final_payload, default=str)}\n\n"
+        return
+
+    bot = ""
+    ui_data = {}
+    try:
+        for ev in run_agent_loop_stream(session, authorization, language=language):
+            if ev.get("event") == "status":
+                yield f"event: status\ndata: {json.dumps(ev['data'])}\n\n"
+            elif ev.get("event") == "result":
+                bot = ev.get("bot", "")
+                ui_data = ev.get("ui_data", {})
+    except groq_client.LLMError:
+        bot = groq_client.LLM_FALLBACK
+        ui_data = dict(session.get("last_ui_data") or {})
+    except Exception as exc:
+        logger.error("Agent loop error in stream: %s", exc, exc_info=True)
+        yield f"event: error\ndata: {json.dumps({'message': 'Our AI assistant encountered an issue. Please try again in a moment.'})}\n\n"
+        return
+
+    bot = strip_markdown(bot)
+    ui_data = _strip_listed_appointment_cards(bot, ui_data, session)
+    action = _next_action_from_ui(session, ui_data, bot)
+    append_msg(session, "assistant", bot, _utc_now())
+
+    final_payload = {
+        "conversation_id": conv_id,
+        "patient_id": session.get("patient_id"),
+        "timestamp": _utc_now(),
+        "bot_message": bot,
+        "next_action": action,
+        "options": [],
+        "ui_data": ui_data,
+        "conversation_history": session["messages"],
+        "status": session.get("status", "ongoing"),
+        "appointment_booked": session.get("appointment_booked"),
+        "created_at": session.get("created_at") or _utc_now(),
+        "updated_at": session.get("updated_at") or _utc_now(),
+    }
+    yield f"event: final\ndata: {json.dumps(final_payload, default=str)}\n\n"
+
