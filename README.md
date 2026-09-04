@@ -736,6 +736,34 @@ curl http://localhost:8001/api/rag/health
 
 ---
 
+## 5. Seed Credentials
+
+The database is automatically seeded on first start. Use these accounts to log in:
+
+### 🩺 Patients
+
+| Email | Password | Name |
+| --- | --- | --- |
+| `ali.khan@example.com` | `PatientPass123!` | Ali Khan |
+| `sara.ahmed@example.com` | `PatientPass123!` | Sara Ahmed |
+| `usman.raza@example.com` | `PatientPass123!` | Usman Raza |
+
+### 👨‍⚕️ Doctors
+
+| Email | Password | Name | Specialization |
+| --- | --- | --- | --- |
+| `ahmed.khan@primecare.pk` | `PatientPass123!` | Dr. Ahmed Khan | Cardiology |
+| `fatima.zahra@primecare.pk` | `PatientPass123!` | Dr. Fatima Zahra | Dermatology |
+| `tariq.mahmood@cityhealth.pk` | `PatientPass123!` | Dr. Tariq Mahmood | General Medicine |
+
+### 🔑 Admin
+
+| Email | Password |
+| --- | --- |
+| `admin@medibook.com` | `Admin@123` |
+
+---
+
 # 🧠 RAG Configuration
 
 RAG is controlled through environment variables.

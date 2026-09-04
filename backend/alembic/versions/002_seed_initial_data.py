@@ -48,7 +48,9 @@ PRESC_1_ID = "d1111111-1111-4111-a111-111111111111"
 PRESC_2_ID = "d2222222-2222-4222-a222-222222222222"
 
 # Bcrypt password hashes
-HASH_BULKSEED = "$2b$12$TpNpHz3LKFdNO9uI3MFRNOPycNE0hUvYYNFTI6gizbmdul/EbUKjK"
+# HASH_BULKSEED -> PatientPass123!   (used by all seed patients & doctors)
+# HASH_ADMIN    -> Admin@123         (used by admin@medibook.com)
+HASH_BULKSEED = "$2b$12$t/M7LGsC9Ma.ZfyEHvfxKOF.oNpykecjqsUxiRPJbsmOHxSc5HO66"
 HASH_ADMIN    = "$2b$12$dw.NoAyl.UQabUFVSahMEe6GvS0mLVl4enWiNoGAGjKfX0JGGMmf6"
 
 
@@ -62,7 +64,7 @@ def upgrade() -> None:
         ON CONFLICT (id) DO NOTHING;
     """))
 
-    # 2. Users (Test credentials: ali.khan@example.com, ahmed.khan@primecare.pk, admin@medibook.com)
+    # 2. Users (Test credentials: ali.khan@example.com / PatientPass123!, admin@medibook.com / Admin@123)
     op.execute(sa.text(f"""
         INSERT INTO users (id, email, phone, name, password_hash, user_type, is_active)
         VALUES
@@ -73,7 +75,7 @@ def upgrade() -> None:
         ('{USER_DOC3_ID}', 'tariq.mahmood@cityhealth.pk', '03004445566', 'Dr. Tariq Mahmood', '{HASH_BULKSEED}', 'doctor', true),
         ('{USER_PAT2_ID}', 'sara.ahmed@example.com', '03007778899', 'Sara Ahmed', '{HASH_BULKSEED}', 'patient', true),
         ('{USER_PAT3_ID}', 'usman.raza@example.com', '03002223344', 'Usman Raza', '{HASH_BULKSEED}', 'patient', true)
-        ON CONFLICT (id) DO NOTHING;
+        ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
     """))
 
     # 3. Patients
