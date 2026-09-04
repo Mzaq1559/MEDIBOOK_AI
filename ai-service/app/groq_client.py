@@ -20,6 +20,9 @@ class LLMError(Exception):
     """Raised when the Groq API call fails after retries."""
 
 
+_groq_client: Optional[Groq] = None
+
+
 def _client() -> Groq:
     """Return a singleton Groq client, creating it on first use.
     Raises LLMError if the API key is missing or looks fake.

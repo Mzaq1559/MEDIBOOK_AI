@@ -68,7 +68,7 @@ function mapApiResponseToBotMessage(
     delete uiData.doctors;
   }
 
-  if (listReply && uiData && !isBookingAction) {
+  if (listsAppointmentDetails(text) && uiData && !isBookingAction) {
     delete uiData.appointments;
     delete uiData.doctors;
   }
@@ -168,6 +168,7 @@ export const Chat: React.FC = () => {
 
         setMessages((prev) => [...prev, botMessage]);
       } catch (error: any) {
+        console.error('[Chat] Caught chat API error:', error);
         setMessages((prev) => [
           ...prev,
           {
