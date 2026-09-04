@@ -1,114 +1,162 @@
-# MediBook AI Architecture Analysis (Agentic Implementation)
+# MediBook AI — Architecture Analysis (Agentic Implementation)
 
-## 1. HIGH-LEVEL SYSTEM MAP
+## 1. High-Level System Map
 
-The system consists of several interoperating microservices coordinated via Docker Compose (`docker-compose.yml`):
+The system consists of containerized microservices coordinated via Docker Compose (`docker-compose.yml`) communicating over an internal bridge network (`medibook`):
 
-*   **Frontend (React 18 / Vite)**: Exposed on **Port 3000**. Handles the Chat UI and Dashboard. Routes API requests via a Vite proxy: `/api` proxies to the backend, and `/chat` (or `VITE_CHAT_API_URL`) proxies to the AI service.
-*   **Backend API (FastAPI / Uvicorn)**: Exposed on **Port 8000**. Acts as the authoritative data layer, communicating with PostgreSQL.
-*   **AI Service (FastAPI / Uvicorn)**: Exposed on **Port 8001**. Hosts the conversational agent and tool-execution engine.
-*   **Database (PostgreSQL 15)**: Exposed on **Port 5433** (host) / `5432` (internal). Stores all authoritative operational data.
-*   **ChromaDB**: Volume-mapped into the AI service container (`/app/data/chroma`) for RAG vector storage.
-*   **n8n**: Exposed on **Port 5678**. Used for automated webhooks (e.g., appointment reminders).
+*   **Frontend (React 18 / Vite / TypeScript)**: Exposed on **Port 3000**. Handles patient and clinic staff portals (Chat, Dashboard, Appointments, Doctors, Patients, Prescriptions, Analytics). Directs traffic via a built-in Vite development proxy:
+    *   `/api/*` proxies to the Backend API at `http://backend:8000/api/*`
+    *   `/chat/*` proxies to the AI Service at `http://ai-service:8001/api/chat/*`
+*   **Backend API (FastAPI / Uvicorn)**: Exposed on **Port 8000**. The authoritative transactional layer interfacing with PostgreSQL. Enforces JWT authentication, role-based access control, appointment availability algorithms, and audit logging.
+*   **AI Service (FastAPI / Uvicorn)**: Exposed on **Port 8001**. Hosts the conversational agent loop, tool execution engine, RAG pipeline, and in-memory proposal write gate.
+*   **Database (PostgreSQL 15)**: Exposed on **Port 5433** (host) / `5432` (internal). The sole authoritative source of truth for users, clinics, doctors, patients, appointments, schedules, holidays, prescriptions, and audit logs.
+*   **ChromaDB**: In-process vector store inside the AI service container persisted at `/app/data/chroma`. Houses vector embeddings strictly for medical knowledge triage.
+*   **n8n Automation Engine**: Exposed on **Port 5678**. Receives webhooks from the AI service on appointment creation/rescheduling to trigger reminders.
 
-**End-to-End Request Trace (Chat)**
-1.  **Patient Message**: User types "I want to see a cardiologist tomorrow" in the frontend (`Chat.tsx`).
-2.  **Proxy Routing**: Frontend sends a POST request to `/chat/message` (proxied to AI Service Port 8001).
-3.  **Emergency Guard**: Request hits `ai-service/app/main.py` -> `send_chat_message()` -> `handle_message()` in `chatbot.py`. It immediately evaluates `is_emergency()` via `symptom_triage.py`.
-4.  **Agent Loop**: If no emergency, it enters `run_agent_loop()`. The message is appended to the in-memory session and sent to the **Groq API** (`groq_client.py`) along with system prompts and available tool schemas.
-5.  **Tool Call**: The LLM returns a tool call for `get_availability` or `book_appointment`.
-6.  **Backend Request**: `tools.py` intercepts the call, executing the logic using `backend_client.py` (which makes synchronous HTTP requests using `httpx` to the Backend API at Port 8000).
-7.  **Database Action**: The Backend (`routes/appointments.py`) validates the request against PostgreSQL models and commits the changes.
-8.  **Response back to UI**: The tool result is passed back to Groq for a final conversational wrapper. The AI service responds to the frontend with the text and structured `ui_data`, which `Chat.tsx` renders into rich cards.
+### End-to-End Request Trace (Chat Interaction)
 
----
-
-## 2. AGENT ORCHESTRATION
-
-The orchestration layer entirely replaces a traditional conversational state machine with a dynamic LLM loop.
-
-*   **`chatbot.py` (`run_agent_loop`)**: Implements the core ReAct-style loop. It maintains a session (`_sessions` dict) and can run up to 8 iterations (`MAX_TOOL_ROUNDS`). If Groq returns `tool_calls`, `chatbot.py` extracts them, calls `execute_tool()` from `tools.py`, appends the result to the context, and re-prompts the LLM. It stops when the LLM returns plain conversational text instead of a tool call.
-*   **`tools.py`**: The definitive registry for agent capabilities. It maintains `TOOL_DEFINITIONS` (Groq JSON schemas) and maps them to Python handlers (e.g., `tool_book_appointment`). It extracts LLM-provided arguments, performs basic sanity checks (e.g., ensuring `patient_id` matches the session), and executes the action.
-*   **`groq_client.py`**: A lightweight wrapper around the Groq SDK, providing retry mechanisms, JSON-mode enforcers, and a fallback response (`LLM_FALLBACK`) if the API errors out.
-*   **`backend_client.py`**: An `httpx` HTTP client that bridges the AI service and the Backend API. It forwards the patient's JWT (`authorization` header) to ensure the backend respects the identity of the user talking to the agent.
-*   **`chatbot_nlu.py`**: Provides fast-path, regex-based heuristic checks (e.g., `is_confirm`, `extract_appointment_id`). Though its role is diminished in the agentic setup, it acts as a lightweight utility for identifying intent overrides or IDs.
-
-**Available Tools (Actual Code Implementation)**
-*   **Read-Only**:
-    *   `get_patient_appointments(patient_id)`: Fetches upcoming appointments via backend.
-    *   `get_doctors_by_specialty(specialty)`: Lists doctors matching a given medical field.
-    *   `get_availability(doctor_id, date)`: Returns open time slots for a doctor on a given day.
-    *   `get_patient_info(patient_id)`: Fetches the authenticated user's profile and allergies.
-*   **Write**:
-    *   `book_appointment(patient_id, doctor_id, datetime, symptoms)`: Creates an appointment.
-    *   `reschedule_appointment(appointment_id, new_datetime)`: Updates appointment time.
-    *   `cancel_appointment(appointment_id)`: Deletes/cancels an appointment.
+1.  **Patient Message**: User submits a message via `frontend/src/pages/Chat.tsx`.
+2.  **Proxy Forwarding**: Frontend issues `POST /chat/message`, rewritten by Vite proxy to `http://ai-service:8001/api/chat/message`.
+3.  **Deterministic Emergency Guard**: Before touching the LLM, `ai-service/app/chatbot.py` calls `symptom_triage.is_emergency(message)`. If matched, the turn halts immediately and emits `EMERGENCY_ALERT` (`next_action = "emergency_redirect"`).
+4.  **Agent Loop Initiation**: If clear, `chatbot.py` appends the message to the session history and enters `run_agent_loop_stream` / `run_agent_loop`.
+5.  **Groq LLM Reasoning**: The conversation history, system prompt, and `TOOL_DEFINITIONS` schemas are dispatched to Groq API (`app/groq_client.py`).
+6.  **Tool Selection**: The LLM autonomously chooses which tool to invoke (e.g. `retrieve_medical_knowledge`, `get_availability`, `propose_book_appointment`).
+7.  **Tool Execution**: `app/tools.py` intercepts the call, validates arguments, checks session bounds, and dispatches to either the local RAG pipeline (`app/rag/pipeline.py`) or the Backend API (`app/backend_client.py`).
+8.  **Tool Context Feed**: Tool outputs are appended back into the message array with `role: "tool"`, allowing the LLM to synthesize final conversational text.
+9.  **Streaming Response**: Results are returned to the client either as standard JSON or as Server-Sent Events (`SSE`) with intermediate status updates (`event: status`) and final payloads (`event: final`).
 
 ---
 
-## 3. THE PROPOSE → VALIDATE → CONFIRM → EXECUTE WRITE GATE (CRITICAL FINDING)
+## 2. Agent Orchestration
 
-**The README claims there is a rigid two-step transactional gate** (e.g., `propose_book_appointment` and `execute_confirmed_action`). 
+The conversational layer completely replaces rigid legacy state machines with an autonomous Groq tool-calling agent.
 
-**Actual Code Implementation**: **This mechanism does not exist.** 
-*   **No Code-Level Guardrail**: Looking at `tools.py`, the tools exposed to the LLM are directly the write actions: `book_appointment`, `reschedule_appointment`, and `cancel_appointment`. 
-*   **Prompt-Engineered Guardrail**: The only thing preventing the LLM from writing directly to the database without user confirmation is a line in `build_system_prompt()`: 
-    > *"- For booking, reschedule, and cancel: confirm in one short sentence, then wait for a clear yes before calling the write tool."*
-*   **Database Writes**: When the LLM decides the user has confirmed (or hallucinates that they did), it calls `book_appointment`. `tools.py` immediately forwards this to `backend_client.create_appointment`, which hits `POST /api/appointments` and commits the write to PostgreSQL. 
+*   **`chatbot.py` (`run_agent_loop` / `run_agent_loop_stream`)**:
+    *   ReAct-style execution loop supporting up to 8 tool turns per request (`MAX_TOOL_ROUNDS = 8`).
+    *   Maintains conversation session state in an in-memory dictionary (`_sessions`) with a 2-hour TTL (`SESSION_TTL = 7200`).
+    *   Emits intermediate SSE status events (e.g., *"Looking up available doctors..."*, *"Checking availability..."*) so the UI shows live progress.
+    *   Cleans and strips unnecessary card metadata if the LLM already articulated details conversationally (`_strip_listed_appointment_cards`).
+*   **`tools.py`**:
+    *   Defines `TOOL_DEFINITIONS` conforming to the OpenAI/Groq function calling schema.
+    *   Dispatches tool execution through `execute_tool()` and handler mappings.
+    *   Injects authenticated session bounds (`patient_id` from JWT session) to prevent parameter spoofing.
+*   **`groq_client.py`**:
+    *   Low-level HTTP client wrapping Groq's completions API.
+    *   Supports configured model (default: `openai/gpt-oss-120b` or configurable via `GROQ_MODEL`).
+    *   Implements graceful fallback handling (`LLM_FALLBACK`) upon upstream API failures.
+*   **`backend_client.py`**:
+    *   High-performance `httpx.Client` communicating with the FastAPI backend at `http://backend:8000/api`.
+    *   Passes through the patient's Bearer token in the `Authorization` header to maintain server-side authorization context.
 
-Direct LLM-to-database writes are **not** prevented at the code level. The LLM has direct, un-gated access to the mutation endpoints.
+### Complete Tool Inventory
 
----
+#### Read-Only Tools
+- **`get_patient_appointments(patient_id)`**: Fetches upcoming appointments for the authenticated patient.
+- **`search_patient_appointments(doctor_name, status, date_from, date_to)`**: Filtered search over appointments scoped strictly to the current patient.
+- **`get_doctors_by_specialty(specialty)`**: Discovers active doctors matching a specialization.
+- **`get_availability(doctor_id, date)`**: Queries open 30-minute consultation slots for a doctor across upcoming dates.
+- **`get_patient_info(patient_id)`**: Retrieves patient profile, emergency contacts, and recorded allergies.
+- **`retrieve_medical_knowledge(symptoms)`**: Evaluates symptoms against the RAG clinical triage knowledge base.
 
-## 4. EMERGENCY DETECTION
-
-Emergency detection is **truly synchronous and pre-agent**.
-*   In `chatbot.py -> handle_message()`, immediately after creating the session, the code checks `is_emergency(message)`.
-*   The `is_emergency()` logic lives in `symptom_triage.py`. It uses robust regex patterns (matching English and Roman Urdu) for critical keywords like "chest pain", "can't breathe", or "suicide".
-*   If `is_emergency(message)` returns `True`, the function immediately bypasses the `run_agent_loop`, appending a hardcoded `EMERGENCY_ALERT` to the chat history and returning `next_action = "emergency_redirect"`. 
-*   **Call Order**: The agent and Groq API are completely circumvented. The LLM cannot hallucinate away a genuine emergency keyword match.
-
----
-
-## 5. MEDICAL RAG PIPELINE (CRITICAL FINDING)
-
-**The README claims Medical RAG is integrated as an agent tool** (`retrieve_medical_knowledge`).
-
-**Actual Code Implementation**: **The RAG pipeline is entirely orphaned and disconnected in the `agentic` branch.**
-*   The pipeline logic exists in `ai-service/app/rag/`: `pipeline.py` defines a robust orchestration class (`RAGPipeline`) that connects `retriever.py` (which embeds queries using `embeddings.py` and searches ChromaDB in `vector_db.py`) to the LLM via `generator.py`.
-*   However, `RAGPipeline` and its entry point `triage_symptoms()` are **never called** by `chatbot.py` or `main.py`. 
-*   In `tools.py`, the `retrieve_medical_knowledge` tool is **missing from `TOOL_DEFINITIONS`**.
-*   The agent has absolutely no way to access the RAG database, and the `/chat/message` endpoint never manually injects it. The RAG architecture exists but is functionally dead code in this branch.
-
----
-
-## 6. BACKEND & DATA LAYER
-
-**Models & Schema** (`backend/app/models/`)
-*   **`User`**: Base authentication table with `user_type` (patient, doctor, admin, receptionist).
-*   **`Patient` / `Doctor`**: Profile extensions storing specialties, bios, dob, and medical conditions. They have a 1:1 relationship with `User` via `user_id` (UUID).
-*   **`Appointment`**: The core transactional table. Uses UUIDs for primary keys. Contains foreign keys to `clinic_id`, `doctor_id`, and `patient_id`. It includes fields for `appointment_time`, `status`, `symptoms_reported`, and `urgency_level`. 
-
-**Server-Side Authorization**
-The backend prevents ID spoofing by enforcing ownership server-side.
-*   In `routes/appointments.py`, functions like `bulk_cancel_appointments` or `cancel_appointment` rely on FastAPI's `Depends(get_current_user)`.
-*   The system cross-references the authenticated JWT user against the requested appointment. If a patient user tries to cancel an appointment where `Appointment.patient_id != patient.id`, it throws a `403 FORBIDDEN`. 
-*   Similarly, `tools.py` in the AI Service uses `_session_patient_id` to override any `patient_id` the LLM attempts to provide, mapping it strictly to the authenticated `patient_id` from the active session.
+#### Write Tools
+- **`propose_book_appointment(patient_id, doctor_id, datetime, symptoms)`**: Creates a pending booking proposal.
+- **`propose_reschedule_appointment(appointment_id, new_datetime)`**: Creates a pending reschedule proposal.
+- **`propose_cancel_appointment(appointment_id)`**: Creates a pending cancellation proposal.
+- **`execute_confirmed_action(proposal_id)`**: Commits the verified proposal to the backend database.
 
 ---
 
-## 7. FRONTEND INTEGRATION
+## 3. The Propose → Validate → Confirm → Execute Write Gate
 
-*   **Communication**: The React frontend (`Chat.tsx`) communicates with the `ai-service` via a `sendChatMessage` HTTP fetch to `/chat`. 
-*   **UI Rendering**: The chat UI doesn't rely entirely on the LLM's text. The `ai-service` returns a structured `ui_data` payload alongside the bot's text. 
-*   **Confirmations UX**: Because there is no actual "proposal lock" in the backend, the UX handles confirmations purely contextually. If the `ui_data.booking` is present but `isConfirmed` is false, it renders a `ConfirmationCard`. If the user clicks "Confirm", the frontend literally just sends the text string `"yes, confirm"` back to the chat API. The LLM reads this text in the conversation history and autonomously decides to execute the `book_appointment` tool.
+To prevent autonomous LLMs from executing unauthorized or hallucinated mutations, MediBook AI enforces a strict multi-stage write gate:
+
+```
+[Patient Request]
+       │
+       ▼
+[Agent calls propose_book_appointment / propose_reschedule / propose_cancel]
+       │
+       ├── 1. Validate doctor, date, and availability against Backend API
+       ├── 2. Validate patient ownership (appointment belongs to authenticated patient)
+       ├── 3. Generate unique UUID proposal_id
+       └── 4. Cache in _PROPOSALS dictionary (5-minute TTL, session-bound, patient-bound)
+       │
+       ▼
+[Agent presents summary & asks patient for explicit confirmation]
+       │
+       ▼
+[Patient replies: "Yes, please confirm"]
+       │
+       ▼
+[Agent calls execute_confirmed_action(proposal_id)]
+       │
+       ├── 1. Validate proposal exists, is not expired, and has not been executed (used=False)
+       ├── 2. Validate proposal patient_id matches active session patient_id
+       ├── 3. Validate proposal session_id matches active conversation_id
+       ├── 4. Mark proposal used = True
+       ├── 5. Commit mutation via Backend API (POST /api/appointments)
+       └── 6. Dispatch Google Calendar event & n8n reminder webhooks
+       │
+       ▼
+[Appointment Committed to PostgreSQL]
+```
+
+### Key Architectural Guarantees
+- **No Direct LLM Writes**: The LLM has zero tools that write directly to PostgreSQL. The only mutation tool is `execute_confirmed_action`.
+- **TTL Expiration**: Unconfirmed proposals expire automatically after 300 seconds (5 minutes).
+- **Anti-Tampering**: Even if an LLM is prompted to execute an arbitrary proposal ID, the handler verifies that `proposal.patient_id == session.patient_id` and `proposal.session_id == session.conversation_id`.
 
 ---
 
-## 8. GAPS, INCONSISTENCIES, OR RISKS
+## 4. Deterministic Emergency Guard
 
-1.  **The "Guardrail" Illusion**: The most critical risk is the complete absence of the `propose -> confirm -> execute` backend gate described in the README. The LLM has direct write access to PostgreSQL via the `book_appointment`, `reschedule_appointment`, and `cancel_appointment` tools. The safety relies 100% on a prompt instruction asking the LLM to wait for confirmation. A determined jailbreak (or a simple hallucination) will result in unauthorized database modifications.
-2.  **Disconnected RAG**: The "RAG Clinical Triage" feature highlighted in the UI and README is non-functional. The tool definition for `retrieve_medical_knowledge` was seemingly dropped during the transition from the legacy state-machine to the agentic architecture. The ChromaDB vector store is active but un-queried.
-3.  **Ephemeral In-Memory Sessions**: The README claims "session persistence is in-memory". This is accurate (via the `_sessions` dictionary in `chatbot.py`). However, this means if the `ai-service` Docker container crashes, restarts, or scales horizontally, all active conversation histories, pending selections, and loaded contexts are instantly destroyed.
-4.  **UI State Desync**: The `Chat.tsx` frontend strips tool cards (like `DoctorCard` or `AppointmentCard`) if the LLM decides to list the details in plain text (`lists_appointment_details`). However, because the agent acts asynchronously and determines its own text, the UI can easily become desynchronized, showing "waiting for confirmation" cards when the backend action has either already failed or the LLM forgot to make the tool call entirely. 
-5.  **Patient ID Resolution**: In the AI service (`chatbot.py`), the `patient_id` is passed from the frontend to initialize the session. While the backend verifies ownership via JWT, if the frontend were to omit the JWT but provide a spoofed `patient_id` payload to `/chat/message`, the `_require_auth` helper in `tools.py` checks for the *presence* of a Bearer token, but the AI service doesn't cryptographically validate the JWT itself (it just forwards it). If an endpoint lacked authorization checks on the backend, this could be a spoofing vector.
+Patient safety is guaranteed through a deterministic, pre-agent emergency detection layer:
+
+*   **Execution Timing**: Runs inside `chatbot.py -> handle_message()` as step 1, completely bypassing the Groq LLM agent.
+*   **Mechanism**: Implemented in `app/symptom_triage.py -> is_emergency(message)` using comprehensive regex patterns covering English and Roman Urdu (e.g. *"chest pain"*, *"can't breathe"*, *"chhati me dard"*, *"saans nahi aa rahi"*).
+*   **Response**: Immediately returns `EMERGENCY_ALERT` and sets `next_action = "emergency_redirect"`. The LLM cannot hallucinate away red-flag clinical emergencies.
+
+---
+
+## 5. Medical RAG Integration
+
+Medical knowledge retrieval is fully operational and embedded directly as an agent tool:
+
+*   **Integration**: `retrieve_medical_knowledge` is registered in `TOOL_DEFINITIONS` and wired to `tool_retrieve_medical_knowledge` in `tools.py`.
+*   **Pipeline Flow**:
+    1. Symptoms are passed to `pipeline.triage_symptoms()`.
+    2. `embeddings.embed_query()` computes a 384-dimensional dense embedding using `sentence-transformers/all-MiniLM-L6-v2`.
+    3. `vector_db.query_vectors()` retrieves top-K chunks from ChromaDB (relevance score $\ge 0.35$).
+    4. `augmentation.build_augmented_prompt()` formats the retrieved passages into clinical grounding context.
+    5. `generator.generate()` invokes Groq in JSON mode to return a structured `TriageResult` (specialty, urgency, bot_message).
+    6. `safety.validate_triage_result()` enforces safety rules and disclaimers.
+*   **Circuit Breaker & Fallback**: If ChromaDB or Groq fails, `app/rag/circuit_breaker.py` trips after 5 consecutive failures and falls back immediately to deterministic triage rules, keeping the chatbot online.
+
+---
+
+## 6. Backend & Security Architecture
+
+*   **Data Separation**:
+    *   **PostgreSQL 15** is the sole transactional truth (users, clinics, doctors, patients, appointments, doctor schedules, clinic holidays, prescriptions, audit logs).
+    *   **ChromaDB** stores only medical knowledge vectors. It contains zero patient PII or booking records.
+*   **Authentication & Authorization**:
+    *   JWT HS256 tokens (60-minute access, 1-day refresh).
+    *   All appointment queries and cancellations verify ownership server-side (`Appointment.patient_id == current_user.patient.id`).
+    *   The AI service automatically binds the session `patient_id` to the validated JWT token, preventing patient impersonation.
+
+---
+
+## 7. Known Architectural Limitations & Trade-Offs
+
+To maintain architectural transparency, the following design trade-offs and current limitations are acknowledged:
+
+1.  **In-Memory Session & Proposal Storage**:
+    *   Active conversation sessions (`_sessions`) and pending proposals (`_PROPOSALS`) are held in memory within the `ai-service` process.
+    *   If the container restarts, pending unconfirmed proposals and active conversation contexts are reset. Horizontal scaling requires sticky sessions or external state caching (e.g., Redis).
+2.  **Medical Scope Boundaries**:
+    *   The RAG knowledge base covers primary outpatient symptoms, conditions, medical specialties, and clinic policies.
+    *   The system is explicitly designed for **administrative triage and scheduling**, not clinical diagnosis.
+3.  **Language Support**:
+    *   Primary communication is English, with regex emergency detection supporting Roman Urdu. Full bilingual English/Urdu conversational generation and vector retrieval is targeted for future iterations.
+4.  **Client Platforms**:
+    *   The client layer is currently a responsive web application (React 18 + Vite); dedicated native iOS/Android applications are not yet implemented.

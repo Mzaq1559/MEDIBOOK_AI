@@ -73,37 +73,38 @@ NOT IN SCOPE (POST-HACKATHON):
 SECTION 2: SYSTEM ARCHITECTURE
 ================================================================================
 
-2.1 HIGH-LEVEL ARCHITECTURE
+2.1 HIGH-LEVEL ARCHITECTURE & EVOLUTION
+
+MediBook AI has evolved across three architectural implementations preserved on dedicated branches:
+1. `baseline`: Deterministic rule-based dialogue state machine without RAG or agent tools.
+2. `rag`: Deterministic conversation state machine augmented with ChromaDB vector retrieval for symptom triage.
+3. `main` (Agentic, Current): Autonomous Groq tool-calling agent with deterministic pre-agent emergency detection, strict Propose → Validate → Confirm → Execute write gate, and medical RAG encapsulated as an agent tool.
 
 ┌─────────────────────────────────────────────────────────────┐
 │              CLIENT LAYER (Frontend)                         │
-│  React 18 + TypeScript + Tailwind CSS (Port 3000)          │
-│  ├─ Patient Chat Interface                                  │
-│  ├─ Doctor Dashboard                                        │
-│  ├─ Admin Panel                                             │
-│  └─ Receptionist Interface                                  │
+│  React 18 + TypeScript + Vite (Port 3000)                   │
+│  ├─ Patient Chat Interface (SSE streaming + rich cards)     │
+│  ├─ Doctor Dashboard & Schedules                            │
+│  ├─ Admin Panel (Clinics, Doctors, Analytics)               │
+│  └─ Receptionist Interface (Walk-ins, Bookings)             │
 └────────────────────┬────────────────────────────────────────┘
-                     │ HTTPS/JSON
-┌────────────────────▼────────────────────────────────────────┐
-│              API GATEWAY / LOAD BALANCER                     │
-│  (Optional: Nginx/HAProxy)                                  │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-        ┌────────────┼────────────┐
-        │            │            │
-┌───────▼─────┐ ┌────▼──────┐ ┌──▼──────────┐
-│  Backend    │ │ AI Service│ │Integrations │
-│  FastAPI    │ │ FastAPI   │ │ (n8n)       │
-│  (8000)     │ │ (8001)    │ │             │
-└───────┬─────┘ └────┬──────┘ └──┬──────────┘
-        │            │           │
-        │    ┌───────┼───────┐   │
-        │    │       │       │   │
-┌───────▼────▼───┐ ┌─▼─┐ ┌──▼──────────────┐
-│   PostgreSQL   │ │API│ │Google Calendar  │
-│   (5432)       │ │JWT│ │WhatsApp API     │
-│   Database     │ │Tok│ │Groq LLM API     │
-└────────────────┘ └───┘ └─────────────────┘
+                     │ Vite Proxy (/api → Backend, /chat → AI Service)
+        ┌────────────┴────────────┐
+        │                         │
+┌───────▼─────────────┐   ┌───────▼──────────────────────────┐
+│  Backend API        │   │  AI Service Microservice         │
+│  FastAPI (Port 8000)│   │  FastAPI (Port 8001)             │
+│  • Auth & RBAC      │   │  • Deterministic Emergency Guard │
+│  • Availability FSM │   │  • Groq Tool-Calling Agent Loop  │
+│  • Write Mutations  │   │  • Propose-Confirm Write Gate    │
+└───────┬─────────────┘   └───────┬─────────────┬────────────┘
+        │                         │             │
+┌───────▼─────────────┐   ┌───────▼────────┐ ┌──▼────────────┐
+│  PostgreSQL 15      │   │  ChromaDB      │ │ Integrations  │
+│  (Port 5432)        │   │  (in-process)  │ │ • n8n (5678)  │
+│  Sole Transactional │   │  Medical RAG   │ │ • GCalendar   │
+│  Source of Truth    │   │  Knowledge Only│ │ • Groq API    │
+└─────────────────────┘   └────────────────┘ └───────────────┘
 
 2.2 TECHNOLOGY STACK
 
@@ -111,48 +112,47 @@ FRONTEND:
   Framework: React 18 with TypeScript
   Styling: Tailwind CSS (utility-first)
   Routing: React Router v6
-  State Management: React Context API + useReducer
-  HTTP Client: Axios with interceptors
-  Date Handling: date-fns
-  Icons: React Icons
-  Build Tool: Vite
+  State Management: React Context API
+  HTTP Client: Axios with JWT interceptors
+  Build Tool: Vite (Port 3000)
   Node Version: 18+
 
 BACKEND:
   Framework: FastAPI (Python)
-  Server: Uvicorn (ASGI)
-  ORM: SQLAlchemy 2.0
-  Database: PostgreSQL 15
+  Server: Uvicorn (ASGI, Port 8000)
+  ORM: SQLAlchemy 2.0 (async compatible)
+  Database: PostgreSQL 15 (Port 5432)
   Validation: Pydantic v2
-  Auth: JWT (PyJWT) + bcrypt
+  Auth: JWT (PyJWT HS256) + bcrypt
   Migrations: Alembic
   Python Version: 3.10+
 
 AI SERVICE (Separate Microservice):
-  Framework: FastAPI
-  LLM: Groq API (mixtral-8x7b-32768 model)
-  Vector Store: Optional (ChromaDB) for conversation history
-  NLP: Basic intent matching + regex + LLM
+  Framework: FastAPI + Uvicorn (Port 8001)
+  Agent: Single Groq Tool-Calling Agent (openai/gpt-oss-120b or configurable via GROQ_MODEL)
+  Emergency Guard: Deterministic pre-agent regex pattern matching (English & Roman Urdu)
+  Write Gate: Strict Propose → Validate → Confirm → Execute gate with in-memory proposals (5-min TTL)
+  RAG Vector Store: Persistent ChromaDB (/app/data/chroma) with sentence-transformers (all-MiniLM-L6-v2)
+  RAG Submodules: config, models, vector_db, embeddings, retriever, augmentation, generator, safety, circuit_breaker, cache, knowledge_loader, metrics, pipeline
   Python Version: 3.10+
 
 INTEGRATIONS:
   Calendar: Google Calendar API v3
-  Notifications: WhatsApp Business API (or Twilio)
-  Workflows: n8n (self-hosted or cloud)
-  Email: SMTP (SendGrid or AWS SES)
+  Automation Workflows: n8n (Port 5678, webhook triggers)
+  Email: SMTP (aiosmtplib)
 
 DEPLOYMENT:
   Containerization: Docker + Docker Compose
-  Version Control: Git + GitHub
-  Package Manager: npm (frontend), pip (backend)
+  Network: Internal bridge network (medibook)
+  Volume Persistence: pgdata (PostgreSQL), chroma_data (ChromaDB), n8n_data (n8n)
 
 2.3 PORT ALLOCATION
 
-Port 3000: React Frontend (development)
+Port 3000: React Frontend (development / Vite server)
 Port 8000: FastAPI Backend API
 Port 8001: AI Service Microservice
-Port 5432: PostgreSQL Database
-Port 1880: n8n (if using workflow automation)
+Port 5432: PostgreSQL Database (host port 5433 mapped to 5432)
+Port 5678: n8n Workflow Automation
 
 2.4 DATABASE CONNECTION STRING
 
@@ -2016,7 +2016,7 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 
 # AI Service
 GROQ_API_KEY=your-groq-api-key-here
-GROQ_MODEL=mixtral-8x7b-32768
+GROQ_MODEL=openai/gpt-oss-120b
 
 # Google Calendar
 GOOGLE_CALENDAR_API_KEY=your-google-api-key-here
@@ -2028,7 +2028,7 @@ SMTP_PORT=587
 SMTP_USERNAME=noreply@primecare.pk
 SMTP_PASSWORD=app-password-here
 
-# WhatsApp
+# WhatsApp / Notifications
 WHATSAPP_API_TOKEN=your-whatsapp-token-here
 WHATSAPP_BUSINESS_ACCOUNT_ID=your-account-id-here
 
@@ -2036,20 +2036,22 @@ WHATSAPP_BUSINESS_ACCOUNT_ID=your-account-id-here
 ENVIRONMENT=development  # or production
 API_URL=http://localhost:8000
 FRONTEND_URL=http://localhost:3000
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:5173
 
 # Logging
 LOG_LEVEL=INFO
 LOG_FILE=/var/log/medibook/app.log
 
-# n8n (if using)
-N8N_URL=http://localhost:1880
-N8N_WEBHOOK_URL=http://localhost:1880/webhook
+# n8n Automation Engine
+N8N_URL=http://localhost:5678
+N8N_WEBHOOK_URL=http://localhost:5678/webhook/medibook-reminder
 
 8.2 FRONTEND (.env)
 
-VITE_API_URL=http://localhost:8000/api
-VITE_CHAT_API_URL=http://localhost:8001/api
+VITE_API_URL=/api
+VITE_CHAT_API_URL=/chat
+VITE_PROXY_BACKEND=http://backend:8000
+VITE_PROXY_AI_SERVICE=http://ai-service:8001
 VITE_APP_NAME=MediBook AI
 VITE_APP_VERSION=1.0.0
 
@@ -2058,11 +2060,21 @@ VITE_APP_VERSION=1.0.0
 AI_SERVICE_PORT=8001
 AI_SERVICE_HOST=0.0.0.0
 
-DATABASE_URL=postgresql://medibook:password123@localhost:5432/medibook_db
-BACKEND_API_URL=http://localhost:8000/api
+DATABASE_URL=postgresql://medibook:password123@db:5432/medibook_db
+BACKEND_API_URL=http://backend:8000/api
 
 GROQ_API_KEY=your-groq-api-key-here
-GROQ_MODEL=mixtral-8x7b-32768
+GROQ_MODEL=openai/gpt-oss-120b
+
+# Medical RAG Settings
+RAG_ENABLED=true
+RAG_VECTOR_DB_PATH=/app/data/chroma
+RAG_COLLECTION_NAME=medical_knowledge
+RAG_EMBEDDING_MODEL=all-MiniLM-L6-v2
+RAG_TOP_K=5
+RAG_MIN_RELEVANCE_SCORE=0.35
+RAG_CACHE_ENABLED=true
+RAG_AUTO_LOAD_ON_STARTUP=true
 
 CONVERSATION_MAX_HISTORY=20
 
