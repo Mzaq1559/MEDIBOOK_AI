@@ -21,10 +21,16 @@ class LLMError(Exception):
 
 
 def _client() -> Groq:
-    key = (settings.GROQ_API_KEY or "").strip()
-    if not key or key.startswith(("fake", "test", "dummy", "gsk_test", "mock")):
-        raise LLMError(LLM_FALLBACK)
-    return Groq(api_key=key)
+    """Return a singleton Groq client, creating it on first use.
+    Raises LLMError if the API key is missing or looks fake.
+    """
+    global _groq_client
+    if _groq_client is None:
+        key = (settings.GROQ_API_KEY or "").strip()
+        if not key or key.startswith(("fake", "test", "dummy", "gsk_test", "mock")):
+            raise LLMError(LLM_FALLBACK)
+        _groq_client = Groq(api_key=key)
+    return _groq_client
 
 
 def complete(

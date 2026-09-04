@@ -13,12 +13,21 @@ from app.config import settings
 logger = logging.getLogger("medibook.ai.backend")
 
 TIMEOUT = 8.0
+
+# Persistent HTTP client reused across requests (connection pooling)
+_http_client = httpx.Client(timeout=TIMEOUT)
+
+# Cache for list_doctors with TTL handling
+_doctors_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+# Metric tracking variables
 last_http_call_ms = 0.0
 last_http_calls_total_ms = 0.0
 last_http_call_count = 0
 
 def reset_turn_http_metrics() -> None:
     global last_http_calls_total_ms, last_http_call_count
+    # Reset the metrics counters for a new turn
     last_http_calls_total_ms = 0.0
     last_http_call_count = 0
 
@@ -67,20 +76,29 @@ def list_doctors(specialization: Optional[str] = None) -> list[dict[str, Any]]:
     params: dict[str, Any] = {"limit": 50, "is_available": True}
     if specialization:
         params["specialization"] = specialization
+    # TTL cache check (60 seconds)
+    cache_key = f"list_doctors:{specialization or ''}"
+    cached = _doctors_cache.get(cache_key)
+    if cached:
+        ts, data_cached = cached
+        if time.time() - ts < 60:
+            return list(data_cached)
     try:
         t0 = time.perf_counter()
-        with httpx.Client(timeout=TIMEOUT) as client:
-            res = client.get(
-                f"{settings.backend_base}/doctors",
-                params=params,
-                headers=_headers(),
-            )
+        # Use persistent client for connection reuse
+        res = _http_client.get(
+            f"{settings.backend_base}/doctors",
+            params=params,
+            headers=_headers(),
+        )
         _record_http((time.perf_counter() - t0) * 1000, "GET /doctors")
         if res.status_code >= 400:
             logger.warning("Doctor list request failed with HTTP %s", res.status_code)
             return []
         data = res.json()
-        return list(data.get("doctors") or [])
+        # Store in cache with timestamp
+        _doctors_cache[cache_key] = (time.time(), data.get("doctors") or [])
+        return list(_doctors_cache[cache_key][1])
     except httpx.HTTPError:
         logger.warning("Doctor list request could not reach backend")
         return []
