@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import { Card, Button, Badge } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { listAppointments, completeAppointment, markNoShow } from '../services/appointments';
@@ -15,6 +16,7 @@ interface BackendDoctorAppointment {
   end_time: string;
   status: string;
   urgency_level?: string;
+  urgency_reason?: string | null;
   symptoms_reported?: string;
   doctor_notes?: string;
 }
@@ -29,15 +31,26 @@ export const DoctorDashboard: React.FC = () => {
   const [notesText, setNotesText] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Redirect unverified doctors to pending verification page
+  if (currentUser?.userType === 'doctor' && currentUser.isVerified === false) {
+    return <Navigate to="/pending-verification" replace />;
+  }
+
   const fetchSchedule = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch all upcoming scheduled appointments (not just today — avoids UTC/PKT date boundary issues)
       const res = await listAppointments({ status: 'scheduled' });
-      setSchedule(res.appointments || []);
+      console.log('[DoctorDashboard] API response:', JSON.stringify(res, null, 2));
+      const appts = res.appointments || [];
+      console.log(`[DoctorDashboard] Got ${appts.length} appointments`);
+      if (appts.length > 0) {
+        console.log('[DoctorDashboard] First appointment sample:', JSON.stringify(appts[0], null, 2));
+      }
+      setSchedule(appts);
     } catch (err: any) {
-      console.error('Failed to load doctor schedule:', err);
+      console.error('[DoctorDashboard] Failed to load schedule:', err);
+      console.error('[DoctorDashboard] Error response:', JSON.stringify(err?.response?.data, null, 2));
       setError(err?.response?.data?.detail?.message || 'Failed to load upcoming schedule.');
     } finally {
       setLoading(false);
@@ -49,7 +62,7 @@ export const DoctorDashboard: React.FC = () => {
   }, []);
 
   const doctorName = currentUser?.userType === 'doctor' ? currentUser.name : 'Dr. Attending Physician';
-  const doctorSpecialty = currentUser?.specialization || 'Clinical Specialist';
+  const doctorSpecialty = 'Clinical Specialist';
 
   // Format today's date nicely
   const todayFormatted = new Date().toLocaleDateString('en-US', {
@@ -63,9 +76,11 @@ export const DoctorDashboard: React.FC = () => {
   const totalUpcoming = schedule.length;
   const completedCount = schedule.filter((s) => s.status.toLowerCase() === 'completed').length;
   const noShowCount = schedule.filter((s) => s.status.toLowerCase() === 'no_show' || s.status.toLowerCase() === 'no-show').length;
-  const upcomingCount = schedule.filter(
-    (s) => s.status.toLowerCase() === 'scheduled' || s.status.toLowerCase() === 'confirmed' || s.status.toLowerCase() === 'upcoming'
-  ).length;
+  // "Upcoming" stat = today's appointments only
+  const todayStr = new Date().toDateString();
+  const todayCount = schedule.filter((s) => {
+    try { return new Date(s.appointment_time).toDateString() === todayStr; } catch { return false; }
+  }).length;
 
   const utilizationPct = totalUpcoming > 0 ? Math.round(((completedCount + noShowCount) / totalUpcoming) * 100) : 0;
 
@@ -248,12 +263,12 @@ export const DoctorDashboard: React.FC = () => {
 
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>Upcoming</span>
-            <span>⏳</span>
+            <span>Today</span>
+            <span>📌</span>
           </div>
           <div className="mt-3">
-            <span className="font-heading font-extrabold text-3xl text-primary">{upcomingCount}</span>
-            <p className="text-[11px] text-textSecondary mt-0.5">Remaining in queue</p>
+            <span className="font-heading font-extrabold text-3xl text-primary">{todayCount}</span>
+            <p className="text-[11px] text-textSecondary mt-0.5">Today's appointments</p>
           </div>
         </Card>
 
@@ -318,52 +333,81 @@ export const DoctorDashboard: React.FC = () => {
                       : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
                   }`}
                 >
-                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
-                    {/* Left Column: Time & Patient Info */}
-                    <div className="flex items-start gap-4 sm:gap-5 flex-1">
-                      {/* Time Display */}
-                      <div className="w-20 sm:w-24 text-center shrink-0 p-2.5 bg-surfaceContainer rounded-2xl border border-surfaceContainerHigh">
-                        <span className="block font-heading font-extrabold text-sm sm:text-base text-textPrimary">
-                          {formattedTime.split(' ')[0]}
-                        </span>
-                        <span className="text-[10px] uppercase font-bold text-textSecondary">
-                          {formattedTime.split(' ')[1] || ''}
-                        </span>
+                  <div className="space-y-3">
+                    {/* Top: Patient name + Date/Time + Badges */}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-xl px-3 py-1.5">
+                        <svg className="w-4 h-4 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+                        <h3 className="font-heading font-bold text-sm text-textPrimary">
+                          {apt.patient_name}
+                        </h3>
                       </div>
-
-                      {/* Patient & Symptom Details */}
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2.5">
-                          <h3 className="font-heading font-bold text-base sm:text-lg text-textPrimary">
-                            {apt.patient_name}
-                          </h3>
-                          <span className="text-xs text-textSecondary">
-                            • <code className="text-[10px] font-mono text-primary bg-surfaceContainer px-1.5 py-0.5 rounded">{`PT-${apt.patient_id.slice(0, 6)}`}</code>
-                          </span>
-                          {getUrgencyBadge(apt.urgency_level)}
-                          {getStatusBadge(apt.status)}
-                        </div>
-
-                        {apt.symptoms_reported && (
-                          <div className="text-xs text-textSecondary leading-relaxed pt-1">
-                            <strong className="text-textPrimary">Symptoms / Reason:</strong> {apt.symptoms_reported}
-                          </div>
-                        )}
-
-                        {/* Completed Notes View */}
-                        {apt.doctor_notes && !isEditingNotes && (
-                          <div className="mt-2.5 p-3 bg-surfaceContainer/80 rounded-xl text-xs border border-surfaceContainerHigh space-y-0.5">
-                            <span className="font-bold text-secondary uppercase text-[10px] tracking-wider block">
-                              Saved Clinical Notes:
-                            </span>
-                            <p className="text-textPrimary italic">{apt.doctor_notes}</p>
-                          </div>
-                        )}
-                      </div>
+                      <code className="text-[10px] font-mono text-primary bg-surfaceContainer px-1.5 py-0.5 rounded">{`PT-${apt.patient_id.slice(0, 6)}`}</code>
+                      {getUrgencyBadge(apt.urgency_level)}
+                      {getStatusBadge(apt.status)}
                     </div>
 
-                    {/* Right Column: Actions */}
-                    <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between lg:justify-start gap-2.5 pt-3 lg:pt-0 border-t lg:border-t-0 border-surfaceContainerHigh shrink-0">
+                    {/* Date + Time inline */}
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-textSecondary">
+                      <span className="flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
+                        {new Date(apt.appointment_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        <span className="text-textPrimary font-semibold">{formattedTime}</span>
+                      </span>
+                    </div>
+
+                    {/* Triage + Symptoms clinical section */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                      <span className="flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 shrink-0 text-textSecondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>
+                        {(() => {
+                          const RD: Record<string, string> = {
+                            chest_pain_with_breathing_distress: 'Chest pain with breathing distress',
+                            chest_pain_radiating: 'Chest pain radiating',
+                            worsening_chest_pain: 'Worsening chest pain',
+                            severe_bleeding: 'Severe bleeding',
+                            serious_trauma: 'Serious trauma',
+                            head_injury_red_flag: 'Head injury red flag',
+                            anaphylaxis_red_flag: 'Anaphylaxis red flag',
+                            severe_abdominal_pain: 'Severe abdominal pain',
+                            meningitis_red_flag: 'Meningitis red flag',
+                            diabetic_red_flag: 'Diabetic red flag',
+                            severe_asthma: 'Severe asthma',
+                            child_high_fever: 'Child high fever',
+                            pregnancy_emergency: 'Pregnancy emergency',
+                            standalone_emergency_pattern: 'Emergency pattern detected',
+                            high_urgency_marker: 'High urgency marker',
+                            cardiology_route: 'Cardiology route',
+                            specialty_route: 'Specialty route',
+                            insufficient_detail: 'Insufficient detail',
+                          };
+                          const display = apt.urgency_reason ? RD[apt.urgency_reason] || apt.urgency_reason.replace(/_/g, ' ') : null;
+                          return display
+                            ? <span className="text-textSecondary">Triage: <span className="font-medium text-textPrimary">{display}</span></span>
+                            : <span className="text-textSecondary italic">No triage data</span>;
+                        })()}
+                      </span>
+                    </div>
+
+                    {/* Symptoms */}
+                    {apt.symptoms_reported && (
+                      <div className="text-xs text-textSecondary leading-relaxed">
+                        <strong className="text-textPrimary">Symptoms:</strong> {apt.symptoms_reported}
+                      </div>
+                    )}
+
+                    {/* Completed Notes View */}
+                    {apt.doctor_notes && !isEditingNotes && (
+                      <div className="mt-1 p-3 bg-surfaceContainer/80 rounded-xl text-xs border border-surfaceContainerHigh space-y-0.5">
+                        <span className="font-bold text-secondary uppercase text-[10px] tracking-wider block">
+                          Saved Clinical Notes:
+                        </span>
+                        <p className="text-textPrimary italic">{apt.doctor_notes}</p>
+                      </div>
+                    )}
+
+                    {/* Actions row */}
+                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
                       {isPending && !isEditingNotes && (
                         <div className="flex items-center gap-2">
                           <Button

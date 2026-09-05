@@ -56,13 +56,22 @@ class PatientUpdateResponse(BaseModel):
 
 class PatientAppointmentItem(BaseModel):
     appointment_id: UUID
+    doctor_id: Optional[UUID] = None
     doctor_name: str
-    specialization: str
+    doctor_specialization: Optional[str] = None
+    clinic_id: Optional[UUID] = None
     clinic_name: str
+    clinic_address: Optional[str] = None
     appointment_time: str
+    end_time: Optional[str] = None
     status: str
     symptoms: str
     urgency: str
+    urgency_reason: Optional[str] = None
+    doctor_notes: Optional[str] = None
+    feedback_score: Optional[int] = None
+    feedback_text: Optional[str] = None
+    feedback_submitted: bool = False
 
 
 class PatientAppointmentsResponse(BaseModel):

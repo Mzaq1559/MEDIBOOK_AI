@@ -75,12 +75,8 @@ def sync_appointment(appointment_id: UUID, db: Session) -> bool:
         duration = appointment.duration_minutes or 30
         end_dt = start_dt + timedelta(minutes=duration)
 
-        attendees = []
-        if patient_email:
-            attendees.append({'email': patient_email})
-        if doctor_email:
-            attendees.append({'email': doctor_email})
-
+        # Note: attendees removed - service accounts cannot invite attendees
+        # without Domain-Wide Delegation of Authority
         event_payload = {
             'summary': f"Appointment with Dr. {doctor_name} ({clinic_name})",
             'description': (
@@ -97,7 +93,6 @@ def sync_appointment(appointment_id: UUID, db: Session) -> bool:
                 'dateTime': end_dt.isoformat(),
                 'timeZone': clinic_tz,
             },
-            'attendees': attendees,
         }
 
         created_event = service.events().insert(calendarId='primary', body=event_payload).execute()

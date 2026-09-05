@@ -138,4 +138,6 @@ def format_appointment_for_ui(appt: dict[str, Any]) -> dict[str, Any]:
         "status": appt.get("status") or "scheduled",
         "clinic_name": appt.get("clinic_name") or "Prime Care Clinic",
         "symptoms_reported": appt.get("symptoms_reported") or "",
+        "urgency_level": appt.get("urgency_level") or None,
+        "urgency_reason": appt.get("urgency_reason") or None,
     }

@@ -43,3 +43,7 @@ google-calendar-credentials.json
 credentials.json
 backend/env
 
+# Local Docker override
+docker-compose.override.yml
+.dockerignore
+frontend/Dockerfile.dev

@@ -1,9 +1,27 @@
 import uuid
-from datetime import datetime
+import logging
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from dateutil import parser as date_parser
+
+logger = logging.getLogger(__name__)
+
+# Karachi timezone offset (UTC+5)
+KARACHI_OFFSET = timezone(timedelta(hours=5))
+
+
+def _utc_to_karachi_iso(naive_utc_dt: datetime) -> str:
+    """Convert a naive UTC datetime from the DB to Karachi-local ISO string with +05:00 offset.
+    
+    The DB stores naive datetimes in UTC. We add 5 hours to get Karachi wall-clock time,
+    then append +05:00 so the frontend interprets it correctly as Karachi time.
+    """
+    if naive_utc_dt is None:
+        return ""
+    karachi_dt = naive_utc_dt + timedelta(hours=5)
+    return karachi_dt.isoformat() + "+05:00"
 
 from app.database import get_db
 from app.models.appointment import Appointment
@@ -73,99 +91,143 @@ def list_appointments(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     date_from: Optional[str] = Query(None, description="Start date/time (ISO format)"),
     date_to: Optional[str] = Query(None, description="End date/time (ISO format)"),
-    date: Optional[str] = Query(None, description="Filter by date ('today' or YYYY-MM-DD)"),
+    date_filter: Optional[str] = Query(None, alias="date", description="Filter by date ('today' or YYYY-MM-DD)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    query = db.query(Appointment)
+    try:
+        query = db.query(Appointment)
 
-    # Role-based restriction
-    if current_user.user_type == "patient":
-        # Patients can only see their own appointments
-        patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
-        if patient:
-            query = query.filter(Appointment.patient_id == patient.id)
-        else:
-            return AppointmentListResponse(total=0, limit=limit, offset=offset, appointments=[])
-    elif current_user.user_type == "doctor":
-        # Doctors can view their own appointments
-        doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
-        if doc and not doctor_id:
-            query = query.filter(Appointment.doctor_id == doc.id)
-
-    if doctor_id:
-        query = query.filter(Appointment.doctor_id == doctor_id)
-    if patient_id:
-        # Resolve patient_id: caller may supply patients.id OR users.id (the
-        # chatbot and some frontend paths send users.id).  Resolve through the
-        # Patient table so both work; fall back to the raw UUID if no row
-        # matches, preserving the existing zero-result behaviour for bad IDs.
-        resolved_patient = db.query(Patient).filter(
-            (Patient.id == patient_id) | (Patient.user_id == patient_id)
-        ).first()
-        resolved_patient_id = resolved_patient.id if resolved_patient else patient_id
-        query = query.filter(Appointment.patient_id == resolved_patient_id)
-    if clinic_id:
-        query = query.filter(Appointment.clinic_id == clinic_id)
-    if status_filter:
-        query = query.filter(Appointment.status == status_filter)
-
-    if date:
-        try:
-            if date.lower() == "today":
-                target_d = datetime.utcnow().date()
+        # Role-based restriction
+        if current_user.user_type == "patient":
+            # Patients can only see their own appointments
+            patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
+            if patient:
+                query = query.filter(Appointment.patient_id == patient.id)
             else:
-                target_d = date_parser.parse(date).date()
-            day_start = datetime.combine(target_d, datetime.min.time())
-            day_end = datetime.combine(target_d, datetime.max.time())
-            query = query.filter(Appointment.appointment_time >= day_start, Appointment.appointment_time <= day_end)
-        except Exception:
-            pass
+                return AppointmentListResponse(total=0, limit=limit, offset=offset, appointments=[])
+        elif current_user.user_type == "doctor":
+            # Doctors can view their own appointments
+            doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+            if doc and not doctor_id:
+                query = query.filter(Appointment.doctor_id == doc.id)
 
-    if date_from:
-        try:
-            df = date_parser.parse(date_from).replace(tzinfo=None)
-            query = query.filter(Appointment.appointment_time >= df)
-        except Exception:
-            pass
-    if date_to:
-        try:
-            dt = date_parser.parse(date_to).replace(tzinfo=None)
-            query = query.filter(Appointment.appointment_time <= dt)
-        except Exception:
-            pass
+        if doctor_id:
+            query = query.filter(Appointment.doctor_id == doctor_id)
+        if patient_id:
+            # Resolve patient_id: caller may supply patients.id OR users.id (the
+            # chatbot and some frontend paths send users.id).  Resolve through the
+            # Patient table so both work; fall back to the raw UUID if no row
+            # matches, preserving the existing zero-result behaviour for bad IDs.
+            resolved_patient = db.query(Patient).filter(
+                (Patient.id == patient_id) | (Patient.user_id == patient_id)
+            ).first()
+            resolved_patient_id = resolved_patient.id if resolved_patient else patient_id
+            query = query.filter(Appointment.patient_id == resolved_patient_id)
+        if clinic_id:
+            query = query.filter(Appointment.clinic_id == clinic_id)
+        if status_filter:
+            query = query.filter(Appointment.status == status_filter)
 
-    total = query.count()
-    appts = query.order_by(Appointment.appointment_time.asc()).offset(offset).limit(limit).all()
+        if date_filter:
+            try:
+                if date_filter.lower() == "today":
+                    target_d = datetime.utcnow().date()
+                else:
+                    target_d = date_parser.parse(date_filter).date()
+                day_start = datetime.combine(target_d, datetime.min.time())
+                day_end = datetime.combine(target_d, datetime.max.time())
+                query = query.filter(Appointment.appointment_time >= day_start, Appointment.appointment_time <= day_end)
+            except Exception:
+                pass
 
-    items: List[AppointmentListItem] = []
-    for a in appts:
-        items.append(
-            AppointmentListItem(
-                appointment_id=a.id,
-                clinic_id=a.clinic_id,
-                clinic_name=a.clinic.name if a.clinic else "Clinic",
-                doctor_id=a.doctor_id,
-                doctor_name=a.doctor.user.name if (a.doctor and a.doctor.user) else "Doctor",
-                patient_id=a.patient_id,
-                patient_name=a.patient.user.name if (a.patient and a.patient.user) else "Patient",
-                appointment_time=a.appointment_time.isoformat() + "Z",
-                status=a.status,
-                symptoms_reported=a.symptoms_reported,
-                urgency_level=a.urgency_level,
-                appointment_type=a.appointment_type,
-                created_at=a.created_at.isoformat() + "Z"
-            )
+        if date_from:
+            try:
+                df = date_parser.parse(date_from).replace(tzinfo=None)
+                query = query.filter(Appointment.appointment_time >= df)
+            except Exception:
+                pass
+        if date_to:
+            try:
+                dt = date_parser.parse(date_to).replace(tzinfo=None)
+                query = query.filter(Appointment.appointment_time <= dt)
+            except Exception:
+                pass
+
+        total = query.count()
+        # Eagerly load relationships to avoid lazy-loading failures
+        appts = query.options(
+            joinedload(Appointment.clinic),
+            joinedload(Appointment.doctor).joinedload(Doctor.user),
+            joinedload(Appointment.patient).joinedload(Patient.user),
+        ).order_by(Appointment.appointment_time.asc()).offset(offset).limit(limit).all()
+
+        items: List[AppointmentListItem] = []
+        for a in appts:
+            try:
+                clinic = a.clinic
+                doctor = a.doctor
+                doctor_user = doctor.user if doctor else None
+                patient = a.patient
+                patient_user = patient.user if patient else None
+
+                patient_age = None
+                if patient and patient.date_of_birth:
+                    today = date.today()
+                    birth = patient.date_of_birth
+                    patient_age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+
+                end_time = None
+                if a.appointment_time:
+                    duration = a.duration_minutes or 30
+                    end_dt = a.appointment_time + timedelta(minutes=duration)
+                    end_time = _utc_to_karachi_iso(end_dt)
+
+                items.append(AppointmentListItem(
+                    appointment_id=uuid.UUID(str(a.id)),
+                    clinic_id=uuid.UUID(str(a.clinic_id)),
+                    clinic_name=str(clinic.name) if clinic else "Clinic",
+                    clinic_address=clinic.address if clinic else None,
+                    doctor_id=uuid.UUID(str(a.doctor_id)),
+                    doctor_name=str(doctor_user.name) if doctor_user else "Doctor",
+                    doctor_specialization=doctor.specialization if doctor else None,
+                    patient_id=uuid.UUID(str(a.patient_id)),
+                    patient_name=str(patient_user.name) if patient_user else "Patient",
+                    patient_email=patient_user.email if patient_user else None,
+                    patient_phone=patient_user.phone if patient_user else None,
+                    patient_dob=patient.date_of_birth.isoformat() if (patient and patient.date_of_birth) else None,
+                    patient_age=patient_age,
+                    patient_gender=patient.gender if patient else None,
+                    patient_blood_type=patient.blood_type if patient else None,
+                    patient_allergies=patient.allergies if patient else None,
+                    patient_medical_conditions=patient.medical_conditions if patient else None,
+                    appointment_time=_utc_to_karachi_iso(a.appointment_time),
+                    end_time=end_time,
+                    status=str(a.status) if a.status else "scheduled",
+                    symptoms_reported=str(a.symptoms_reported) if a.symptoms_reported else "",
+                    urgency_level=str(a.urgency_level) if a.urgency_level else "normal",
+                    urgency_reason=a.urgency_reason,
+                    appointment_type=str(a.appointment_type) if a.appointment_type else "consultation",
+                    doctor_notes=a.notes,
+                    feedback_score=a.feedback_score,
+                    feedback_text=a.feedback_text,
+                    feedback_submitted=a.feedback_score is not None,
+                    created_at=a.created_at.isoformat() + "Z" if a.created_at else ""
+                ))
+            except Exception as e:
+                logger.warning(f"Serialization failed for {a.id}: {type(e).__name__}: {e}", exc_info=True)
+
+        return AppointmentListResponse(
+            total=total,
+            limit=limit,
+            offset=offset,
+            appointments=items
         )
-
-    return AppointmentListResponse(
-        total=total,
-        limit=limit,
-        offset=offset,
-        appointments=items
-    )
+    except Exception as e:
+        logger.error(f"list_appointments failed for user {current_user.id} ({current_user.user_type}): {e}", exc_info=True)
+        return AppointmentListResponse(total=0, limit=limit, offset=offset, appointments=[])
 
 
 @router.post(
@@ -265,70 +327,118 @@ def search_patient_appointments(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Resolve the patient record — only patients may use this route.
-    patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
-    if not patient:
-        return AppointmentListResponse(total=0, limit=500, offset=0, appointments=[])
+    try:
+        # Resolve the patient record — only patients may use this route.
+        patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
+        if not patient:
+            return AppointmentListResponse(total=0, limit=500, offset=0, appointments=[])
 
-    query = (
-        db.query(Appointment)
-        .filter(Appointment.patient_id == patient.id)
-    )
-
-    if doctor_name:
-        # Case-insensitive partial match against the related User.name column.
         query = (
-            query
-            .join(Appointment.doctor)   # Doctor
-            .join(Doctor.user)          # User
-            .filter(User.name.ilike(f"%{doctor_name}%"))
+            db.query(Appointment)
+            .filter(Appointment.patient_id == patient.id)
         )
 
-    if status_filter:
-        query = query.filter(Appointment.status == status_filter)
-
-    if date_from:
-        try:
-            df = date_parser.parse(date_from).replace(tzinfo=None)
-            query = query.filter(Appointment.appointment_time >= df)
-        except Exception:
-            pass
-
-    if date_to:
-        try:
-            dt = date_parser.parse(date_to).replace(tzinfo=None)
-            # Inclusive upper bound: extend to end of the given day if no time specified.
-            from datetime import time as dt_time
-            if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
-                dt = datetime.combine(dt.date(), dt_time(23, 59, 59))
-            query = query.filter(Appointment.appointment_time <= dt)
-        except Exception:
-            pass
-
-    appts = query.order_by(Appointment.appointment_time.asc()).all()
-    total = len(appts)
-
-    items: List[AppointmentListItem] = []
-    for a in appts:
-        items.append(
-            AppointmentListItem(
-                appointment_id=a.id,
-                clinic_id=a.clinic_id,
-                clinic_name=a.clinic.name if a.clinic else "Clinic",
-                doctor_id=a.doctor_id,
-                doctor_name=a.doctor.user.name if (a.doctor and a.doctor.user) else "Doctor",
-                patient_id=a.patient_id,
-                patient_name=a.patient.user.name if (a.patient and a.patient.user) else "Patient",
-                appointment_time=a.appointment_time.isoformat() + "Z",
-                status=a.status,
-                symptoms_reported=a.symptoms_reported,
-                urgency_level=a.urgency_level,
-                appointment_type=a.appointment_type,
-                created_at=a.created_at.isoformat() + "Z"
+        if doctor_name:
+            # Case-insensitive partial match against the related User.name column.
+            query = (
+                query
+                .join(Appointment.doctor)   # Doctor
+                .join(Doctor.user)          # User
+                .filter(User.name.ilike(f"%{doctor_name}%"))
             )
-        )
 
-    return AppointmentListResponse(total=total, limit=500, offset=0, appointments=items)
+        if status_filter:
+            query = query.filter(Appointment.status == status_filter)
+
+        if date_from:
+            try:
+                df = date_parser.parse(date_from).replace(tzinfo=None)
+                query = query.filter(Appointment.appointment_time >= df)
+            except Exception:
+                pass
+
+        if date_to:
+            try:
+                dt = date_parser.parse(date_to).replace(tzinfo=None)
+                # Inclusive upper bound: extend to end of the given day if no time specified.
+                from datetime import time as dt_time
+                if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+                    dt = datetime.combine(dt.date(), dt_time(23, 59, 59))
+                query = query.filter(Appointment.appointment_time <= dt)
+            except Exception:
+                pass
+
+        appts = query.options(
+            joinedload(Appointment.clinic),
+            joinedload(Appointment.doctor).joinedload(Doctor.user),
+            joinedload(Appointment.patient).joinedload(Patient.user),
+        ).order_by(Appointment.appointment_time.asc()).all()
+        total = len(appts)
+
+        items: List[AppointmentListItem] = []
+        for a in appts:
+            try:
+                # --- Safely resolve relationships ---
+                clinic = a.clinic
+                doctor = a.doctor
+                doctor_user = doctor.user if doctor else None
+                patient = a.patient
+                patient_user = patient.user if patient else None
+
+                # Calculate patient age
+                patient_age = None
+                if patient and patient.date_of_birth:
+                    today = date.today()
+                    birth = patient.date_of_birth
+                    patient_age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+
+                # Calculate end_time (DB stores naive UTC, convert to Karachi)
+                end_time = None
+                if a.appointment_time:
+                    duration = a.duration_minutes or 30
+                    end_dt = a.appointment_time + timedelta(minutes=duration)
+                    end_time = _utc_to_karachi_iso(end_dt)
+
+                items.append(
+                    AppointmentListItem(
+                        appointment_id=uuid.UUID(str(a.id)),
+                        clinic_id=uuid.UUID(str(a.clinic_id)),
+                        clinic_name=str(clinic.name) if clinic else "Clinic",
+                        clinic_address=clinic.address if clinic else None,
+                        doctor_id=uuid.UUID(str(a.doctor_id)),
+                        doctor_name=str(doctor_user.name) if doctor_user else "Doctor",
+                        doctor_specialization=doctor.specialization if doctor else None,
+                        patient_id=uuid.UUID(str(a.patient_id)),
+                        patient_name=str(patient_user.name) if patient_user else "Patient",
+                        patient_email=patient_user.email if patient_user else None,
+                        patient_phone=patient_user.phone if patient_user else None,
+                        patient_dob=patient.date_of_birth.isoformat() if (patient and patient.date_of_birth) else None,
+                        patient_age=patient_age,
+                        patient_gender=patient.gender if patient else None,
+                        patient_blood_type=patient.blood_type if patient else None,
+                        patient_allergies=patient.allergies if patient else None,
+                        patient_medical_conditions=patient.medical_conditions if patient else None,
+                        appointment_time=_utc_to_karachi_iso(a.appointment_time),
+                        end_time=end_time,
+                        status=str(a.status) if a.status else "scheduled",
+                        symptoms_reported=str(a.symptoms_reported) if a.symptoms_reported else "",
+                        urgency_level=str(a.urgency_level) if a.urgency_level else "normal",
+                        urgency_reason=a.urgency_reason,
+                        appointment_type=str(a.appointment_type) if a.appointment_type else "consultation",
+                        doctor_notes=a.notes,
+                        feedback_score=a.feedback_score,
+                        feedback_text=a.feedback_text,
+                        feedback_submitted=a.feedback_score is not None,
+                        created_at=a.created_at.isoformat() + "Z" if a.created_at else ""
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Serialization failed for {a.id}: {type(e).__name__}: {e}", exc_info=True)
+
+        return AppointmentListResponse(total=total, limit=500, offset=0, appointments=items)
+    except Exception as e:
+        logger.error(f"search_patient_appointments failed for user {current_user.id}: {e}", exc_info=True)
+        return AppointmentListResponse(total=0, limit=500, offset=0, appointments=[])
 
 
 @router.get(
@@ -343,44 +453,54 @@ def get_appointment_details(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not appt:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Appointment not found", "error_code": "NOT_FOUND"}
-        )
-
-    # Permission check for patients
-    if current_user.user_type == "patient":
-        patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
-        if not patient or appt.patient_id != patient.id:
+    try:
+        appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        if not appt:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={"message": "Access forbidden. Cannot view this appointment.", "error_code": "FORBIDDEN"}
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "Appointment not found", "error_code": "NOT_FOUND"}
             )
 
-    return AppointmentDetailResponse(
-        appointment_id=appt.id,
-        clinic_id=appt.clinic_id,
-        clinic_name=appt.clinic.name if appt.clinic else "Clinic",
-        clinic_address=appt.clinic.address if appt.clinic else "Address",
-        doctor_id=appt.doctor_id,
-        doctor_name=appt.doctor.user.name if (appt.doctor and appt.doctor.user) else "Doctor",
-        doctor_specialization=appt.doctor.specialization if appt.doctor else "General",
-        patient_id=appt.patient_id,
-        patient_name=appt.patient.user.name if (appt.patient and appt.patient.user) else "Patient",
-        appointment_time=appt.appointment_time.isoformat() + "Z",
-        duration_minutes=appt.duration_minutes or 30,
-        status=appt.status,
-        symptoms_reported=appt.symptoms_reported,
-        urgency_level=appt.urgency_level,
-        appointment_type=appt.appointment_type,
-        notes=appt.notes,
-        feedback_score=appt.feedback_score,
-        feedback_text=appt.feedback_text,
-        google_calendar_event_id=appt.google_calendar_event_id,
-        created_at=appt.created_at.isoformat() + "Z"
-    )
+        # Permission check for patients
+        if current_user.user_type == "patient":
+            patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
+            if not patient or appt.patient_id != patient.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"message": "Access forbidden. Cannot view this appointment.", "error_code": "FORBIDDEN"}
+                )
+
+        return AppointmentDetailResponse(
+            appointment_id=appt.id,
+            clinic_id=appt.clinic_id,
+            clinic_name=appt.clinic.name if appt.clinic else "Clinic",
+            clinic_address=appt.clinic.address if appt.clinic else "Address",
+            doctor_id=appt.doctor_id,
+            doctor_name=appt.doctor.user.name if (appt.doctor and appt.doctor.user) else "Doctor",
+            doctor_specialization=appt.doctor.specialization if appt.doctor else "General",
+            patient_id=appt.patient_id,
+            patient_name=appt.patient.user.name if (appt.patient and appt.patient.user) else "Patient",
+            appointment_time=_utc_to_karachi_iso(appt.appointment_time),
+            duration_minutes=appt.duration_minutes or 30,
+            status=appt.status,
+            symptoms_reported=appt.symptoms_reported,
+            urgency_level=appt.urgency_level,
+            urgency_reason=appt.urgency_reason,
+            appointment_type=appt.appointment_type,
+            notes=appt.notes,
+            feedback_score=appt.feedback_score,
+            feedback_text=appt.feedback_text,
+            google_calendar_event_id=appt.google_calendar_event_id,
+            created_at=appt.created_at.isoformat() + "Z" if appt.created_at else ""
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"get_appointment_details failed for {appointment_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to load appointment details: {str(e)}", "error_code": "INTERNAL_ERROR"}
+        )
 
 
 @router.put(
@@ -449,6 +569,12 @@ def complete_appointment(
     current_user: User = Depends(require_roles("doctor", "admin")),
     db: Session = Depends(get_db)
 ):
+    # Enforce verification for doctor role
+    if current_user.user_type == "doctor" and not current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Your doctor account is awaiting clinical verification.", "error_code": "DOCTOR_UNVERIFIED"}
+        )
     appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appt:
         raise HTTPException(
@@ -497,6 +623,12 @@ def mark_no_show(
     current_user: User = Depends(require_roles("doctor", "receptionist", "admin")),
     db: Session = Depends(get_db)
 ):
+    # Enforce verification for doctor role
+    if current_user.user_type == "doctor" and not current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Your doctor account is awaiting clinical verification.", "error_code": "DOCTOR_UNVERIFIED"}
+        )
     appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appt:
         raise HTTPException(

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from typing import Optional, List, Dict
 from collections import Counter
 from sqlalchemy.orm import Session
@@ -140,8 +140,9 @@ def get_daily_summary(
         "critical": sum(1 for a in appts if a.urgency_level == "critical"),
     }
 
-    earliest = appts[0].appointment_time.isoformat() + "Z" if appts else None
-    latest = appts[-1].appointment_time.isoformat() + "Z" if appts else None
+    # DB stores naive UTC; convert to Karachi for response
+    earliest = (appts[0].appointment_time + timedelta(hours=5)).isoformat() + "+05:00" if appts else None
+    latest = (appts[-1].appointment_time + timedelta(hours=5)).isoformat() + "+05:00" if appts else None
 
     # Distinct patients
     patient_ids = {a.patient_id for a in appts}

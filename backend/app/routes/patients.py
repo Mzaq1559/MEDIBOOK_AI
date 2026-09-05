@@ -1,12 +1,27 @@
 import uuid
-from datetime import datetime, date
+import logging
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+
+logger = logging.getLogger(__name__)
+
+# Karachi timezone offset (UTC+5)
+KARACHI_OFFSET = timezone(timedelta(hours=5))
+
+
+def _utc_to_karachi_iso(naive_utc_dt: datetime) -> str:
+    """Convert a naive UTC datetime from the DB to Karachi-local ISO string with +05:00 offset."""
+    if naive_utc_dt is None:
+        return ""
+    karachi_dt = naive_utc_dt + timedelta(hours=5)
+    return karachi_dt.isoformat() + "+05:00"
 
 from app.database import get_db
 from app.models.patient import Patient
 from app.models.appointment import Appointment
+from app.models.doctor import Doctor
 from app.models.user import User
 from app.core.auth import get_current_user
 from app.core.audit import log_audit_event
@@ -155,42 +170,76 @@ def get_patient_appointments(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    patient = db.query(Patient).filter((Patient.id == patient_id) | (Patient.user_id == patient_id)).first()
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Patient not found", "error_code": "NOT_FOUND"}
-        )
-
-    if current_user.user_type == "patient" and patient.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"message": "Access forbidden. Cannot view another patient's appointments.", "error_code": "FORBIDDEN"}
-        )
-
-    query = db.query(Appointment).filter(Appointment.patient_id == patient.id)
-    if status_filter:
-        query = query.filter(Appointment.status == status_filter)
-
-    total = query.count()
-    appts = query.order_by(Appointment.appointment_time.desc()).offset(offset).limit(limit).all()
-
-    items: List[PatientAppointmentItem] = []
-    for a in appts:
-        items.append(
-            PatientAppointmentItem(
-                appointment_id=a.id,
-                doctor_name=a.doctor.user.name if (a.doctor and a.doctor.user) else "Doctor",
-                specialization=a.doctor.specialization if a.doctor else "General",
-                clinic_name=a.clinic.name if a.clinic else "Clinic",
-                appointment_time=a.appointment_time.isoformat() + "Z",
-                status=a.status,
-                symptoms=a.symptoms_reported,
-                urgency=a.urgency_level
+    try:
+        patient = db.query(Patient).filter((Patient.id == patient_id) | (Patient.user_id == patient_id)).first()
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "Patient not found", "error_code": "NOT_FOUND"}
             )
-        )
 
-    return PatientAppointmentsResponse(
-        total=total,
-        appointments=items
-    )
+        if current_user.user_type == "patient" and patient.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "Access forbidden. Cannot view another patient's appointments.", "error_code": "FORBIDDEN"}
+            )
+
+        query = db.query(Appointment).filter(Appointment.patient_id == patient.id)
+        if status_filter:
+            query = query.filter(Appointment.status == status_filter)
+
+        total = query.count()
+        appts = query.options(
+            joinedload(Appointment.clinic),
+            joinedload(Appointment.doctor).joinedload(Doctor.user),
+        ).order_by(Appointment.appointment_time.desc()).offset(offset).limit(limit).all()
+
+        items: List[PatientAppointmentItem] = []
+        for a in appts:
+            try:
+                # --- Safely resolve relationships ---
+                doctor = a.doctor
+                doctor_user = doctor.user if doctor else None
+                clinic = a.clinic
+
+                # Calculate end_time (DB stores naive UTC, convert to Karachi)
+                end_time = None
+                if a.appointment_time:
+                    duration = a.duration_minutes or 30
+                    end_dt = a.appointment_time + timedelta(minutes=duration)
+                    end_time = _utc_to_karachi_iso(end_dt)
+
+                items.append(
+                    PatientAppointmentItem(
+                        appointment_id=uuid.UUID(str(a.id)),
+                        doctor_id=uuid.UUID(str(a.doctor_id)),
+                        doctor_name=doctor_user.name if doctor_user else "Doctor",
+                        doctor_specialization=doctor.specialization if doctor else None,
+                        clinic_id=uuid.UUID(str(a.clinic_id)),
+                        clinic_name=clinic.name if clinic else "Clinic",
+                        clinic_address=clinic.address if clinic else None,
+                        appointment_time=_utc_to_karachi_iso(a.appointment_time),
+                        end_time=end_time,
+                        status=a.status or "scheduled",
+                        symptoms=a.symptoms_reported or "",
+                        urgency=a.urgency_level or "normal",
+                        urgency_reason=a.urgency_reason,
+                        doctor_notes=a.notes,
+                        feedback_score=a.feedback_score,
+                        feedback_text=a.feedback_text,
+                        feedback_submitted=a.feedback_score is not None,
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Skipping appointment {a.id} due to serialization error: {e}", exc_info=True)
+                continue
+
+        return PatientAppointmentsResponse(
+            total=total,
+            appointments=items
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"get_patient_appointments failed for patient {patient_id}: {e}", exc_info=True)
+        return PatientAppointmentsResponse(total=0, appointments=[])

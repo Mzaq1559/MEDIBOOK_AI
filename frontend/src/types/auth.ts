@@ -11,6 +11,8 @@ export interface AuthUser {
   patientId?: string;
   /** doctors.id — the FK stored in appointments.doctor_id (differs from users.id) */
   doctorId?: string;
+  /** Whether the user's account has been verified (false for pending doctor applications) */
+  isVerified?: boolean;
 }
 
 export interface AuthTokens {
@@ -29,6 +31,8 @@ export interface LoginResponse {
   /** patients.id returned by /auth/login for patient users */
   patient_id?: string | null;
   patientId?: string | null;
+  doctor_id?: string | null;
+  is_verified?: boolean | null;
 }
 
 export interface RegisterResponse extends LoginResponse {
@@ -42,6 +46,7 @@ export interface UserMeResponse {
   user_type: UserType;
   avatar_url?: string | null;
   is_active: boolean;
+  is_verified?: boolean | null;
   created_at: string;
   patient_id?: string | null;
   doctor_id?: string | null;

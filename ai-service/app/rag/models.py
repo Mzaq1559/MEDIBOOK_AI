@@ -123,6 +123,7 @@ class TriageResult(BaseModel):
     specialty: Optional[str] = None
     backend_specialization: Optional[str] = None
     urgency_level: str = "normal"
+    urgency_reason: Optional[str] = None
     confidence: ConfidenceLevel = "medium"
     sources: list[SourceReference] = Field(default_factory=list)
     rag_used: bool = False
