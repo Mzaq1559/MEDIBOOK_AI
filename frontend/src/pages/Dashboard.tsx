@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, Button, Badge } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { getPatientAppointments, cancelAppointment } from '../services/appointments';
+import { getMyPatientProfile, type PatientProfile } from '../services/patient';
 
 interface BackendAppointment {
   appointment_id: string;
@@ -28,6 +29,7 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
+  const [profile, setProfile] = useState<PatientProfile | null>(null);
 
   const fetchAppointments = async () => {
     if (!currentUser?.id) return;
@@ -44,8 +46,18 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const fetchProfile = async () => {
+    try {
+      const data = await getMyPatientProfile();
+      setProfile(data);
+    } catch {
+      // Non-critical; profile banner just won't show
+    }
+  };
+
   useEffect(() => {
     fetchAppointments();
+    fetchProfile();
   }, [currentUser?.id]);
 
   const patient = {
@@ -116,32 +128,19 @@ export const Dashboard: React.FC = () => {
       )}
 
       {/* 1. Welcome Header */}
-      <section className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2">
-        <div>
-          <div className="inline-flex items-center gap-2 mb-2">
-            <Badge status="success" size="sm" withDot>
-              Patient Portal
-            </Badge>
-            <span className="text-xs text-textSecondary font-mono">ID: {patient.id}</span>
-          </div>
-          <h1 className="font-heading font-extrabold text-3xl sm:text-4xl text-textPrimary tracking-tight">
-            Welcome back, {patient.name}
-          </h1>
-          <p className="text-base text-textSecondary mt-1 leading-relaxed">
-            Here's what's happening with your health and upcoming care schedule.
-          </p>
+      <section className="pb-2">
+        <div className="inline-flex items-center gap-2 mb-2">
+          <Badge status="success" size="sm" withDot>
+            Patient Portal
+          </Badge>
+          <span className="text-xs text-textSecondary font-mono">ID: {patient.id}</span>
         </div>
-
-        {/* Patient Profile Card */}
-        <div className="flex items-center gap-3 bg-white p-3.5 px-5 rounded-2xl border border-surfaceContainerHigh shadow-soft-sm shrink-0">
-          <div className="w-10 h-10 rounded-xl bg-surfaceContainer flex items-center justify-center text-primary font-bold">
-            {patient.initials}
-          </div>
-          <div className="text-xs space-y-0.5">
-            <p className="font-bold text-textPrimary">{patient.name}</p>
-            <p className="text-textSecondary">Active MediBook Account</p>
-          </div>
-        </div>
+        <h1 className="font-heading font-extrabold text-3xl sm:text-4xl text-textPrimary tracking-tight">
+          Welcome back, {patient.name}
+        </h1>
+        <p className="text-base text-textSecondary mt-1 leading-relaxed">
+          Here's what's happening with your health and upcoming care schedule.
+        </p>
       </section>
 
       {/* Error Alert */}
@@ -162,7 +161,37 @@ export const Dashboard: React.FC = () => {
         </Card>
       ) : (
         <>
-          {/* 2. Upcoming Appointment Card */}
+          {/* 2. Profile Completion Banner */}
+          {profile && !profile.profile_completed && (
+            <section>
+              <Card
+                radius="3xl"
+                shadow="md"
+                className="p-6 bg-gradient-to-r from-amber-50 to-amber-100/50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-200/60 flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-bold text-base text-amber-900">Complete Your Medical Profile</h3>
+                    <p className="text-sm text-amber-700 mt-0.5">
+                      Please provide your medical history and emergency contact information for safer care.
+                    </p>
+                  </div>
+                </div>
+                <Link to="/medical-profile">
+                  <Button variant="secondary" size="md" className="shrink-0">
+                    Complete Now
+                  </Button>
+                </Link>
+              </Card>
+            </section>
+          )}
+
+          {/* 3. Upcoming Appointment Card */}
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
@@ -346,7 +375,7 @@ export const Dashboard: React.FC = () => {
               </Link>
 
               {/* Action Card 2: View History */}
-              <Link to="/appointments" className="group block focus:outline-none">
+              <Link to="/medical-profile" className="group block focus:outline-none">
                 <Card
                   variant="interactive"
                   radius="3xl"
@@ -360,29 +389,29 @@ export const Dashboard: React.FC = () => {
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                            d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z"
                           />
                         </svg>
                       </div>
                       <Badge status="success" size="sm">
-                        {totalAppointments} Consultations
+                        Medical History
                       </Badge>
                     </div>
 
                     <h3 className="font-heading font-bold text-2xl text-textPrimary mb-2 group-hover:text-secondary transition-colors">
-                      View Medical History
+                      Medical Profile
                     </h3>
                     <p className="text-sm text-textSecondary leading-relaxed">
-                      Review your past completed appointments, clinical notes, prescriptions, laboratory test reports, and doctor discharge summaries.
+                      View and manage your allergies, medical conditions, demographics, and emergency contact information.
                     </p>
                   </div>
 
                   <div className="pt-6 flex items-center justify-between">
                     <span className="text-xs font-semibold text-secondary group-hover:translate-x-1 transition-transform inline-flex items-center gap-1.5">
-                      Explore Records <span>&rarr;</span>
+                      Manage Profile <span>&rarr;</span>
                     </span>
                     <Button size="sm" variant="secondary">
-                      Open History
+                      Open Profile
                     </Button>
                   </div>
                 </Card>

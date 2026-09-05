@@ -14,6 +14,7 @@ import { Appointments } from './pages/Appointments';
 import { DoctorDashboard } from './pages/DoctorDashboard';
 import { Admin } from './pages/Admin';
 import { PendingVerification } from './pages/PendingVerification';
+import { MedicalProfile } from './pages/MedicalProfile';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { getDashboardPath } from './utils/authRouting';
 
@@ -97,6 +98,14 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <Appointments />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/medical-profile"
+              element={
+                <ProtectedRoute allowedRoles={['patient']}>
+                  <MedicalProfile />
                 </ProtectedRoute>
               }
             />

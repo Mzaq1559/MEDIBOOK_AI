@@ -11,16 +11,17 @@ class PatientResponse(BaseModel):
     name: str
     email: str
     phone: Optional[str] = None
-    date_of_birth: str
-    age: int
-    gender: str
+    date_of_birth: Optional[str] = None
+    age: Optional[int] = None
+    gender: Optional[str] = None
     blood_type: Optional[str] = None
     allergies: List[str] = Field(default_factory=list)
     medical_conditions: List[str] = Field(default_factory=list)
-    emergency_contact_name: str
-    emergency_contact_phone: str
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
     emergency_contact_relation: Optional[str] = None
     preferred_notification: str
+    profile_completed: bool = False
     total_appointments: int = 0
     total_no_shows: int = 0
     created_at: str
@@ -38,12 +39,41 @@ class PatientResponse(BaseModel):
 
 
 class PatientUpdate(BaseModel):
+    date_of_birth: Optional[str] = None  # ISO date string YYYY-MM-DD
+    gender: Optional[str] = None  # 'M', 'F', 'Other'
+    blood_type: Optional[str] = None
     allergies: Optional[List[str]] = None
     medical_conditions: Optional[List[str]] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     emergency_contact_relation: Optional[str] = None
     preferred_notification: Optional[str] = None
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("M", "F", "Other", ""):
+            raise ValueError("gender must be 'M', 'F', or 'Other'")
+        return v if v != "" else None
+
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_dob(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v != "":
+            from datetime import date as _date
+            try:
+                parsed = _date.fromisoformat(v)
+                # Sanity check: not in the future, not absurdly old
+                today = _date.today()
+                if parsed > today:
+                    raise ValueError("date_of_birth cannot be in the future")
+                if (today.year - parsed.year) > 150:
+                    raise ValueError("date_of_birth is not plausible")
+            except ValueError as e:
+                if "date_of_birth" in str(e):
+                    raise
+                raise ValueError("date_of_birth must be ISO format YYYY-MM-DD")
+        return v if v != "" else None
 
 
 class PatientUpdateResponse(BaseModel):

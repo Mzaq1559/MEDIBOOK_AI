@@ -28,12 +28,148 @@ from app.core.audit import log_audit_event
 from app.schemas.patient import (
     PatientResponse,
     PatientUpdate,
-    PatientUpdateResponse,
     PatientAppointmentsResponse,
     PatientAppointmentItem
 )
 
 router = APIRouter(prefix="/api/patients", tags=["Patients"])
+
+
+@router.get(
+    "/me",
+    response_model=PatientResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Own Patient Profile",
+    description="Retrieve the authenticated patient's own medical and profile details."
+)
+def get_own_patient_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.user_type != "patient":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Only patient users can access this endpoint", "error_code": "FORBIDDEN"}
+        )
+
+    patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Patient record not found", "error_code": "NOT_FOUND"}
+        )
+
+    return _build_patient_response(patient)
+
+
+@router.put(
+    "/me",
+    response_model=PatientResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update Own Patient Profile",
+    description="Update the authenticated patient's own medical profile including demographics, medical history, and emergency contact."
+)
+def update_own_patient_profile(
+    request: Request,
+    payload: PatientUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.user_type != "patient":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Only patient users can update their own profile", "error_code": "FORBIDDEN"}
+        )
+
+    patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Patient record not found", "error_code": "NOT_FOUND"}
+        )
+
+    _apply_patient_update(patient, payload)
+
+    patient.updated_at = datetime.utcnow()
+
+    log_audit_event(
+        db=db,
+        action="updated_own_profile",
+        table_name="patients",
+        record_id=patient.id,
+        user_id=current_user.id,
+        new_values={"fields_updated": [k for k, v in payload.model_dump(exclude_unset=True).items() if v is not None]},
+        ip_address=request.client.host if request.client else None
+    )
+
+    db.commit()
+    db.refresh(patient)
+
+    return _build_patient_response(patient)
+
+
+def _apply_patient_update(patient: Patient, payload: PatientUpdate) -> None:
+    """Apply non-None fields from a PatientUpdate payload to the patient ORM object."""
+    import json
+
+    if payload.date_of_birth is not None:
+        patient.date_of_birth = date.fromisoformat(payload.date_of_birth)
+    if payload.gender is not None:
+        patient.gender = payload.gender
+    if payload.blood_type is not None:
+        patient.blood_type = payload.blood_type if payload.blood_type else None
+    if payload.allergies is not None:
+        patient.allergies = json.dumps(payload.allergies)
+    if payload.medical_conditions is not None:
+        patient.medical_conditions = json.dumps(payload.medical_conditions)
+    if payload.emergency_contact_name is not None:
+        patient.emergency_contact_name = payload.emergency_contact_name if payload.emergency_contact_name else None
+    if payload.emergency_contact_phone is not None:
+        patient.emergency_contact_phone = payload.emergency_contact_phone if payload.emergency_contact_phone else None
+    if payload.emergency_contact_relation is not None:
+        patient.emergency_contact_relation = payload.emergency_contact_relation if payload.emergency_contact_relation else None
+    if payload.preferred_notification is not None:
+        patient.preferred_notification = payload.preferred_notification
+
+
+def _build_patient_response(patient: Patient) -> PatientResponse:
+    """Build a PatientResponse from a Patient ORM object, handling nullable fields."""
+    # Calculate age
+    age = None
+    if patient.date_of_birth:
+        today = date.today()
+        birth = patient.date_of_birth
+        age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+
+    # Determine if profile is considered complete
+    profile_completed = bool(
+        patient.date_of_birth
+        and patient.gender
+        and patient.emergency_contact_name
+        and patient.emergency_contact_phone
+    )
+
+    return PatientResponse(
+        patient_id=patient.id,
+        user_id=patient.user_id,
+        name=patient.user.name if patient.user else "Patient",
+        email=patient.user.email if patient.user else "",
+        phone=patient.user.phone if patient.user else None,
+        date_of_birth=patient.date_of_birth.strftime("%Y-%m-%d") if patient.date_of_birth else None,
+        age=age,
+        gender=patient.gender,
+        blood_type=patient.blood_type,
+        allergies=patient.allergies,
+        medical_conditions=patient.medical_conditions,
+        emergency_contact_name=patient.emergency_contact_name,
+        emergency_contact_phone=patient.emergency_contact_phone,
+        emergency_contact_relation=patient.emergency_contact_relation,
+        preferred_notification=patient.preferred_notification or "whatsapp",
+        profile_completed=profile_completed,
+        total_appointments=patient.total_appointments or 0,
+        total_no_shows=patient.total_no_shows or 0,
+        created_at=patient.created_at.isoformat() + "Z" if patient.created_at else ""
+    )
 
 
 @router.get(
@@ -62,39 +198,15 @@ def get_patient_profile(
             detail={"message": "Access forbidden. Cannot view other patient profiles.", "error_code": "FORBIDDEN"}
         )
 
-    # Calculate age
-    today = date.today()
-    birth = patient.date_of_birth or date(1990, 1, 1)
-    age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
-
-    return PatientResponse(
-        patient_id=patient.id,
-        user_id=patient.user_id,
-        name=patient.user.name if patient.user else "Patient",
-        email=patient.user.email if patient.user else "",
-        phone=patient.user.phone if patient.user else None,
-        date_of_birth=birth.strftime("%Y-%m-%d"),
-        age=age,
-        gender=patient.gender or "M",
-        blood_type=patient.blood_type,
-        allergies=patient.allergies,
-        medical_conditions=patient.medical_conditions,
-        emergency_contact_name=patient.emergency_contact_name,
-        emergency_contact_phone=patient.emergency_contact_phone,
-        emergency_contact_relation=patient.emergency_contact_relation,
-        preferred_notification=patient.preferred_notification or "whatsapp",
-        total_appointments=patient.total_appointments or 0,
-        total_no_shows=patient.total_no_shows or 0,
-        created_at=patient.created_at.isoformat() + "Z"
-    )
+    return _build_patient_response(patient)
 
 
 @router.put(
     "/{patient_id}",
-    response_model=PatientUpdateResponse,
+    response_model=PatientResponse,
     status_code=status.HTTP_200_OK,
     summary="Update Patient Profile",
-    description="Update allergies, medical conditions, emergency contact, or notification preferences."
+    description="Update patient demographics, medical history, emergency contact, or notification preferences."
 )
 def update_patient_profile(
     request: Request,
@@ -103,7 +215,6 @@ def update_patient_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    import json
     patient = db.query(Patient).filter((Patient.id == patient_id) | (Patient.user_id == patient_id)).first()
     if not patient:
         raise HTTPException(
@@ -118,18 +229,7 @@ def update_patient_profile(
             detail={"message": "Access forbidden. Cannot edit another patient's data.", "error_code": "FORBIDDEN"}
         )
 
-    if payload.allergies is not None:
-        patient.allergies = json.dumps(payload.allergies)
-    if payload.medical_conditions is not None:
-        patient.medical_conditions = json.dumps(payload.medical_conditions)
-    if payload.emergency_contact_name is not None:
-        patient.emergency_contact_name = payload.emergency_contact_name
-    if payload.emergency_contact_phone is not None:
-        patient.emergency_contact_phone = payload.emergency_contact_phone
-    if payload.emergency_contact_relation is not None:
-        patient.emergency_contact_relation = payload.emergency_contact_relation
-    if payload.preferred_notification is not None:
-        patient.preferred_notification = payload.preferred_notification
+    _apply_patient_update(patient, payload)
 
     patient.updated_at = datetime.utcnow()
 
@@ -139,20 +239,14 @@ def update_patient_profile(
         table_name="patients",
         record_id=patient.id,
         user_id=current_user.id,
-        new_values={"preferred_notification": patient.preferred_notification},
+        new_values={"fields_updated": [k for k, v in payload.model_dump(exclude_unset=True).items() if v is not None]},
         ip_address=request.client.host if request.client else None
     )
 
     db.commit()
     db.refresh(patient)
 
-    return PatientUpdateResponse(
-        patient_id=patient.id,
-        allergies=payload.allergies,
-        medical_conditions=payload.medical_conditions,
-        preferred_notification=patient.preferred_notification,
-        message="Patient details updated successfully"
-    )
+    return _build_patient_response(patient)
 
 
 @router.get(

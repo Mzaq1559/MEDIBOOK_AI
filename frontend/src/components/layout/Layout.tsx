@@ -15,10 +15,11 @@ export const Layout: React.FC = () => {
 
   const navbarUser = currentUser
     ? {
-        name: currentUser.name,
+        name: currentUser.name || 'User',
         email: currentUser.email,
         avatarUrl: currentUser.avatarUrl,
         role: getUserTypeLabel(currentUser.userType),
+        isPatient: currentUser.userType === 'patient',
       }
     : null;
 

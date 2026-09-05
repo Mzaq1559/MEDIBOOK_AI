@@ -10,6 +10,14 @@ interface BackendDoctorAppointment {
   appointment_id: string;
   patient_id: string;
   patient_name: string;
+  patient_email?: string;
+  patient_phone?: string;
+  patient_dob?: string;
+  patient_age?: number;
+  patient_gender?: string;
+  patient_blood_type?: string;
+  patient_allergies?: string;
+  patient_medical_conditions?: string;
   doctor_id: string;
   doctor_name: string;
   appointment_time: string;
@@ -30,6 +38,7 @@ export const DoctorDashboard: React.FC = () => {
   const [activeNotesId, setActiveNotesId] = useState<string | null>(null);
   const [notesText, setNotesText] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   // Redirect unverified doctors to pending verification page
   if (currentUser?.userType === 'doctor' && currentUser.isVerified === false) {
@@ -87,6 +96,18 @@ export const DoctorDashboard: React.FC = () => {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const toggleExpand = (id: string) =>
+    setExpandedIds((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
+  const parseJsonList = (v?: string | null): string[] => {
+    if (!v) return [];
+    try { const a = JSON.parse(v); return Array.isArray(a) ? a : [v]; } catch { return [v]; }
   };
 
   // Urgency badge styling
@@ -439,6 +460,16 @@ export const DoctorDashboard: React.FC = () => {
                           <span>✗ Marked No-Show</span>
                         </div>
                       )}
+
+                      <button
+                        onClick={() => toggleExpand(apt.appointment_id)}
+                        className="ml-auto p-1.5 rounded-lg hover:bg-surfaceContainer transition-colors text-textSecondary"
+                        aria-label="Toggle patient details"
+                      >
+                        <svg className={`w-5 h-5 transition-transform duration-200 ${expandedIds.has(apt.appointment_id) ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
 
@@ -473,6 +504,40 @@ export const DoctorDashboard: React.FC = () => {
                         >
                           Save Notes & Finalize
                         </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expanded: Patient medical details */}
+                  {expandedIds.has(apt.appointment_id) && !isEditingNotes && (
+                    <div className="mt-4 pt-4 border-t border-surfaceContainerHigh animate-fadeIn">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5">
+                          <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Patient Information</h4>
+                          {apt.patient_gender && <p className="text-textSecondary"><strong>Gender:</strong> {apt.patient_gender === 'M' ? 'Male' : apt.patient_gender === 'F' ? 'Female' : apt.patient_gender}</p>}
+                          {apt.patient_age != null && <p className="text-textSecondary"><strong>Age:</strong> {apt.patient_age} years</p>}
+                          {apt.patient_dob && apt.patient_dob !== '1990-01-01' && <p className="text-textSecondary"><strong>DOB:</strong> {new Date(apt.patient_dob).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>}
+                          {apt.patient_blood_type && <p className="text-textSecondary"><strong>Blood Type:</strong> <span className="font-semibold text-error">{apt.patient_blood_type}</span></p>}
+                          {apt.patient_email && <p className="text-textSecondary"><strong>Email:</strong> {apt.patient_email}</p>}
+                          {apt.patient_phone && <p className="text-textSecondary"><strong>Phone:</strong> {apt.patient_phone}</p>}
+                        </div>
+                        <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5">
+                          <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Medical History <span className="font-normal normal-case text-textSecondary">(patient-reported)</span></h4>
+                          {(() => {
+                            const allergies = parseJsonList(apt.patient_allergies);
+                            const conditions = parseJsonList(apt.patient_medical_conditions);
+                            return (
+                              <>
+                                {allergies.length > 0 ? (
+                                  <div><strong className="text-textPrimary">Allergies:</strong><div className="flex flex-wrap gap-1 mt-1">{allergies.map((a, i) => <span key={i} className="bg-errorContainer/40 text-error text-[10px] px-2 py-0.5 rounded-pill">{a}</span>)}</div></div>
+                                ) : <p className="text-textSecondary italic">No allergies reported</p>}
+                                {conditions.length > 0 ? (
+                                  <div className="pt-1"><strong className="text-textPrimary">Conditions:</strong><div className="flex flex-wrap gap-1 mt-1">{conditions.map((c, i) => <span key={i} className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-pill">{c}</span>)}</div></div>
+                                ) : <p className="text-textSecondary italic">No conditions reported</p>}
+                              </>
+                            );
+                          })()}
+                        </div>
                       </div>
                     </div>
                   )}

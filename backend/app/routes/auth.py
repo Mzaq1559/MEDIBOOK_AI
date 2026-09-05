@@ -81,10 +81,6 @@ def register_user(request: Request, payload: RegisterRequest, db: Session = Depe
         patient_rec = Patient(
             id=uuid.uuid4(),
             user_id=new_user.id,
-            date_of_birth=datetime(1990, 1, 1).date(),
-            gender="M",
-            emergency_contact_name="Emergency Contact",
-            emergency_contact_phone=payload.phone or "03000000000",
             preferred_notification="whatsapp"
         )
         db.add(patient_rec)

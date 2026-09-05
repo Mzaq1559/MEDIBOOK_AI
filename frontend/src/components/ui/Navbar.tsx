@@ -18,6 +18,7 @@ export interface NavbarProps {
     avatarUrl?: string;
     role?: string;
     specialization?: string;
+    isPatient?: boolean;
   } | null;
   onLoginClick?: () => void;
   onRegisterClick?: () => void;
@@ -130,17 +131,35 @@ export const Navbar: React.FC<NavbarProps> = ({
                     {user.specialization || user.role || 'Patient'}
                   </p>
                 </div>
-                <div className="w-9 h-9 rounded-pill bg-surfaceContainer text-primary flex items-center justify-center font-bold border border-primary/20 shadow-soft-sm">
-                  {user.avatarUrl ? (
-                    <img
-                      src={user.avatarUrl}
-                      alt={user.name}
-                      className="w-full h-full rounded-pill object-cover"
-                    />
-                  ) : (
-                    user.name.charAt(0)
-                  )}
-                </div>
+                {user.isPatient ? (
+                  <Link
+                    to="/medical-profile"
+                    className="w-9 h-9 rounded-pill bg-surfaceContainer text-primary flex items-center justify-center font-bold border border-primary/20 shadow-soft-sm transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-primary/40 hover:shadow-lg cursor-pointer"
+                    title="View Medical Profile"
+                  >
+                    {user.avatarUrl ? (
+                      <img
+                        src={user.avatarUrl}
+                        alt={user.name}
+                        className="w-full h-full rounded-pill object-cover"
+                      />
+                    ) : (
+                      (user.name || '?').charAt(0)
+                    )}
+                  </Link>
+                ) : (
+                  <div className="w-9 h-9 rounded-pill bg-surfaceContainer text-primary flex items-center justify-center font-bold border border-primary/20 shadow-soft-sm">
+                    {user.avatarUrl ? (
+                      <img
+                        src={user.avatarUrl}
+                        alt={user.name}
+                        className="w-full h-full rounded-pill object-cover"
+                      />
+                    ) : (
+                      (user.name || '?').charAt(0)
+                    )}
+                  </div>
+                )}
 
                 {/* Working Logout Button */}
                 {onLogout && (
@@ -205,9 +224,20 @@ export const Navbar: React.FC<NavbarProps> = ({
               <>
                 <div className="p-3 bg-surfaceContainer rounded-2xl flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-pill bg-primary text-white flex items-center justify-center font-bold text-xs">
-                      {user.name.charAt(0)}
-                    </div>
+                    {user.isPatient ? (
+                      <Link
+                        to="/medical-profile"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="w-8 h-8 rounded-pill bg-primary text-white flex items-center justify-center font-bold text-xs transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-primary/40"
+                        title="View Medical Profile"
+                      >
+                        {(user.name || '?').charAt(0)}
+                      </Link>
+                    ) : (
+                      <div className="w-8 h-8 rounded-pill bg-primary text-white flex items-center justify-center font-bold text-xs">
+                        {(user.name || '?').charAt(0)}
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs font-bold text-textPrimary">{user.name}</p>
                       <p className="text-[10px] text-textSecondary">{user.role}</p>
