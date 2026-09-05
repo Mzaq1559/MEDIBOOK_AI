@@ -10,6 +10,7 @@ class AppointmentCreate(BaseModel):
     appointment_time: str  # ISO 8601 string
     symptoms_reported: str = Field(..., min_length=3, max_length=1000)
     urgency_level: str = Field(..., description="low, normal, high, critical")
+    urgency_reason: Optional[str] = Field(None, description="Machine-readable triage reason code")
     appointment_type: Optional[str] = "in_person"
 
     @field_validator("urgency_level")
@@ -41,6 +42,7 @@ class AppointmentCreateResponse(BaseModel):
     status: str
     symptoms_reported: str
     urgency_level: str
+    urgency_reason: Optional[str] = None
     confirmation_message: str
     reminder_time_1: str
     reminder_time_2: str
@@ -51,15 +53,31 @@ class AppointmentListItem(BaseModel):
     appointment_id: UUID
     clinic_id: UUID
     clinic_name: str
+    clinic_address: Optional[str] = None
     doctor_id: UUID
     doctor_name: str
+    doctor_specialization: Optional[str] = None
     patient_id: UUID
     patient_name: str
+    patient_email: Optional[str] = None
+    patient_phone: Optional[str] = None
+    patient_dob: Optional[str] = None
+    patient_age: Optional[int] = None
+    patient_gender: Optional[str] = None
+    patient_blood_type: Optional[str] = None
+    patient_allergies: Optional[str] = None
+    patient_medical_conditions: Optional[str] = None
     appointment_time: str
+    end_time: Optional[str] = None
     status: str
     symptoms_reported: str
     urgency_level: str
+    urgency_reason: Optional[str] = None
     appointment_type: str
+    doctor_notes: Optional[str] = None
+    feedback_score: Optional[int] = None
+    feedback_text: Optional[str] = None
+    feedback_submitted: bool = False
     created_at: str
 
 
@@ -85,6 +103,7 @@ class AppointmentDetailResponse(BaseModel):
     status: str
     symptoms_reported: str
     urgency_level: str
+    urgency_reason: Optional[str] = None
     appointment_type: str
     notes: Optional[str] = None
     feedback_score: Optional[int] = None

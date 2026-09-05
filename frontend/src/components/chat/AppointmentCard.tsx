@@ -8,6 +8,35 @@ interface AppointmentCardProps {
   disabled?: boolean;
 }
 
+/** Map urgency_level to Badge status — display only, never computed. */
+function urgencyBadgeStatus(urgency?: string | null): 'error' | 'pending' | 'primary' | 'neutral' {
+  switch ((urgency || '').toLowerCase()) {
+    case 'critical':
+      return 'error';
+    case 'high':
+      return 'pending';
+    case 'normal':
+      return 'primary';
+    default:
+      return 'neutral';
+  }
+}
+
+function urgencyLabel(urgency?: string | null): string {
+  switch ((urgency || '').toLowerCase()) {
+    case 'critical':
+      return 'Critical';
+    case 'high':
+      return 'High';
+    case 'normal':
+      return 'Normal';
+    case 'low':
+      return 'Low';
+    default:
+      return 'Not assessed';
+  }
+}
+
 export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, onSelect, disabled }) => {
   // Format datetime
   let timeStr = appointment.appointment_time;
@@ -39,9 +68,16 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
         <h4 className="font-bold text-sm text-textPrimary">
           {appointment.doctor_name}
         </h4>
-        <Badge status={appointment.status === 'scheduled' ? 'success' : 'neutral'} size="sm">
-          {appointment.status}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          {appointment.urgency_level && (
+            <Badge status={urgencyBadgeStatus(appointment.urgency_level)} size="sm" withDot>
+              {urgencyLabel(appointment.urgency_level)}
+            </Badge>
+          )}
+          <Badge status={appointment.status === 'scheduled' ? 'success' : 'neutral'} size="sm">
+            {appointment.status}
+          </Badge>
+        </div>
       </div>
       
       {appointment.doctor_specialization && (

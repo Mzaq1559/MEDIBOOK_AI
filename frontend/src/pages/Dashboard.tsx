@@ -16,6 +16,7 @@ interface BackendAppointment {
   end_time: string;
   status: string;
   urgency_level?: string;
+  urgency_reason?: string | null;
   symptoms_reported?: string;
   doctor_notes?: string;
 }
@@ -200,6 +201,11 @@ export const Dashboard: React.FC = () => {
                           <Badge status="pending" size="sm">
                             {upcomingAppointment.urgency_level} urgency
                           </Badge>
+                        )}
+                        {upcomingAppointment.urgency_reason && (
+                          <span className="text-[10px] text-textSecondary italic" title={upcomingAppointment.urgency_reason}>
+                            {upcomingAppointment.urgency_reason.replace(/_/g, ' ')}
+                          </span>
                         )}
                       </div>
 

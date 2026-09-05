@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, timezone
 from typing import Optional, Tuple
 import pytz
 from dateutil import parser as date_parser
@@ -260,6 +260,7 @@ def create_appointment(
         appointment_type=payload.appointment_type or "in_person",
         symptoms_reported=payload.symptoms_reported,
         urgency_level=payload.urgency_level.lower(),
+        urgency_reason=payload.urgency_reason,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -290,8 +291,10 @@ def create_appointment(
     db.refresh(appt)
 
     doc_name = doctor.user.name if doctor.user else "Doctor"
-    reminder_1 = (appt_dt - timedelta(hours=24)).isoformat() + "Z"
-    reminder_2 = (appt_dt - timedelta(hours=1)).isoformat() + "Z"
+    # DB stores naive UTC; convert to Karachi for response
+    appt_karachi = appt_dt + timedelta(hours=5)
+    reminder_1 = (appt_karachi - timedelta(hours=24)).isoformat() + "+05:00"
+    reminder_2 = (appt_karachi - timedelta(hours=1)).isoformat() + "+05:00"
 
     return AppointmentCreateResponse(
         appointment_id=appt.id,
@@ -299,10 +302,11 @@ def create_appointment(
         doctor_id=doctor.id,
         doctor_name=doc_name,
         patient_id=patient.id,
-        appointment_time=appt_dt.isoformat() + "Z",
+        appointment_time=appt_karachi.isoformat() + "+05:00",
         status=appt.status,
         symptoms_reported=appt.symptoms_reported,
         urgency_level=appt.urgency_level,
+        urgency_reason=appt.urgency_reason,
         confirmation_message=f"Your appointment with {doc_name} is confirmed for {appt_dt.strftime('%A, %B %d at %I:%M %p')}",
         reminder_time_1=reminder_1,
         reminder_time_2=reminder_2,
@@ -365,12 +369,14 @@ def reschedule_appointment(
     db.commit()
     db.refresh(appt)
 
-    reminder_1 = (new_dt - timedelta(hours=24)).isoformat() + "Z"
-    reminder_2 = (new_dt - timedelta(hours=1)).isoformat() + "Z"
+    # DB stores naive UTC; convert to Karachi for response
+    new_karachi = new_dt + timedelta(hours=5)
+    reminder_1 = (new_karachi - timedelta(hours=24)).isoformat() + "+05:00"
+    reminder_2 = (new_karachi - timedelta(hours=1)).isoformat() + "+05:00"
 
     return AppointmentRescheduleResponse(
         appointment_id=appt.id,
-        appointment_time=new_dt.isoformat() + "Z",
+        appointment_time=new_karachi.isoformat() + "+05:00",
         status=appt.status,
         message="Appointment rescheduled successfully",
         new_reminder_time_1=reminder_1,

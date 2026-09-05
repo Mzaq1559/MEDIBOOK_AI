@@ -60,6 +60,7 @@ def register_user(request: Request, payload: RegisterRequest, db: Session = Depe
 
     # 4. Hash password and create user
     hashed_pwd = get_password_hash(payload.password)
+    is_doctor = payload.user_type == "doctor"
     new_user = User(
         id=uuid.uuid4(),
         email=payload.email,
@@ -68,6 +69,7 @@ def register_user(request: Request, payload: RegisterRequest, db: Session = Depe
         password_hash=hashed_pwd,
         user_type=payload.user_type,
         is_active=True,
+        is_verified=not is_doctor,  # Self-registered doctors start unverified
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -86,6 +88,20 @@ def register_user(request: Request, payload: RegisterRequest, db: Session = Depe
             preferred_notification="whatsapp"
         )
         db.add(patient_rec)
+
+    # If registering as doctor, create a pending Doctor profile (unverified, no clinic/specialization yet)
+    doctor_rec = None
+    if is_doctor:
+        doctor_rec = Doctor(
+            id=uuid.uuid4(),
+            user_id=new_user.id,
+            clinic_id=None,
+            specialization=None,
+            is_available=False,  # Not available until verified
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(doctor_rec)
 
     # Generate JWT tokens
     access_token = create_access_token(new_user.id, new_user.email, new_user.user_type)
@@ -108,16 +124,19 @@ def register_user(request: Request, payload: RegisterRequest, db: Session = Depe
     db.commit()
     db.refresh(new_user)
 
-    return RegisterResponse(
-        user_id=new_user.id,
-        email=new_user.email,
-        name=new_user.name,
-        user_type=new_user.user_type,
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_in=3600,
-        message="Registration successful"
-    )
+    response_data = {
+        "user_id": new_user.id,
+        "email": new_user.email,
+        "name": new_user.name,
+        "user_type": new_user.user_type,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_in": 3600,
+        "message": "Registration successful. Awaiting clinical verification." if is_doctor else "Registration successful",
+        "doctor_id": str(doctor_rec.id) if doctor_rec else None,
+        "is_verified": new_user.is_verified,
+    }
+    return response_data
 
 
 @router.post(
@@ -173,17 +192,24 @@ def login_user(request: Request, payload: LoginRequest, db: Session = Depends(ge
     if user.user_type == "patient":
         patient = db.query(Patient).filter(Patient.user_id == user.id).first()
 
+    doctor = None
+    if user.user_type == "doctor":
+        doctor = db.query(Doctor).filter(Doctor.user_id == user.id).first()
+
     pid_str = str(patient.id) if user.user_type == "patient" and patient else None
+    did_str = str(doctor.id) if user.user_type == "doctor" and doctor else None
     return {
         "user_id": str(user.id),
         "patient_id": pid_str,
         "patientId": pid_str,
+        "doctor_id": did_str,
         "email": user.email,
         "name": user.name,
         "user_type": user.user_type,
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "expires_in": 3600
+        "expires_in": 3600,
+        "is_verified": user.is_verified,
     }
 
 
@@ -262,6 +288,7 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
         user_type=current_user.user_type,
         avatar_url=current_user.avatar_url,
         is_active=current_user.is_active,
+        is_verified=current_user.is_verified,
         created_at=current_user.created_at,
         patient_id=patient_id,
         doctor_id=doctor_id,

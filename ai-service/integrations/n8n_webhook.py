@@ -112,6 +112,7 @@ def dispatch_appointment_created(
         "clinic_address": appointment.get("clinic_address") or "Ground Floor, ABC Plaza, Taxila",
         "symptoms_reported": appointment.get("symptoms_reported") or "",
         "urgency_level": appointment.get("urgency_level") or "normal",
+        "urgency_reason": appointment.get("urgency_reason"),
         "reminder_time_1": appointment.get("reminder_time_1"),
         "reminder_time_2": appointment.get("reminder_time_2"),
     }

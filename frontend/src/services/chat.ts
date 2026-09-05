@@ -33,6 +33,8 @@ export interface ParsedAppointment {
   status: string
   clinic_name: string
   symptoms_reported: string
+  urgency_level?: string | null
+  urgency_reason?: string | null
 }
 
 export type ProposalStatus = 'pending' | 'executed' | 'expired' | 'failed'
@@ -63,6 +65,7 @@ export interface TriageSource {
 export interface TriageUiData {
   specialty?: string | null
   urgency?: string
+  urgency_reason?: string | null
   confidence?: string
   rag_used?: boolean
   rag_status?: string

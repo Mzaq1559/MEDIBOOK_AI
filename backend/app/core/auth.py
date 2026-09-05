@@ -166,3 +166,21 @@ def require_roles(*allowed_roles: str) -> Callable:
         return current_user
 
     return role_checker
+
+
+def require_verified_doctor(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency ensuring the current user is a verified doctor."""
+    if current_user.user_type != "doctor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Access forbidden. Doctor role required.", "error_code": "FORBIDDEN"}
+        )
+    if not current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": "Your doctor account is awaiting clinical verification. You will be notified once approved.",
+                "error_code": "DOCTOR_UNVERIFIED"
+            }
+        )
+    return current_user
