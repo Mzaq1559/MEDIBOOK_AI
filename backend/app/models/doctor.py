@@ -10,8 +10,8 @@ class Doctor(Base):
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    clinic_id = Column(Uuid(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
-    specialization = Column(String(100), nullable=False, index=True)
+    clinic_id = Column(Uuid(as_uuid=True), ForeignKey("clinics.id", ondelete="SET NULL"), nullable=True, index=True)
+    specialization = Column(String(100), nullable=True, index=True)
     qualifications = Column(Text, nullable=False, default='["MBBS"]')
     consultation_fee = Column(Numeric(10, 2), nullable=False, default=2000.00)
     bio = Column(Text, nullable=True)

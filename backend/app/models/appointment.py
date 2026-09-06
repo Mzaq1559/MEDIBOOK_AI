@@ -18,6 +18,7 @@ class Appointment(Base):
     appointment_type = Column(String(20), default="in_person", nullable=False)  # 'in_person', 'video', 'phone'
     symptoms_reported = Column(Text, nullable=False)
     urgency_level = Column(String(20), nullable=False)  # 'low', 'normal', 'high', 'critical'
+    urgency_reason = Column(String(100), nullable=True)  # machine-readable triage reason code from symptom_triage
     notes = Column(Text, nullable=True)
     prescription_id = Column(Uuid(as_uuid=True), nullable=True)
     is_walk_in = Column(Boolean, default=False)

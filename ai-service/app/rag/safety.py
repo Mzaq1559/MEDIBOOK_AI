@@ -49,6 +49,7 @@ def emergency_result() -> TriageResult:
         specialty=None,
         backend_specialization=None,
         urgency_level="critical",
+        urgency_reason="standalone_emergency_pattern",
         confidence="high",
         sources=[],
         rag_used=False,
@@ -82,6 +83,7 @@ def deterministic_fallback(text: str) -> TriageResult:
     specialty = result.specialty or "General Physician"
     backend_spec = map_specialty_to_backend(specialty)
     urgency = result.urgency_level
+    reason = result.reason
 
     if result.is_emergency:
         return emergency_result()
@@ -102,6 +104,7 @@ def deterministic_fallback(text: str) -> TriageResult:
         specialty=specialty,
         backend_specialization=backend_spec,
         urgency_level=urgency,
+        urgency_reason=reason,
         confidence="medium",
         sources=[],
         rag_used=False,

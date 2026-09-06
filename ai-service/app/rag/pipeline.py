@@ -96,12 +96,24 @@ class RAGPipeline:
             ]
             backend_spec = map_specialty_to_backend(llm.specialty)
             urgency_level = URGENCY_TO_LEVEL.get(llm.urgency, "normal")
+            # Derive urgency reason from LLM red flags and urgency level
+            if llm.needs_emergency_care:
+                urgency_reason = "standalone_emergency_pattern"
+            elif llm.red_flags:
+                urgency_reason = "high_urgency_marker"
+            elif llm.specialty and llm.specialty.lower() in ("cardiologist", "cardiology"):
+                urgency_reason = "cardiology_route"
+            elif llm.specialty:
+                urgency_reason = "specialty_route"
+            else:
+                urgency_reason = "insufficient_detail"
 
             result = TriageResult(
                 bot_message=build_bot_message(llm, sources),
                 specialty=llm.specialty,
                 backend_specialization=backend_spec,
                 urgency_level=urgency_level,
+                urgency_reason=urgency_reason,
                 confidence=llm.confidence,
                 sources=sources,
                 rag_used=True,

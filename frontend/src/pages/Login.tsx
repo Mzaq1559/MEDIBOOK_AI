@@ -47,6 +47,12 @@ export const Login: React.FC = () => {
     try {
       const user = await login(email.trim(), password);
 
+      // Unverified doctors go to pending verification page
+      if (user.userType === 'doctor' && user.isVerified === false) {
+        navigate('/pending-verification', { replace: true });
+        return;
+      }
+
       const from = (location.state as { from?: { pathname?: string } })?.from?.pathname;
       const targetPath =
         from &&

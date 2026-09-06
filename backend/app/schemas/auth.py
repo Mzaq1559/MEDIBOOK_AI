@@ -41,6 +41,8 @@ class RegisterResponse(BaseModel):
     refresh_token: str
     expires_in: int = 3600
     message: str = "Registration successful"
+    doctor_id: Optional[UUID] = None
+    is_verified: Optional[bool] = None
 
 
 class LoginRequest(BaseModel):
@@ -58,6 +60,8 @@ class LoginResponse(BaseModel):
     expires_in: int = 3600
     patient_id: Optional[str] = None
     patientId: Optional[str] = None
+    doctor_id: Optional[str] = None
+    is_verified: Optional[bool] = None
 
 
 
@@ -85,6 +89,7 @@ class UserMeResponse(BaseModel):
     user_type: str
     avatar_url: Optional[str] = None
     is_active: bool = True
+    is_verified: bool = True
     created_at: datetime
     # Role-specific profile IDs (patients.id / doctors.id) — different from users.id
     patient_id: Optional[UUID] = None

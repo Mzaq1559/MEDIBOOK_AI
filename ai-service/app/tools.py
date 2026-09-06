@@ -672,6 +672,7 @@ def tool_propose_book_appointment(
         "appointment_time": slot["timestamp"],
         "symptoms_reported": symptoms,
         "urgency_level": session.get("urgency_level") or "normal",
+        "urgency_reason": session.get("urgency_reason"),
         "appointment_type": "in_person",
     }
     
@@ -963,11 +964,16 @@ def tool_retrieve_medical_knowledge(
         rag_total_ms, embed_ms, vector_db_ms, gen_ms
     )
     
+    # Store triage urgency and reason in session for subsequent booking
+    session["urgency_level"] = result.urgency_level
+    session["urgency_reason"] = result.urgency_reason
+
     return {
         "ok": True,
         "bot_message": result.bot_message,
         "specialty": result.specialty,
         "urgency_level": result.urgency_level,
+        "urgency_reason": result.urgency_reason,
         "needs_emergency_care": result.needs_emergency_care,
         "confidence": result.confidence,
     }

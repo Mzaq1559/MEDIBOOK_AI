@@ -16,6 +16,7 @@ class User(Base):
     user_type = Column(String(50), nullable=False, index=True)  # 'patient', 'doctor', 'receptionist', 'admin'
     avatar_url = Column(String(500), nullable=True)
     is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=True)  # False for self-registered doctors awaiting admin approval
     last_login = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -10,7 +10,7 @@ from app.models.doctor import Doctor
 from app.models.doctor_schedule import DoctorSchedule
 from app.models.clinic import Clinic
 from app.models.user import User
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_roles, require_verified_doctor
 from app.core.audit import log_audit_event
 from app.middleware.rate_limiter import limiter
 from app.services.availability import compute_doctor_availability
@@ -19,7 +19,9 @@ from app.schemas.doctor import (
     DoctorDetailResponse, AvailabilityResponse,
     DoctorScheduleUpdate, DoctorScheduleResponse,
     DoctorHolidayRequest, DoctorHolidayResponse,
-    DoctorCreate, DoctorUpdate
+    DoctorCreate, DoctorUpdate,
+    DoctorApplicationItem, DoctorApplicationListResponse,
+    DoctorApprovalRequest, DoctorRejectionRequest
 )
 
 router = APIRouter(prefix="/api/doctors", tags=["Doctors"])
@@ -44,6 +46,12 @@ def list_doctors(
     db: Session = Depends(get_db)
 ):
     query = db.query(Doctor)
+
+    # Only show verified doctors with clinic assignments in public listings
+    query = query.join(User, Doctor.user_id == User.id).filter(
+        User.is_verified == True,
+        Doctor.clinic_id.isnot(None)
+    )
 
     if clinic_id:
         query = query.filter(Doctor.clinic_id == clinic_id)
@@ -84,6 +92,53 @@ def list_doctors(
         offset=offset,
         doctors=items
     )
+
+
+# ─── Admin: Doctor Application Management ───────────────────────────────────────
+# NOTE: This route MUST be defined before /{doctor_id} to avoid path conflicts.
+
+@router.get(
+    "/applications",
+    response_model=DoctorApplicationListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List Doctor Applications",
+    description="List all doctor self-registration applications (pending, approved, rejected). Admin only."
+)
+def list_doctor_applications(
+    request: Request,
+    status_filter: Optional[str] = Query(None, description="Filter by status: pending, approved, rejected"),
+    current_user: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db)
+):
+    # Join Doctor with User to find self-registered doctor applications
+    query = db.query(Doctor).join(User, Doctor.user_id == User.id)
+
+    if status_filter == "pending":
+        query = query.filter(User.is_verified == False, User.is_active == True)
+    elif status_filter == "approved":
+        query = query.filter(User.is_verified == True, Doctor.clinic_id.isnot(None))
+    elif status_filter == "rejected":
+        query = query.filter(User.is_verified == False, User.is_active == False)
+
+    doctors = query.order_by(Doctor.created_at.desc()).all()
+
+    applications = []
+    for doc in doctors:
+        user = doc.user
+        applications.append(DoctorApplicationItem(
+            id=str(doc.id),
+            user_id=str(user.id),
+            name=user.name,
+            email=user.email,
+            phone=user.phone,
+            specialization=doc.specialization,
+            qualifications=doc.qualifications,
+            bio=doc.bio,
+            is_verified=user.is_verified,
+            created_at=user.created_at.isoformat() if user.created_at else "",
+        ))
+
+    return DoctorApplicationListResponse(applications=applications, total=len(applications))
 
 
 @router.get(
@@ -186,6 +241,12 @@ def update_doctor_schedule(
     current_user: User = Depends(require_roles("doctor", "admin")),
     db: Session = Depends(get_db)
 ):
+    # Enforce verification for doctor role
+    if current_user.user_type == "doctor" and not current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Your doctor account is awaiting clinical verification.", "error_code": "DOCTOR_UNVERIFIED"}
+        )
     doc = db.query(Doctor).filter(Doctor.id == doctor_id).first()
     if not doc:
         raise HTTPException(
@@ -285,6 +346,12 @@ def mark_doctor_holiday(
     current_user: User = Depends(require_roles("doctor", "admin")),
     db: Session = Depends(get_db)
 ):
+    # Enforce verification for doctor role
+    if current_user.user_type == "doctor" and not current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Your doctor account is awaiting clinical verification.", "error_code": "DOCTOR_UNVERIFIED"}
+        )
     doc = db.query(Doctor).filter(Doctor.id == doctor_id).first()
     if not doc:
         raise HTTPException(
@@ -371,6 +438,7 @@ def create_doctor(
             password_hash=get_password_hash("Doctor123!"),
             user_type="doctor",
             is_active=True,
+            is_verified=True,  # Admin-created doctors are immediately verified
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -439,6 +507,12 @@ def update_doctor(
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: Session = Depends(get_db)
 ):
+    # Enforce verification for doctor role
+    if current_user.user_type == "doctor" and not current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Your doctor account is awaiting clinical verification.", "error_code": "DOCTOR_UNVERIFIED"}
+        )
     doc = db.query(Doctor).filter(Doctor.id == doctor_id).first()
     if not doc:
         raise HTTPException(
@@ -500,4 +574,134 @@ def update_doctor(
         clinic_id=doc.clinic_id,
         clinic_name=doc.clinic.name if doc.clinic else "Clinic"
     )
+
+
+@router.post(
+    "/{doctor_id}/approve",
+    status_code=status.HTTP_200_OK,
+    summary="Approve Doctor Application",
+    description="Approve a self-registered doctor application, assigning clinic and specialization. Admin only."
+)
+def approve_doctor_application(
+    request: Request,
+    doctor_id: uuid.UUID,
+    payload: DoctorApprovalRequest,
+    current_user: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db)
+):
+    doc = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Doctor application not found", "error_code": "NOT_FOUND"}
+        )
+
+    user = db.query(User).filter(User.id == doc.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "User account not found", "error_code": "NOT_FOUND"}
+        )
+
+    if user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Doctor is already verified", "error_code": "ALREADY_VERIFIED"}
+        )
+
+    # Update doctor record with assigned clinic and specialization
+    doc.clinic_id = payload.clinic_id
+    doc.specialization = payload.specialization
+    if payload.consultation_fee is not None:
+        doc.consultation_fee = payload.consultation_fee
+    if payload.qualifications:
+        doc.qualifications = payload.qualifications
+    doc.is_available = True
+    doc.updated_at = datetime.utcnow()
+
+    # Update user verification status
+    user.is_verified = True
+    user.updated_at = datetime.utcnow()
+
+    log_audit_event(
+        db=db,
+        action="approved_doctor_application",
+        table_name="doctors",
+        record_id=doc.id,
+        user_id=current_user.id,
+        new_values={"clinic_id": str(payload.clinic_id), "specialization": payload.specialization},
+        ip_address=request.client.host if request.client else None
+    )
+
+    db.commit()
+
+    # Send approval email (non-blocking)
+    try:
+        from app.services.email_service import send_doctor_approval_email
+        send_doctor_approval_email(user.email, user.name, doc)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to send approval email to {user.email}: {e}")
+
+    return {"message": f"Doctor application for {user.name} has been approved.", "doctor_id": str(doc.id)}
+
+
+@router.post(
+    "/{doctor_id}/reject",
+    status_code=status.HTTP_200_OK,
+    summary="Reject Doctor Application",
+    description="Reject a self-registered doctor application. Admin only."
+)
+def reject_doctor_application(
+    request: Request,
+    doctor_id: uuid.UUID,
+    payload: DoctorRejectionRequest = None,
+    current_user: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db)
+):
+    doc = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Doctor application not found", "error_code": "NOT_FOUND"}
+        )
+
+    user = db.query(User).filter(User.id == doc.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "User account not found", "error_code": "NOT_FOUND"}
+        )
+
+    if user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Cannot reject an already verified doctor", "error_code": "ALREADY_VERIFIED"}
+        )
+
+    # Mark user as inactive (rejected) but keep the record
+    user.is_active = False
+    user.updated_at = datetime.utcnow()
+
+    log_audit_event(
+        db=db,
+        action="rejected_doctor_application",
+        table_name="doctors",
+        record_id=doc.id,
+        user_id=current_user.id,
+        new_values={"reason": payload.reason if payload else None},
+        ip_address=request.client.host if request.client else None
+    )
+
+    db.commit()
+
+    # Send rejection email (non-blocking)
+    try:
+        from app.services.email_service import send_doctor_rejection_email
+        send_doctor_rejection_email(user.email, user.name, payload.reason if payload else None)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to send rejection email to {user.email}: {e}")
+
+    return {"message": f"Doctor application for {user.name} has been rejected."}
 

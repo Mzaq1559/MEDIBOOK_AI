@@ -29,6 +29,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // Unverified doctors are locked out of the entire system except the pending-verification page
+  if (
+    currentUser.userType === 'doctor' &&
+    currentUser.isVerified === false &&
+    location.pathname !== '/pending-verification'
+  ) {
+    return <Navigate to="/pending-verification" replace />;
+  }
+
   if (allowedRoles && !isRoleAllowed(currentUser.userType, allowedRoles)) {
     return <Navigate to={getDashboardPath(currentUser.userType)} replace />;
   }

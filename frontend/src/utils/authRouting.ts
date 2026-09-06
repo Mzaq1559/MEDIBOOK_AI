@@ -63,7 +63,10 @@ export function getNavItemsForUserType(userType: UserType): NavItem[] {
       return [{ label: 'Receptionist Portal', path: '/receptionist-dashboard' }, ...sharedItems];
     case 'patient':
     default:
-      return [{ label: 'Dashboard', path: '/dashboard' }, ...sharedItems];
+      return [
+        { label: 'Dashboard', path: '/dashboard' },
+        ...sharedItems,
+      ];
   }
 }
 

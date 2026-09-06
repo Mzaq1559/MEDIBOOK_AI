@@ -3,26 +3,13 @@ import { Card, Button, Badge, Input } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardMetrics } from '../services/analytics'
 import type { DashboardMetricsResponse } from '../services/analytics'
-import { listDoctors, createDoctor, updateDoctor } from '../services/doctors'
-import type { DoctorListItem } from '../services/doctors'
+import { listDoctors, createDoctor, updateDoctor, listDoctorApplications, approveDoctorApplication, rejectDoctorApplication } from '../services/doctors'
+import type { DoctorListItem, DoctorApplicationItem } from '../services/doctors'
 import { listClinics, createClinic, updateClinic } from '../services/clinics'
 import type { ClinicListItem } from '../services/clinics'
+import { listAppointments } from '../services/appointments'
 
-type AdminTab = 'doctors' | 'applications' | 'clinics';
-
-interface DoctorApplication {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  specialization: string;
-  medicalLicense: string;
-  yearsOfExperience: number;
-  submittedDate: string;
-  status: 'Pending';
-}
-
-const initialApplications: DoctorApplication[] = [];
+type AdminTab = 'doctors' | 'applications' | 'clinics' | 'appointments';
 
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -36,13 +23,26 @@ export const Admin: React.FC = () => {
   const [metrics, setMetrics] = useState<DashboardMetricsResponse | null>(null);
   const [doctors, setDoctors] = useState<DoctorListItem[]>([]);
   const [clinics, setClinics] = useState<ClinicListItem[]>([]);
-  const [applications, setApplications] = useState<DoctorApplication[]>(initialApplications);
+  const [applications, setApplications] = useState<DoctorApplicationItem[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Toast State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Application Approval Modal State
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+  const [approvingApp, setApprovingApp] = useState<DoctorApplicationItem | null>(null);
+  const [approvalForm, setApprovalForm] = useState({
+    name: '',
+    email: '',
+    specialization: '',
+    clinicId: '',
+    fee: 2000,
+    maxPatientsPerDay: 16,
+  });
 
   // Doctor Modal State
   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
@@ -79,15 +79,19 @@ export const Admin: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [mRes, dRes, cRes] = await Promise.allSettled([
+      const [mRes, dRes, cRes, aRes, apptRes] = await Promise.allSettled([
         getDashboardMetrics(),
         listDoctors(),
         listClinics(),
+        listDoctorApplications('pending'),
+        listAppointments({ limit: 200 }),
       ]);
 
       if (mRes.status === 'fulfilled') setMetrics(mRes.value);
       if (dRes.status === 'fulfilled') setDoctors(dRes.value.doctors || []);
       if (cRes.status === 'fulfilled') setClinics(cRes.value.clinics || []);
+      if (aRes.status === 'fulfilled') setApplications(aRes.value.applications || []);
+      if (apptRes.status === 'fulfilled') setAppointments(apptRes.value.appointments || []);
 
       if (dRes.status === 'rejected' && cRes.status === 'rejected') {
         setError('Failed to connect to backend administration services.');
@@ -185,15 +189,53 @@ export const Admin: React.FC = () => {
   };
 
   // --- Doctor Application Actions ---
-  const handleApproveApplication = (app: DoctorApplication) => {
-    setApplications((prev) => prev.filter((a) => a.id !== app.id));
-    showToast(`Doctor ${app.name} approved!`);
+  const handleOpenApproveModal = (app: DoctorApplicationItem) => {
+    setApprovingApp(app);
+    setApprovalForm({
+      name: app.name,
+      email: app.email,
+      specialization: app.specialization || '',
+      clinicId: clinics[0]?.clinic_id || '',
+      fee: 2000,
+      maxPatientsPerDay: 16,
+    });
+    setIsApprovalModalOpen(true);
   };
 
-  const handleRejectApplication = (app: DoctorApplication) => {
-    if (window.confirm(`Are you sure you want to reject the application for ${app.name}?`)) {
-      setApplications((prev) => prev.filter((a) => a.id !== app.id));
-      showToast(`Application for ${app.name} rejected.`);
+  const handleApproveApplication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!approvingApp) return;
+    if (!approvalForm.name.trim() || !approvalForm.email.trim() || !approvalForm.specialization.trim() || !approvalForm.clinicId) {
+      alert('Please fill in all required fields.');
+      return;
+    }
+
+    try {
+      await approveDoctorApplication(approvingApp.id, {
+        clinic_id: approvalForm.clinicId,
+        specialization: approvalForm.specialization.trim(),
+        consultation_fee: Number(approvalForm.fee),
+      });
+      showToast(`Doctor ${approvalForm.name} approved successfully!`);
+      setIsApprovalModalOpen(false);
+      setApprovingApp(null);
+      fetchAdminData();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail?.message || 'Failed to approve application');
+    }
+  };
+
+  const handleRejectApplication = async (app: DoctorApplicationItem) => {
+    if (!window.confirm(`Are you sure you want to reject the application for ${app.name}?`)) {
+      return;
+    }
+
+    try {
+      await rejectDoctorApplication(app.id);
+      showToast(`Application for ${app.name} has been rejected.`);
+      fetchAdminData();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail?.message || 'Failed to reject application');
     }
   };
 
@@ -437,6 +479,18 @@ export const Admin: React.FC = () => {
         >
           Clinics ({clinics.length})
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('appointments')}
+          className={`px-5 py-2.5 rounded-pill text-xs font-semibold whitespace-nowrap transition-all duration-200 focus:outline-none ${
+            activeTab === 'appointments'
+              ? 'bg-primary text-white shadow-soft-sm'
+              : 'bg-white text-textSecondary hover:text-textPrimary hover:bg-surfaceContainer border border-surfaceContainerHigh'
+          }`}
+        >
+          Appointments ({appointments.length})
+        </button>
       </div>
 
       {/* 4. Tab Content */}
@@ -623,12 +677,12 @@ export const Admin: React.FC = () => {
                             Pending Review
                           </span>
                         </div>
-                        <p className="text-xs font-semibold text-secondary">{app.specialization}</p>
+                        <p className="text-xs font-semibold text-secondary">{app.specialization || 'Not specified'}</p>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-1 gap-x-4 pt-1 text-xs text-textSecondary">
                           <p>✉️ {app.email}</p>
-                          <p>📞 {app.phone}</p>
-                          <p>📅 Submitted: {app.submittedDate}</p>
+                          <p>📞 {app.phone || 'N/A'}</p>
+                          <p>📅 Submitted: {new Date(app.created_at).toLocaleDateString()}</p>
                         </div>
                       </div>
                     </div>
@@ -636,10 +690,10 @@ export const Admin: React.FC = () => {
                     <div className="flex items-center gap-2.5 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-surfaceContainerHigh">
                       <button
                         type="button"
-                        onClick={() => handleApproveApplication(app)}
+                        onClick={() => handleOpenApproveModal(app)}
                         className="px-4 py-2 rounded-pill text-xs font-semibold bg-[#006B5F] hover:bg-[#005249] text-white shadow-soft-sm transition-all"
                       >
-                        ✓ Approve Application
+                        ✓ Review & Approve
                       </button>
                       <button
                         type="button"
@@ -757,9 +811,168 @@ export const Admin: React.FC = () => {
         </section>
       )}
 
+      {/* TAB 4: APPOINTMENTS */}
+      {activeTab === 'appointments' && (
+        <section className="space-y-4 animate-fadeIn">
+          <div>
+            <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
+              All Appointments History
+            </h2>
+            <p className="text-xs text-textSecondary">
+              View all appointments across doctors and patients with triage urgency data.
+            </p>
+          </div>
+
+          {loading ? (
+            <Card radius="2xl" shadow="sm" className="p-12 text-center bg-white border border-surfaceContainerHigh">
+              <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="text-xs text-textSecondary font-medium">Loading appointment records...</p>
+            </Card>
+          ) : appointments.length > 0 ? (
+            <div className="space-y-3">
+              {appointments.map((appt: any) => {
+                const urgencyNorm = (appt.urgency_level || '').toLowerCase();
+                const urgencyStatus = ({
+                  critical: 'error' as const,
+                  high: 'pending' as const,
+                  normal: 'primary' as const,
+                  low: 'neutral' as const,
+                } as Record<string, 'error' | 'pending' | 'primary' | 'neutral'>)[urgencyNorm] || 'neutral';
+                const urgencyLabel = ({
+                  critical: 'Critical',
+                  high: 'High',
+                  normal: 'Normal',
+                  low: 'Low',
+                } as Record<string, string>)[urgencyNorm] || 'Not assessed';
+
+                const statusNorm = (appt.status || '').toLowerCase();
+                const statusBadge = statusNorm === 'completed'
+                  ? 'success' as const
+                  : statusNorm === 'cancelled'
+                    ? 'neutral' as const
+                    : statusNorm === 'no_show'
+                      ? 'error' as const
+                      : 'pending' as const;
+
+                // Display-only dictionary: translates backend reason codes to friendly text.
+                // NEVER infers or determines the reason — only displays what the API provides.
+                const REASON_DISPLAY: Record<string, string> = {
+                  chest_pain_with_breathing_distress: 'Chest pain with breathing distress',
+                  chest_pain_radiating: 'Chest pain radiating',
+                  worsening_chest_pain: 'Worsening chest pain',
+                  severe_bleeding: 'Severe bleeding',
+                  serious_trauma: 'Serious trauma',
+                  head_injury_red_flag: 'Head injury red flag',
+                  anaphylaxis_red_flag: 'Anaphylaxis red flag',
+                  severe_abdominal_pain: 'Severe abdominal pain',
+                  meningitis_red_flag: 'Meningitis red flag',
+                  diabetic_red_flag: 'Diabetic red flag',
+                  severe_asthma: 'Severe asthma',
+                  child_high_fever: 'Child high fever',
+                  pregnancy_emergency: 'Pregnancy emergency',
+                  standalone_emergency_pattern: 'Emergency pattern detected',
+                  high_urgency_marker: 'High urgency marker',
+                  cardiology_route: 'Cardiology route',
+                  specialty_route: 'Specialty route',
+                  insufficient_detail: 'Insufficient detail',
+                };
+                const reasonDisplay = appt.urgency_reason
+                  ? REASON_DISPLAY[appt.urgency_reason] || appt.urgency_reason.replace(/_/g, ' ')
+                  : null;
+
+                let timeStr = appt.appointment_time || '';
+                try {
+                  const d = new Date(appt.appointment_time);
+                  if (!isNaN(d.getTime())) {
+                    timeStr = d.toLocaleString(undefined, {
+                      weekday: 'short', month: 'short', day: 'numeric',
+                      hour: 'numeric', minute: '2-digit',
+                    });
+                  }
+                } catch {}
+
+                return (
+                  <Card
+                    key={appt.appointment_id}
+                    radius="2xl"
+                    shadow="sm"
+                    className="p-5 bg-white border border-surfaceContainerHigh hover:border-primaryContainer/30 transition-all"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                      {/* Left: Doctor + Patient + Details */}
+                      <div className="flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-heading font-bold text-sm text-textPrimary">
+                            {appt.doctor_name}
+                          </span>
+                          <span className="text-textSecondary text-xs">&</span>
+                          <span className="font-heading font-bold text-sm text-textPrimary">
+                            {appt.patient_name}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-textSecondary">
+                          <span>🕒 {timeStr}</span>
+                          {appt.doctor_specialization && (
+                            <span className="text-secondary font-medium">{appt.doctor_specialization}</span>
+                          )}
+                          {appt.appointment_type && (
+                            <span className="bg-surfaceContainer px-2 py-0.5 rounded-pill text-[10px] font-semibold uppercase">
+                              {appt.appointment_type.replace('_', ' ')}
+                            </span>
+                          )}
+                        </div>
+
+                        {appt.symptoms_reported && (
+                          <p className="text-xs text-textSecondary leading-relaxed">
+                            <strong className="text-textPrimary">Symptoms:</strong> {appt.symptoms_reported}
+                          </p>
+                        )}
+
+                        {/* Triage reason line */}
+                        <div className="flex items-center gap-2 pt-1">
+                          <Badge status={urgencyStatus as any} size="sm" withDot>
+                            {urgencyLabel}
+                          </Badge>
+                          <Badge status={statusBadge as any} size="sm">
+                            {appt.status}
+                          </Badge>
+                          {reasonDisplay ? (
+                            <span className="text-[10px] text-textSecondary italic" title={appt.urgency_reason}>
+                              Why: {reasonDisplay}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-textSecondary italic">
+                              No triage data
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: Clinic info */}
+                      <div className="text-xs text-textSecondary bg-surfaceContainer/50 rounded-xl p-3 space-y-1 shrink-0 sm:text-right">
+                        <p className="font-semibold text-textPrimary">{appt.clinic_name}</p>
+                        {appt.clinic_address && <p>{appt.clinic_address}</p>}
+                        {appt.patient_phone && <p>📞 {appt.patient_phone}</p>}
+                        {appt.patient_age != null && <p>Age: {appt.patient_age}</p>}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <Card radius="2xl" shadow="sm" className="p-10 text-center bg-white border border-surfaceContainerHigh">
+              <p className="font-heading font-bold text-base text-textPrimary">No appointments found</p>
+              <p className="text-xs text-textSecondary mt-1">No appointment records exist in the system yet.</p>
+            </Card>
+          )}
+        </section>
+      )}
+
       {/* --- ADD / EDIT DOCTOR MODAL --- */}
       {isDoctorModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 py-8 overflow-y-auto animate-fadeIn">
           <div className="w-full max-w-lg">
             <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
               <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
@@ -853,7 +1066,7 @@ export const Admin: React.FC = () => {
 
       {/* --- ADD / EDIT CLINIC MODAL --- */}
       {isClinicModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 py-8 overflow-y-auto animate-fadeIn">
           <div className="w-full max-w-lg">
             <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
               <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
@@ -962,6 +1175,111 @@ export const Admin: React.FC = () => {
                   </Button>
                   <Button type="submit" variant="primary">
                     {editingClinic ? 'Save Changes' : 'Create Clinic'}
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* --- APPROVE DOCTOR APPLICATION MODAL --- */}
+      {isApprovalModalOpen && approvingApp && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 py-8 overflow-y-auto animate-fadeIn">
+          <div className="w-full max-w-lg">
+            <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
+              <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
+                <h3 className="font-heading font-bold text-xl text-textPrimary">
+                  Review Doctor Application
+                </h3>
+                <button
+                  onClick={() => { setIsApprovalModalOpen(false); setApprovingApp(null); }}
+                  className="p-1 rounded-pill text-textSecondary hover:text-textPrimary"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Applicant Info */}
+              <div className="bg-surfaceContainer/50 border border-surfaceContainerHigh rounded-2xl p-4 space-y-1.5">
+                <p className="text-xs font-bold uppercase tracking-wider text-textSecondary mb-1">Applicant Details</p>
+                <p className="text-xs text-textSecondary">📞 {approvingApp.phone || 'Not provided'}</p>
+                <p className="text-xs text-textSecondary">📅 Applied: {new Date(approvingApp.created_at).toLocaleDateString()}</p>
+                {approvingApp.bio && (
+                  <p className="text-xs text-textSecondary mt-1 italic">“{approvingApp.bio}”</p>
+                )}
+              </div>
+
+              <form onSubmit={handleApproveApplication} className="space-y-4">
+                <Input
+                  label="Full Name & Title"
+                  placeholder="e.g. Dr. Jane Sterling, MD"
+                  value={approvalForm.name}
+                  onChange={(e) => setApprovalForm({ ...approvalForm, name: e.target.value })}
+                  required
+                />
+
+                <Input
+                  label="Email Address"
+                  type="email"
+                  placeholder="doctor@clinic.com"
+                  value={approvalForm.email}
+                  onChange={(e) => setApprovalForm({ ...approvalForm, email: e.target.value })}
+                  required
+                />
+
+                <Input
+                  label="Specialization"
+                  placeholder="e.g. Cardiology & Vascular Medicine"
+                  value={approvalForm.specialization}
+                  onChange={(e) => setApprovalForm({ ...approvalForm, specialization: e.target.value })}
+                  required
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input
+                    label="Consultation Fee ($)"
+                    type="number"
+                    min={0}
+                    value={approvalForm.fee}
+                    onChange={(e) => setApprovalForm({ ...approvalForm, fee: Number(e.target.value) })}
+                    required
+                  />
+
+                  <Input
+                    label="Max Patients / Day"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={approvalForm.maxPatientsPerDay}
+                    onChange={(e) => setApprovalForm({ ...approvalForm, maxPatientsPerDay: Number(e.target.value) })}
+                    required
+                  />
+                </div>
+
+                {/* Clinic Facility Dropdown */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-textPrimary">Assigned Clinic Facility</label>
+                  <select
+                    value={approvalForm.clinicId}
+                    onChange={(e) => setApprovalForm({ ...approvalForm, clinicId: e.target.value })}
+                    className="w-full rounded-xl bg-surfaceContainer text-textPrimary text-sm border border-outline/40 h-11 px-4 outline-none focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/15"
+                    required
+                  >
+                    {clinics.map((c) => (
+                      <option key={c.clinic_id} value={c.clinic_id}>
+                        {c.name} ({c.city})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="pt-3 flex items-center justify-end gap-2.5">
+                  <Button type="button" variant="ghost" onClick={() => { setIsApprovalModalOpen(false); setApprovingApp(null); }}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" variant="primary">
+                    ✓ Approve & Verify Doctor
                   </Button>
                 </div>
               </form>

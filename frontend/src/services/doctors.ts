@@ -64,3 +64,47 @@ export async function updateDoctor(
   const { data } = await apiClient.put(`/doctors/${id}`, payload)
   return data
 }
+
+// ─── Doctor Application Management (Admin) ───────────────────────────────────────
+
+export interface DoctorApplicationItem {
+  id: string
+  user_id: string
+  name: string
+  email: string
+  phone?: string
+  specialization?: string
+  qualifications?: string
+  bio?: string
+  is_verified: boolean
+  created_at: string
+}
+
+export interface DoctorApplicationListResponse {
+  applications: DoctorApplicationItem[]
+  total: number
+}
+
+export async function listDoctorApplications(statusFilter?: string) {
+  const params = statusFilter ? { status_filter: statusFilter } : {}
+  const { data } = await apiClient.get<DoctorApplicationListResponse>('/doctors/applications', { params })
+  return data
+}
+
+export async function approveDoctorApplication(
+  doctorId: string,
+  payload: {
+    clinic_id: string
+    specialization: string
+    consultation_fee?: number
+    qualifications?: string
+  }
+) {
+  const { data } = await apiClient.post(`/doctors/${doctorId}/approve`, payload)
+  return data
+}
+
+export async function rejectDoctorApplication(doctorId: string, reason?: string) {
+  const { data } = await apiClient.post(`/doctors/${doctorId}/reject`, { reason })
+  return data
+}

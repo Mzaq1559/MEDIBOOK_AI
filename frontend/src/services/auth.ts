@@ -29,6 +29,7 @@ function mapMeResponse(data: UserMeResponse): AuthUser {
     avatarUrl: data.avatar_url ?? undefined,
     patientId: data.patient_id ?? undefined,
     doctorId: data.doctor_id ?? undefined,
+    isVerified: data.is_verified ?? true,
   };
 }
 
@@ -39,6 +40,8 @@ function mapAuthResponse(data: LoginResponse | RegisterResponse): AuthUser {
     email: data.email,
     userType: data.user_type,
     patientId: (data.patient_id || data.patientId) ?? undefined,
+    doctorId: data.doctor_id ?? undefined,
+    isVerified: data.is_verified ?? true,
   };
 }
 

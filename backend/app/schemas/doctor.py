@@ -157,3 +157,33 @@ class DoctorUpdate(BaseModel):
     bio: Optional[str] = None
     is_available: Optional[bool] = None
 
+
+class DoctorApplicationItem(BaseModel):
+    """Represents a pending/approved/rejected doctor self-registration application."""
+    id: str  # doctor record id
+    user_id: str
+    name: str
+    email: str
+    phone: Optional[str] = None
+    specialization: Optional[str] = None
+    qualifications: Optional[str] = None
+    bio: Optional[str] = None
+    is_verified: bool
+    created_at: str
+
+
+class DoctorApplicationListResponse(BaseModel):
+    applications: List[DoctorApplicationItem]
+    total: int
+
+
+class DoctorApprovalRequest(BaseModel):
+    clinic_id: UUID
+    specialization: str
+    consultation_fee: Optional[float] = 2000.0
+    qualifications: Optional[str] = None
+
+
+class DoctorRejectionRequest(BaseModel):
+    reason: Optional[str] = None
+

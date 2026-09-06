@@ -81,15 +81,21 @@ export const Register: React.FC = () => {
     setIsLoading(true);
 
     try {
+      const userType = mapRegisterRoleToUserType(role);
       const user = await register({
         email: email.trim(),
         phone: phone.trim(),
         name: fullName.trim(),
         password,
-        user_type: mapRegisterRoleToUserType(role),
+        user_type: userType,
       });
 
-      navigate(getDashboardPath(user.userType), { replace: true });
+      // If doctor registered, show pending verification instead of navigating to dashboard
+      if (userType === 'doctor' && user.isVerified === false) {
+        navigate('/pending-verification', { replace: true });
+      } else {
+        navigate(getDashboardPath(user.userType), { replace: true });
+      }
     } catch (error) {
       const { message } = parseApiError(error);
       setSubmitError(message);
@@ -166,8 +172,7 @@ export const Register: React.FC = () => {
 
             {role === 'Doctor' && (
               <p className="text-[11px] text-secondary bg-secondaryContainer/30 p-2.5 rounded-xl mt-2 text-center border border-secondary/20 animate-fadeIn">
-                Doctor accounts are created immediately. Additional credential verification may
-                be required for full portal access.
+                Doctor accounts require clinical verification. After registration, your application will be reviewed by our admin team before you can access the Doctor Portal.
               </p>
             )}
           </div>

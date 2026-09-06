@@ -13,6 +13,8 @@ import { Chat } from './pages/Chat';
 import { Appointments } from './pages/Appointments';
 import { DoctorDashboard } from './pages/DoctorDashboard';
 import { Admin } from './pages/Admin';
+import { PendingVerification } from './pages/PendingVerification';
+import { MedicalProfile } from './pages/MedicalProfile';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { getDashboardPath } from './utils/authRouting';
 
@@ -28,6 +30,10 @@ const RootIndexRoute: React.FC = () => {
   }
 
   if (isAuthenticated && currentUser) {
+    // Unverified doctors should see pending verification page
+    if (currentUser.userType === 'doctor' && currentUser.isVerified === false) {
+      return <Navigate to="/pending-verification" replace />;
+    }
     return <Navigate to={getDashboardPath(currentUser.userType)} replace />;
   }
 
@@ -39,6 +45,16 @@ export function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* Pending verification — rendered outside Layout (no navbar/footer) */}
+          <Route
+            path="/pending-verification"
+            element={
+              <ProtectedRoute allowedRoles={['doctor']}>
+                <PendingVerification />
+              </ProtectedRoute>
+            }
+          />
+
           <Route element={<Layout />}>
             <Route path="/" element={<RootIndexRoute />} />
 
@@ -82,6 +98,14 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <Appointments />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/medical-profile"
+              element={
+                <ProtectedRoute allowedRoles={['patient']}>
+                  <MedicalProfile />
                 </ProtectedRoute>
               }
             />
