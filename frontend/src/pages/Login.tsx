@@ -4,11 +4,13 @@ import { Card, Button, Input, ErrorBanner } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { parseApiError } from '../utils/authErrors';
 import { getDashboardPath, isPathAllowedForUserType } from '../utils/authRouting';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
+  const { t } = useLanguage();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,13 +23,13 @@ export const Login: React.FC = () => {
     const newErrors: { email?: string; password?: string } = {};
 
     if (!email.trim()) {
-      newErrors.email = 'Email address is required';
+      newErrors.email = t('login.emailRequired');
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      newErrors.email = 'Please enter a valid email address';
+      newErrors.email = t('login.emailInvalid');
     }
 
     if (!password) {
-      newErrors.password = 'Password is required';
+      newErrors.password = t('login.passwordRequired');
     }
 
     setErrors(newErrors);
@@ -102,15 +104,15 @@ export const Login: React.FC = () => {
             <h1 className="text-2xl sm:text-3xl font-extrabold text-textPrimary tracking-tight">
               MediBook AI
             </h1>
-            <p className="text-sm text-textSecondary mt-1.5 leading-relaxed">
-              Welcome back! Please enter your details to access your healthcare portal.
+            <p className="text-sm text-textSecondary mt-8 leading-relaxed">
+              {t('login.welcome')}
             </p>
           </div>
 
           {errorMessage && (
             <div className="mb-6 animate-fadeIn">
               <ErrorBanner
-                title="Login Failed"
+                title={t('login.failed')}
                 message={errorMessage}
                 onDismiss={() => setErrorMessage(null)}
               />
@@ -119,7 +121,7 @@ export const Login: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             <Input
-              label="Email Address"
+              label={t('login.emailLabel')}
               type="email"
               placeholder="patient@example.com"
               value={email}
@@ -142,7 +144,7 @@ export const Login: React.FC = () => {
 
             <div className="space-y-1">
               <Input
-                label="Password"
+                label={t('login.passwordLabel')}
                 type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={password}
@@ -200,7 +202,7 @@ export const Login: React.FC = () => {
                   onClick={() => alert('Password reset instructions will be sent to your registered email.')}
                   className="text-xs font-semibold text-primary hover:text-primaryContainer transition-colors"
                 >
-                  Forgot password?
+                  {t('login.forgotPassword')}
                 </button>
               </div>
             </div>
@@ -213,19 +215,19 @@ export const Login: React.FC = () => {
                 className="w-full justify-center"
                 isLoading={isLoading}
               >
-                {isLoading ? 'Signing In...' : 'Login'}
+                {isLoading ? t('login.submitting') : t('login.submit')}
               </Button>
             </div>
           </form>
 
           <div className="mt-8 pt-6 border-t border-surfaceContainerHigh text-center">
             <p className="text-sm text-textSecondary">
-              Don't have an account?{' '}
+              {t('login.noAccount')}{' '}
               <Link
                 to="/register"
                 className="font-semibold text-primary hover:text-primaryContainer transition-colors inline-flex items-center gap-0.5"
               >
-                Register
+                {t('login.registerLink')}
                 <span aria-hidden="true">&rarr;</span>
               </Link>
             </p>

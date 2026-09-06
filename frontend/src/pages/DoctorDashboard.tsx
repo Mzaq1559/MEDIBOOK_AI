@@ -3,6 +3,8 @@ import { Navigate } from 'react-router-dom';
 import { Card, Button, Badge } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { listAppointments, completeAppointment, markNoShow } from '../services/appointments';
+import { useLanguage } from '../i18n/LanguageContext';
+import { translateUrgency, translateStatus, translateReason, translateDate, translateTime } from '../i18n/translations';
 import { getDashboardMetrics } from '../services/analytics';
 
 type UrgencyLevel = 'low' | 'normal' | 'high' | 'critical';
@@ -32,6 +34,7 @@ interface BackendDoctorAppointment {
 
 export const DoctorDashboard: React.FC = () => {
   const { currentUser } = useAuth();
+  const { t, lang } = useLanguage();
   const [schedule, setSchedule] = useState<BackendDoctorAppointment[]>([]);
   const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -124,25 +127,25 @@ export const DoctorDashboard: React.FC = () => {
       case 'critical':
         return (
           <span className="inline-flex items-center gap-1 bg-errorContainer text-error border border-error/30 text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-pill animate-pulse">
-            🚨 Critical
+            🚨 {translateUrgency('critical', lang)}
           </span>
         );
       case 'high':
         return (
           <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-pill">
-            ⚠️ High
+            ⚠️ {translateUrgency('high', lang)}
           </span>
         );
       case 'low':
         return (
           <Badge status="neutral" size="sm">
-            Low
+            {translateUrgency('low', lang)}
           </Badge>
         );
       default:
         return (
           <Badge status="pending" size="sm">
-            Normal
+            {translateUrgency('normal', lang)}
           </Badge>
         );
     }
@@ -153,27 +156,27 @@ export const DoctorDashboard: React.FC = () => {
     if (s === 'completed') {
       return (
         <Badge status="success" size="sm" withDot>
-          Completed
+          {translateStatus('completed', lang)}
         </Badge>
       );
     }
     if (s === 'no_show' || s === 'no-show') {
       return (
         <Badge status="error" size="sm">
-          No-show
+          {translateStatus('no_show', lang)}
         </Badge>
       );
     }
     if (s === 'cancelled') {
       return (
         <Badge status="neutral" size="sm">
-          Cancelled
+          {translateStatus('cancelled', lang)}
         </Badge>
       );
     }
     return (
       <Badge status="pending" size="sm">
-        Scheduled
+        {translateStatus('scheduled', lang)}
       </Badge>
     );
   };
@@ -185,7 +188,7 @@ export const DoctorDashboard: React.FC = () => {
 
   const handleSaveNotesAndFinalize = async (id: string) => {
     if (!notesText.trim()) {
-      alert('Please enter clinical consultation notes before completing the appointment.');
+      alert(t('doctor.completeNotesRequired'));
       return;
     }
 
@@ -193,23 +196,23 @@ export const DoctorDashboard: React.FC = () => {
       await completeAppointment(id, { notes: notesText.trim() });
       setActiveNotesId(null);
       setNotesText('');
-      showToast('Appointment marked as Completed with clinical notes saved.');
+      showToast(t('doctor.completeSuccess'));
       // Refresh both schedule and dashboard metrics
       fetchSchedule();
     } catch (err: any) {
-      alert(err?.response?.data?.detail?.message || 'Failed to complete appointment');
+      alert(err?.response?.data?.detail?.message || t('admin.saveChanges'));
     }
   };
 
   const handleMarkNoShowAction = async (id: string) => {
-    if (window.confirm('Are you sure you want to mark this patient as No-show?')) {
+    if (window.confirm(t('doctor.noShowConfirm'))) {
       try {
         await markNoShow(id);
-        showToast('Patient marked as No-show.');
+        showToast(t('doctor.noShowSuccess'));
         // Refresh both schedule and dashboard metrics
         fetchSchedule();
       } catch (err: any) {
-        alert(err?.response?.data?.detail?.message || 'Failed to mark appointment as no-show');
+        alert(err?.response?.data?.detail?.message || t('doctor.markNoShow'));
       }
     }
   };
@@ -236,7 +239,7 @@ export const DoctorDashboard: React.FC = () => {
             onClick={() => setToastMessage(null)}
             className="text-xs font-semibold text-textSecondary hover:text-textPrimary"
           >
-            Dismiss
+            {t('common.dismiss')}
           </button>
         </div>
       )}
@@ -246,23 +249,23 @@ export const DoctorDashboard: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 mb-2">
             <Badge status="primary" size="sm" withDot>
-              Doctor Clinical Portal
+              {t('doctor.portal')}
             </Badge>
-            <span className="text-xs text-secondary font-semibold">{doctorSpecialty}</span>
+            <span className="text-xs text-secondary font-semibold">{t('doctor.specialist')}</span>
           </div>
           <h1 className="font-heading font-extrabold text-3xl sm:text-4xl text-textPrimary tracking-tight">
-            Upcoming Schedule
+            {t('doctor.upcomingSchedule')}
           </h1>
-          <p className="text-sm sm:text-base text-textSecondary mt-1 flex items-center gap-2">
-            <span>📅 {todayFormatted}</span>
+          <p className="text-sm sm:text-base text-textSecondary mt-3 flex items-center gap-2">
+            <span>📅 {translateDate(new Date().toISOString(), lang, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
             <span>•</span>
-            <span>Attending: <strong>{doctorName}</strong></span>
+            <span>{t('doctor.attending')} <strong>{doctorName}</strong></span>
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Badge status="success" size="md">
-            Clinic Open
+            {t('doctor.clinicOpen')}
           </Badge>
         </div>
       </div>
@@ -271,45 +274,45 @@ export const DoctorDashboard: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>Total Upcoming</span>
+            <span>{t('doctor.totalUpcoming')}</span>
             <span>📋</span>
           </div>
           <div className="mt-3">
             <span className="font-heading font-extrabold text-3xl text-textPrimary">{totalUpcoming}</span>
-            <p className="text-[11px] text-textSecondary mt-0.5">Patients booked</p>
+            <p className="text-[11px] text-textSecondary mt-0.5">{t('doctor.patientsBooked')}</p>
           </div>
         </Card>
 
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>Completed</span>
+            <span>{t('doctor.completed')}</span>
             <span>✅</span>
           </div>
           <div className="mt-3">
             <span className="font-heading font-extrabold text-3xl text-secondary">{completedCount}</span>
-            <p className="text-[11px] text-textSecondary mt-0.5">Visits documented</p>
+            <p className="text-[11px] text-textSecondary mt-0.5">{t('doctor.visitsDocumented')}</p>
           </div>
         </Card>
 
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>Today</span>
+            <span>{t('doctor.today')}</span>
             <span>📌</span>
           </div>
           <div className="mt-3">
             <span className="font-heading font-extrabold text-3xl text-primary">{todayCount}</span>
-            <p className="text-[11px] text-textSecondary mt-0.5">Today's appointments</p>
+            <p className="text-[11px] text-textSecondary mt-0.5">{t('doctor.todaysAppts')}</p>
           </div>
         </Card>
 
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>Utilization %</span>
+            <span>{t('doctor.utilization')}</span>
             <span>📊</span>
           </div>
           <div className="mt-3">
             <span className="font-heading font-extrabold text-3xl text-textPrimary">{utilizationPct}%</span>
-            <p className="text-[11px] text-textSecondary mt-0.5">Shift completion</p>
+            <p className="text-[11px] text-textSecondary mt-0.5">{t('doctor.shiftCompletion')}</p>
           </div>
         </Card>
       </div>
@@ -319,7 +322,7 @@ export const DoctorDashboard: React.FC = () => {
         <div className="p-4 bg-errorContainer/30 border border-error/30 rounded-2xl flex items-center justify-between text-xs text-error">
           <p className="font-medium">⚠️ {error}</p>
           <Button size="sm" variant="ghost" onClick={fetchSchedule}>
-            Retry
+            {t('doctor.retry')}
           </Button>
         </div>
       )}
@@ -328,17 +331,17 @@ export const DoctorDashboard: React.FC = () => {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
-            Patient Appointments Queue
+            {t('doctor.patientQueue')}
           </h2>
           <span className="text-xs font-mono text-textSecondary bg-surfaceContainer px-3 py-1 rounded-pill">
-            Live Clinical List
+            {t('doctor.liveList')}
           </span>
         </div>
 
         {loading ? (
           <Card radius="2xl" shadow="sm" className="p-12 text-center bg-white border border-surfaceContainerHigh">
             <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-xs text-textSecondary font-medium">Fetching upcoming clinical queue...</p>
+            <p className="text-xs text-textSecondary font-medium">{t('doctor.fetching')}</p>
           </Card>
         ) : schedule.length > 0 ? (
           <div className="space-y-4">
@@ -359,11 +362,10 @@ export const DoctorDashboard: React.FC = () => {
                   key={apt.appointment_id}
                   radius="2xl"
                   shadow="sm"
-                  className={`p-5 sm:p-6 bg-white border transition-all duration-200 ${
-                    isCritical && isPending
-                      ? 'border-error/50 shadow-soft-md ring-2 ring-error/15'
-                      : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
-                  }`}
+                  className={`p-5 sm:p-6 bg-white border transition-all duration-200 ${isCritical && isPending
+                    ? 'border-error/50 shadow-soft-md ring-2 ring-error/15'
+                    : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
+                    }`}
                 >
                   <div className="space-y-3">
                     {/* Top: Patient name + Date/Time + Badges */}
@@ -393,30 +395,10 @@ export const DoctorDashboard: React.FC = () => {
                       <span className="flex items-center gap-1.5">
                         <svg className="w-3.5 h-3.5 shrink-0 text-textSecondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>
                         {(() => {
-                          const RD: Record<string, string> = {
-                            chest_pain_with_breathing_distress: 'Chest pain with breathing distress',
-                            chest_pain_radiating: 'Chest pain radiating',
-                            worsening_chest_pain: 'Worsening chest pain',
-                            severe_bleeding: 'Severe bleeding',
-                            serious_trauma: 'Serious trauma',
-                            head_injury_red_flag: 'Head injury red flag',
-                            anaphylaxis_red_flag: 'Anaphylaxis red flag',
-                            severe_abdominal_pain: 'Severe abdominal pain',
-                            meningitis_red_flag: 'Meningitis red flag',
-                            diabetic_red_flag: 'Diabetic red flag',
-                            severe_asthma: 'Severe asthma',
-                            child_high_fever: 'Child high fever',
-                            pregnancy_emergency: 'Pregnancy emergency',
-                            standalone_emergency_pattern: 'Emergency pattern detected',
-                            high_urgency_marker: 'High urgency marker',
-                            cardiology_route: 'Cardiology route',
-                            specialty_route: 'Specialty route',
-                            insufficient_detail: 'Insufficient detail',
-                          };
-                          const display = apt.urgency_reason ? RD[apt.urgency_reason] || apt.urgency_reason.replace(/_/g, ' ') : null;
+                          const display = translateReason(apt.urgency_reason, lang);
                           return display
-                            ? <span className="text-textSecondary">Triage: <span className="font-medium text-textPrimary">{display}</span></span>
-                            : <span className="text-textSecondary italic">No triage data</span>;
+                            ? <span className="text-textSecondary">{t('appts.triage')} <span className="font-medium text-textPrimary">{display}</span></span>
+                            : <span className="text-textSecondary italic">{t('appts.noTriageData')}</span>;
                         })()}
                       </span>
                     </div>
@@ -424,7 +406,7 @@ export const DoctorDashboard: React.FC = () => {
                     {/* Symptoms */}
                     {apt.symptoms_reported && (
                       <div className="text-xs text-textSecondary leading-relaxed">
-                        <strong className="text-textPrimary">Symptoms:</strong> {apt.symptoms_reported}
+                        <strong className="text-textPrimary">{t('appts.symptoms')}</strong> {apt.symptoms_reported}
                       </div>
                     )}
 
@@ -432,7 +414,7 @@ export const DoctorDashboard: React.FC = () => {
                     {apt.doctor_notes && !isEditingNotes && (
                       <div className="mt-1 p-3 bg-surfaceContainer/80 rounded-xl text-xs border border-surfaceContainerHigh space-y-0.5">
                         <span className="font-bold text-secondary uppercase text-[10px] tracking-wider block">
-                          Saved Clinical Notes:
+                          {t('appts.clinicalNotes')}
                         </span>
                         <p className="text-textPrimary italic">{apt.doctor_notes}</p>
                       </div>
@@ -447,7 +429,7 @@ export const DoctorDashboard: React.FC = () => {
                             size="sm"
                             onClick={() => handleStartComplete(apt)}
                           >
-                            Mark Complete
+                            {t('doctor.markComplete')}
                           </Button>
                           {isPending && isPast && (
                             <Button
@@ -456,7 +438,7 @@ export const DoctorDashboard: React.FC = () => {
                               className="hover:border-error hover:text-error"
                               onClick={() => handleMarkNoShowAction(apt.appointment_id)}
                             >
-                              Mark No-show
+                              {t('doctor.markNoShow')}
                             </Button>
                           )}
                         </div>
@@ -464,13 +446,13 @@ export const DoctorDashboard: React.FC = () => {
 
                       {isCompleted && (
                         <div className="flex items-center gap-2 text-xs font-semibold text-secondary bg-secondaryContainer/30 px-3 py-1.5 rounded-pill border border-secondary/20">
-                          <span>✓ Record Finalized</span>
+                          <span>{t('appts.recordFinalized')}</span>
                         </div>
                       )}
 
                       {isNoShow && (
                         <div className="flex items-center gap-2 text-xs font-semibold text-error bg-errorContainer/40 px-3 py-1.5 rounded-pill border border-error/20">
-                          <span>✗ Marked No-Show</span>
+                          <span>{t('appts.markedNoShow')}</span>
                         </div>
                       )}
 
@@ -490,13 +472,13 @@ export const DoctorDashboard: React.FC = () => {
                   {isEditingNotes && (
                     <div className="mt-4 pt-4 border-t border-surfaceContainerHigh bg-surfaceContainer/50 -mx-5 sm:-mx-6 -mb-5 sm:-mb-6 p-5 rounded-b-2xl animate-fadeIn space-y-3">
                       <label className="block text-xs font-bold text-textPrimary">
-                        Add Clinical Notes & Prescription for {apt.patient_name}:
+                        {t('doctor.addNotes', { name: apt.patient_name })}
                       </label>
                       <textarea
                         rows={3}
                         value={notesText}
                         onChange={(e) => setNotesText(e.target.value)}
-                        placeholder="Enter clinical findings, vital interpretations, prescriptions, and follow-up instructions..."
+                        placeholder={t('doctor.notesPlaceholder')}
                         className="w-full text-xs bg-white rounded-xl border border-outline/40 p-3 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary placeholder:text-textSecondary/60"
                       />
                       <div className="flex items-center justify-end gap-2.5">
@@ -508,14 +490,14 @@ export const DoctorDashboard: React.FC = () => {
                             setNotesText('');
                           }}
                         >
-                          Cancel
+                          {t('doctor.cancel')}
                         </Button>
                         <Button
                           size="sm"
                           variant="primary"
                           onClick={() => handleSaveNotesAndFinalize(apt.appointment_id)}
                         >
-                          Save Notes & Finalize
+                          {t('doctor.saveFinalize')}
                         </Button>
                       </div>
                     </div>
@@ -526,16 +508,16 @@ export const DoctorDashboard: React.FC = () => {
                     <div className="mt-4 pt-4 border-t border-surfaceContainerHigh animate-fadeIn">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5">
-                          <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Patient Information</h4>
-                          {apt.patient_gender && <p className="text-textSecondary"><strong>Gender:</strong> {apt.patient_gender === 'M' ? 'Male' : apt.patient_gender === 'F' ? 'Female' : apt.patient_gender}</p>}
-                          {apt.patient_age != null && <p className="text-textSecondary"><strong>Age:</strong> {apt.patient_age} years</p>}
-                          {apt.patient_dob && apt.patient_dob !== '1990-01-01' && <p className="text-textSecondary"><strong>DOB:</strong> {new Date(apt.patient_dob).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>}
-                          {apt.patient_blood_type && <p className="text-textSecondary"><strong>Blood Type:</strong> <span className="font-semibold text-error">{apt.patient_blood_type}</span></p>}
-                          {apt.patient_email && <p className="text-textSecondary"><strong>Email:</strong> {apt.patient_email}</p>}
-                          {apt.patient_phone && <p className="text-textSecondary"><strong>Phone:</strong> {apt.patient_phone}</p>}
+                          <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">{t('doctor.patientInfo')}</h4>
+                          {apt.patient_gender && <p className="text-textSecondary"><strong>{t('appts.gender')}</strong> {apt.patient_gender === 'M' ? t('appts.male') : apt.patient_gender === 'F' ? t('appts.female') : apt.patient_gender}</p>}
+                          {apt.patient_age != null && <p className="text-textSecondary"><strong>{t('appts.age')}</strong> {apt.patient_age} {t('appts.years')}</p>}
+                          {apt.patient_dob && apt.patient_dob !== '1990-01-01' && <p className="text-textSecondary"><strong>{t('appts.dob')}</strong> {translateDate(new Date(apt.patient_dob).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), lang)}</p>}
+                          {apt.patient_blood_type && <p className="text-textSecondary"><strong>{t('appts.bloodType')}</strong> <span className="font-semibold text-error">{apt.patient_blood_type}</span></p>}
+                          {apt.patient_email && <p className="text-textSecondary"><strong>{t('appts.email')}</strong> {apt.patient_email}</p>}
+                          {apt.patient_phone && <p className="text-textSecondary"><strong>{t('appts.phone')}</strong> {apt.patient_phone}</p>}
                         </div>
                         <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5">
-                          <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Medical History <span className="font-normal normal-case text-textSecondary">(patient-reported)</span></h4>
+                          <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">{t('doctor.medicalHistory')} <span className="font-normal normal-case text-textSecondary">{t('doctor.patientReported')}</span></h4>
                           {(() => {
                             const allergies = parseJsonList(apt.patient_allergies);
                             const conditions = parseJsonList(apt.patient_medical_conditions);
@@ -543,10 +525,10 @@ export const DoctorDashboard: React.FC = () => {
                               <>
                                 {allergies.length > 0 ? (
                                   <div><strong className="text-textPrimary">Allergies:</strong><div className="flex flex-wrap gap-1 mt-1">{allergies.map((a, i) => <span key={i} className="bg-errorContainer/40 text-error text-[10px] px-2 py-0.5 rounded-pill">{a}</span>)}</div></div>
-                                ) : <p className="text-textSecondary italic">No allergies reported</p>}
+                                ) : <p className="text-textSecondary italic">{t('appts.noAllergies')}</p>}
                                 {conditions.length > 0 ? (
-                                  <div className="pt-1"><strong className="text-textPrimary">Conditions:</strong><div className="flex flex-wrap gap-1 mt-1">{conditions.map((c, i) => <span key={i} className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-pill">{c}</span>)}</div></div>
-                                ) : <p className="text-textSecondary italic">No conditions reported</p>}
+                                  <div className="pt-1"><strong className="text-textPrimary">{t('appts.conditions')}</strong><div className="flex flex-wrap gap-1 mt-1">{conditions.map((c, i) => <span key={i} className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-pill">{c}</span>)}</div></div>
+                                ) : <p className="text-textSecondary italic">{t('appts.noConditions')}</p>}
                               </>
                             );
                           })()}
@@ -560,8 +542,8 @@ export const DoctorDashboard: React.FC = () => {
           </div>
         ) : (
           <Card radius="2xl" shadow="sm" className="p-10 text-center bg-white border border-surfaceContainerHigh space-y-2">
-            <p className="font-heading font-bold text-base text-textPrimary">No upcoming scheduled appointments</p>
-            <p className="text-xs text-textSecondary">Your queue is currently clear.</p>
+            <p className="font-heading font-bold text-base text-textPrimary">{t('doctor.noUpcoming')}</p>
+            <p className="text-xs text-textSecondary">{t('doctor.queueClear')}</p>
           </Card>
         )}
       </section>

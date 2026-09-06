@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Badge } from '../components/ui';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export interface PlaceholderPageProps {
   title: string;
@@ -14,9 +15,10 @@ export const PlaceholderPage: React.FC<PlaceholderPageProps> = ({
   title,
   description,
   path,
-  badgeText = 'Route Scaffolding',
+  badgeText,
   icon,
 }) => {
+  const { t } = useLanguage();
   return (
     <div className="max-w-4xl mx-auto px-4 py-16">
       <Card
@@ -46,7 +48,7 @@ export const PlaceholderPage: React.FC<PlaceholderPageProps> = ({
 
         <div className="inline-flex mb-3">
           <Badge status="pending" size="md">
-            {badgeText}
+            {badgeText || t('placeholder.badge')}
           </Badge>
         </div>
 
@@ -65,12 +67,12 @@ export const PlaceholderPage: React.FC<PlaceholderPageProps> = ({
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link to="/">
             <Button variant="primary" size="md">
-              View Design System & Components
+              {t('placeholder.viewDesign')}
             </Button>
           </Link>
           <Link to="/dashboard">
             <Button variant="secondary" size="md">
-              Go to Dashboard
+              {t('placeholder.goDashboard')}
             </Button>
           </Link>
         </div>

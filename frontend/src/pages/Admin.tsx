@@ -8,6 +8,8 @@ import type { DoctorListItem, DoctorApplicationItem } from '../services/doctors'
 import { listClinics, createClinic, updateClinic } from '../services/clinics'
 import type { ClinicListItem } from '../services/clinics'
 import { listAppointments } from '../services/appointments'
+import { useLanguage } from '../i18n/LanguageContext';
+import { translateUrgency, translateStatus, translateReason, translateDate, translateTime } from '../i18n/translations';
 
 type AdminTab = 'doctors' | 'applications' | 'clinics' | 'appointments';
 
@@ -15,6 +17,7 @@ const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export const Admin: React.FC = () => {
   const { currentUser } = useAuth();
+  const { t, lang } = useLanguage();
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<AdminTab>('doctors');
@@ -337,7 +340,7 @@ export const Admin: React.FC = () => {
             onClick={() => setToastMessage(null)}
             className="text-xs font-semibold text-textSecondary hover:text-textPrimary"
           >
-            Dismiss
+            {t('common.dismiss')}
           </button>
         </div>
       )}
@@ -347,23 +350,23 @@ export const Admin: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 mb-1.5">
             <Badge status="primary" size="sm" withDot>
-              Admin Portal
+              {t('admin.portal')}
             </Badge>
             <span className="text-xs text-textSecondary">
-              Logged in as <strong>{currentUser?.name || 'Administrator'}</strong>
+              {t('admin.loggedInAs')} <strong>{currentUser?.name || t('common.administrator')}</strong>
             </span>
           </div>
           <h1 className="font-heading font-extrabold text-3xl sm:text-4xl text-textPrimary tracking-tight">
-            Admin Dashboard
+            {t('admin.title')}
           </h1>
-          <p className="text-sm sm:text-base text-textSecondary mt-1">
-            Manage doctors, clinics, review doctor applications, and view live operational metrics.
+          <p className="text-sm sm:text-base text-textSecondary mt-3">
+            {t('admin.subtitle')}
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           <Badge status="success" size="md">
-            System Online
+            {t('admin.systemOnline')}
           </Badge>
         </div>
       </div>
@@ -373,7 +376,7 @@ export const Admin: React.FC = () => {
         <div className="p-4 bg-errorContainer/30 border border-error/30 rounded-2xl flex items-center justify-between text-xs text-error">
           <p className="font-medium">⚠️ {error}</p>
           <Button size="sm" variant="ghost" onClick={fetchAdminData}>
-            Retry
+            {t('admin.retry')}
           </Button>
         </div>
       )}
@@ -382,51 +385,51 @@ export const Admin: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>Appointments Today</span>
+            <span>{t('admin.apptsToday')}</span>
             <span>📅</span>
           </div>
           <div className="mt-3">
             <span className="font-heading font-extrabold text-3xl text-textPrimary">
               {metrics ? metrics.total_appointments_today : 0}
             </span>
-            <p className="text-[11px] text-textSecondary mt-0.5">Live daily volume</p>
+            <p className="text-[11px] text-textSecondary mt-0.5">{t('admin.liveVolume')}</p>
           </div>
         </Card>
 
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>No-show Rate %</span>
+            <span>{t('admin.noShowRate')}</span>
             <span>📉</span>
           </div>
           <div className="mt-3">
             <span className="font-heading font-extrabold text-3xl text-secondary">
               {metrics ? metrics.no_show_rate_percent.toFixed(1) : 0}%
             </span>
-            <p className="text-[11px] text-textSecondary mt-0.5">Clinic performance metric</p>
+            <p className="text-[11px] text-textSecondary mt-0.5">{t('admin.clinicPerf')}</p>
           </div>
         </Card>
 
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>Average Rating</span>
+            <span>{t('admin.avgRating')}</span>
             <span>⭐</span>
           </div>
           <div className="mt-3">
             <span className="font-heading font-extrabold text-3xl text-amber-500">
               {metrics ? metrics.average_rating.toFixed(1) : '5.0'}
             </span>
-            <p className="text-[11px] text-textSecondary mt-0.5">Verified patient rating</p>
+            <p className="text-[11px] text-textSecondary mt-0.5">{t('admin.verifiedRating')}</p>
           </div>
         </Card>
 
         <Card radius="2xl" shadow="sm" className="p-5 bg-white border border-surfaceContainerHigh">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-textSecondary">
-            <span>Total Active Doctors</span>
+            <span>{t('admin.totalDoctors')}</span>
             <span>🩺</span>
           </div>
           <div className="mt-3">
             <span className="font-heading font-extrabold text-3xl text-primary">{activeDoctorsCount}</span>
-            <p className="text-[11px] text-textSecondary mt-0.5">In {clinics.length} network facilities</p>
+            <p className="text-[11px] text-textSecondary mt-0.5">{t('admin.networkFacilities', { count: clinics.length })}</p>
           </div>
         </Card>
       </div>
@@ -442,7 +445,7 @@ export const Admin: React.FC = () => {
               : 'bg-white text-textSecondary hover:text-textPrimary hover:bg-surfaceContainer border border-surfaceContainerHigh'
           }`}
         >
-          Doctors ({doctors.length})
+          {t('admin.doctorsTab', { count: doctors.length })}
         </button>
 
         <button
@@ -454,7 +457,7 @@ export const Admin: React.FC = () => {
               : 'bg-white text-textSecondary hover:text-textPrimary hover:bg-surfaceContainer border border-surfaceContainerHigh'
           }`}
         >
-          <span>Doctor Applications</span>
+          <span>{t('admin.applicationsTab')}</span>
           {applications.length > 0 && (
             <span
               className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
@@ -477,7 +480,7 @@ export const Admin: React.FC = () => {
               : 'bg-white text-textSecondary hover:text-textPrimary hover:bg-surfaceContainer border border-surfaceContainerHigh'
           }`}
         >
-          Clinics ({clinics.length})
+          {t('admin.clinicsTab', { count: clinics.length })}
         </button>
 
         <button
@@ -489,7 +492,7 @@ export const Admin: React.FC = () => {
               : 'bg-white text-textSecondary hover:text-textPrimary hover:bg-surfaceContainer border border-surfaceContainerHigh'
           }`}
         >
-          Appointments ({appointments.length})
+          {t('admin.appointmentsTab', { count: appointments.length })}
         </button>
       </div>
 
@@ -501,22 +504,22 @@ export const Admin: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
-                Physicians & Clinical Staff
+                {t('admin.physicians')}
               </h2>
               <p className="text-xs text-textSecondary">
-                Manage registered doctors, consultation fees, and facility assignments.
+                {t('admin.physiciansDesc')}
               </p>
             </div>
 
             <Button variant="primary" size="md" onClick={handleOpenAddDoctor}>
-              + Add Doctor
+              {t('admin.addDoctor')}
             </Button>
           </div>
 
           {loading ? (
             <Card radius="2xl" shadow="sm" className="p-12 text-center bg-white border border-surfaceContainerHigh">
               <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-xs text-textSecondary font-medium">Loading registered physicians...</p>
+              <p className="text-xs text-textSecondary font-medium">{t('admin.loadingDoctors')}</p>
             </Card>
           ) : doctors.length > 0 ? (
             <Card radius="2xl" shadow="sm" className="p-0 bg-white border border-surfaceContainerHigh overflow-hidden">
@@ -525,13 +528,13 @@ export const Admin: React.FC = () => {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-surfaceContainer/80 border-b border-surfaceContainerHigh text-textSecondary uppercase font-bold text-[10px] tracking-wider">
                     <tr>
-                      <th className="py-3.5 px-6">Doctor</th>
-                      <th className="py-3.5 px-4">Specialization</th>
-                      <th className="py-3.5 px-4">Clinic Facility</th>
-                      <th className="py-3.5 px-4">Fee / Slot</th>
-                      <th className="py-3.5 px-4">Rating</th>
-                      <th className="py-3.5 px-4">Status</th>
-                      <th className="py-3.5 px-6 text-right">Actions</th>
+                      <th className="py-3.5 px-6">{t('admin.thDoctor')}</th>
+                      <th className="py-3.5 px-4">{t('admin.thSpecialization')}</th>
+                      <th className="py-3.5 px-4">{t('admin.thClinic')}</th>
+                      <th className="py-3.5 px-4">{t('admin.thFee')}</th>
+                      <th className="py-3.5 px-4">{t('admin.thRating')}</th>
+                      <th className="py-3.5 px-4">{t('admin.thStatus')}</th>
+                      <th className="py-3.5 px-6 text-right">{t('admin.thActions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surfaceContainerHigh">
@@ -562,7 +565,7 @@ export const Admin: React.FC = () => {
                         </td>
                         <td className="py-4 px-4">
                           <Badge status={doc.is_available ? 'success' : 'neutral'} size="sm" withDot>
-                            {doc.is_available ? 'Active' : 'Inactive'}
+                            {doc.is_available ? t('admin.active') : t('admin.inactive')}
                           </Badge>
                         </td>
                         <td className="py-4 px-6 text-right space-x-2">
@@ -571,7 +574,7 @@ export const Admin: React.FC = () => {
                             onClick={() => handleOpenEditDoctor(doc)}
                             className="px-2.5 py-1 rounded-pill text-xs font-semibold text-primary hover:bg-surfaceContainer transition-colors"
                           >
-                            Edit
+                            {t('admin.edit')}
                           </button>
                           <button
                             type="button"
@@ -582,7 +585,7 @@ export const Admin: React.FC = () => {
                                 : 'text-secondary hover:bg-secondaryContainer/30'
                             }`}
                           >
-                            {doc.is_available ? 'Deactivate' : 'Activate'}
+                            {doc.is_available ? t('admin.deactivate') : t('admin.activate')}
                           </button>
                         </td>
                       </tr>
@@ -606,7 +609,7 @@ export const Admin: React.FC = () => {
                         </div>
                       </div>
                       <Badge status={doc.is_available ? 'success' : 'neutral'} size="sm" withDot>
-                        {doc.is_available ? 'Active' : 'Inactive'}
+                        {doc.is_available ? t('admin.active') : t('admin.inactive')}
                       </Badge>
                     </div>
 
@@ -618,7 +621,7 @@ export const Admin: React.FC = () => {
 
                     <div className="flex items-center justify-end gap-2 pt-1">
                       <Button size="sm" variant="ghost" onClick={() => handleOpenEditDoctor(doc)}>
-                        Edit
+                        {t('admin.edit')}
                       </Button>
                       <Button
                         size="sm"
@@ -626,7 +629,7 @@ export const Admin: React.FC = () => {
                         className={doc.is_available ? 'text-error border-error/30' : 'text-secondary border-secondary/30'}
                         onClick={() => handleToggleDoctorStatus(doc)}
                       >
-                        {doc.is_available ? 'Deactivate' : 'Activate'}
+                        {doc.is_available ? t('admin.deactivate') : t('admin.activate')}
                       </Button>
                     </div>
                   </div>
@@ -635,8 +638,8 @@ export const Admin: React.FC = () => {
             </Card>
           ) : (
             <Card radius="2xl" shadow="sm" className="p-10 text-center bg-white border border-surfaceContainerHigh">
-              <p className="font-heading font-bold text-base text-textPrimary">No doctors found</p>
-              <p className="text-xs text-textSecondary mt-1">Add your first physician using the "+ Add Doctor" button above.</p>
+              <p className="font-heading font-bold text-base text-textPrimary">{t('admin.noDoctors')}</p>
+              <p className="text-xs text-textSecondary mt-1">{t('admin.noDoctorsDesc')}</p>
             </Card>
           )}
         </section>
@@ -647,10 +650,10 @@ export const Admin: React.FC = () => {
         <section className="space-y-4 animate-fadeIn">
           <div>
             <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
-              Pending Doctor Applications
+              {t('admin.pendingApps')}
             </h2>
             <p className="text-xs text-textSecondary">
-              Review credential submissions from newly registered doctors awaiting verification.
+              {t('admin.pendingAppsDesc')}
             </p>
           </div>
 
@@ -674,15 +677,15 @@ export const Admin: React.FC = () => {
                             {app.name}
                           </h3>
                           <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-pill">
-                            Pending Review
+                            {t('admin.pendingReview')}
                           </span>
                         </div>
-                        <p className="text-xs font-semibold text-secondary">{app.specialization || 'Not specified'}</p>
+                        <p className="text-xs font-semibold text-secondary">{app.specialization || t('admin.notSpecified')}</p>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-1 gap-x-4 pt-1 text-xs text-textSecondary">
                           <p>✉️ {app.email}</p>
                           <p>📞 {app.phone || 'N/A'}</p>
-                          <p>📅 Submitted: {new Date(app.created_at).toLocaleDateString()}</p>
+                          <p>📅 {t('admin.submitted')} {translateDate(app.created_at, lang)}</p>
                         </div>
                       </div>
                     </div>
@@ -693,14 +696,14 @@ export const Admin: React.FC = () => {
                         onClick={() => handleOpenApproveModal(app)}
                         className="px-4 py-2 rounded-pill text-xs font-semibold bg-[#006B5F] hover:bg-[#005249] text-white shadow-soft-sm transition-all"
                       >
-                        ✓ Review & Approve
+                        {t('admin.reviewApprove')}
                       </button>
                       <button
                         type="button"
                         onClick={() => handleRejectApplication(app)}
                         className="px-4 py-2 rounded-pill text-xs font-semibold bg-white border border-error text-error hover:bg-errorContainer transition-all"
                       >
-                        ✕ Reject
+                        {t('admin.reject')}
                       </button>
                     </div>
                   </div>
@@ -713,10 +716,10 @@ export const Admin: React.FC = () => {
                 ✓
               </div>
               <h3 className="font-heading font-bold text-base text-textPrimary">
-                No Pending Applications
+                {t('admin.noPending')}
               </h3>
               <p className="text-xs text-textSecondary max-w-sm mx-auto">
-                All submitted doctor credentials have been processed and verified.
+                {t('admin.noPendingDesc')}
               </p>
             </Card>
           )}
@@ -729,22 +732,22 @@ export const Admin: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
-                Clinic Facilities & Network
+                {t('admin.clinicFacilities')}
               </h2>
               <p className="text-xs text-textSecondary">
-                Manage partner hospital buildings, operating hours, and location data.
+                {t('admin.clinicDesc')}
               </p>
             </div>
 
             <Button variant="primary" size="md" onClick={handleOpenAddClinic}>
-              + Add Clinic
+              {t('admin.addClinic')}
             </Button>
           </div>
 
           {loading ? (
             <Card radius="2xl" shadow="sm" className="p-12 text-center bg-white border border-surfaceContainerHigh">
               <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-xs text-textSecondary font-medium">Loading clinic facilities...</p>
+              <p className="text-xs text-textSecondary font-medium">{t('admin.loadingClinics')}</p>
             </Card>
           ) : clinics.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -761,7 +764,7 @@ export const Admin: React.FC = () => {
                         🏥
                       </div>
                       <Badge status={clinic.is_active ? 'success' : 'neutral'} size="sm" withDot>
-                        {clinic.is_active ? 'Active' : 'Inactive'}
+                        {clinic.is_active ? t('admin.active') : t('admin.inactive')}
                       </Badge>
                     </div>
 
@@ -779,7 +782,7 @@ export const Admin: React.FC = () => {
 
                     <div className="mt-3">
                       <span className="text-[10px] uppercase font-bold tracking-wider text-textSecondary block mb-1">
-                        Working Days:
+                        {t('admin.workingDays')}
                       </span>
                       <div className="flex flex-wrap gap-1">
                         {(clinic.working_days || 'Mon,Tue,Wed,Thu,Fri').split(',').map((d) => (
@@ -796,7 +799,7 @@ export const Admin: React.FC = () => {
 
                   <div className="pt-4 border-t border-surfaceContainerHigh flex justify-end">
                     <Button size="sm" variant="secondary" onClick={() => handleOpenEditClinic(clinic)}>
-                      Edit Clinic
+                      {t('admin.editClinic')}
                     </Button>
                   </div>
                 </Card>
@@ -804,8 +807,8 @@ export const Admin: React.FC = () => {
             </div>
           ) : (
             <Card radius="2xl" shadow="sm" className="p-10 text-center bg-white border border-surfaceContainerHigh">
-              <p className="font-heading font-bold text-base text-textPrimary">No clinics registered</p>
-              <p className="text-xs text-textSecondary mt-1">Add your first clinic facility using the "+ Add Clinic" button above.</p>
+              <p className="font-heading font-bold text-base text-textPrimary">{t('admin.noClinics')}</p>
+              <p className="text-xs text-textSecondary mt-1">{t('admin.noClinicsDesc')}</p>
             </Card>
           )}
         </section>
@@ -816,17 +819,17 @@ export const Admin: React.FC = () => {
         <section className="space-y-4 animate-fadeIn">
           <div>
             <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
-              All Appointments History
+              {t('admin.allApptsHistory')}
             </h2>
             <p className="text-xs text-textSecondary">
-              View all appointments across doctors and patients with triage urgency data.
+              {t('admin.allApptsDesc')}
             </p>
           </div>
 
           {loading ? (
             <Card radius="2xl" shadow="sm" className="p-12 text-center bg-white border border-surfaceContainerHigh">
               <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-xs text-textSecondary font-medium">Loading appointment records...</p>
+              <p className="text-xs text-textSecondary font-medium">{t('admin.loadingAppts')}</p>
             </Card>
           ) : appointments.length > 0 ? (
             <div className="space-y-3">
@@ -838,12 +841,7 @@ export const Admin: React.FC = () => {
                   normal: 'primary' as const,
                   low: 'neutral' as const,
                 } as Record<string, 'error' | 'pending' | 'primary' | 'neutral'>)[urgencyNorm] || 'neutral';
-                const urgencyLabel = ({
-                  critical: 'Critical',
-                  high: 'High',
-                  normal: 'Normal',
-                  low: 'Low',
-                } as Record<string, string>)[urgencyNorm] || 'Not assessed';
+                const urgencyLabel = translateUrgency(urgencyNorm, lang);
 
                 const statusNorm = (appt.status || '').toLowerCase();
                 const statusBadge = statusNorm === 'completed'
@@ -854,40 +852,13 @@ export const Admin: React.FC = () => {
                       ? 'error' as const
                       : 'pending' as const;
 
-                // Display-only dictionary: translates backend reason codes to friendly text.
-                // NEVER infers or determines the reason — only displays what the API provides.
-                const REASON_DISPLAY: Record<string, string> = {
-                  chest_pain_with_breathing_distress: 'Chest pain with breathing distress',
-                  chest_pain_radiating: 'Chest pain radiating',
-                  worsening_chest_pain: 'Worsening chest pain',
-                  severe_bleeding: 'Severe bleeding',
-                  serious_trauma: 'Serious trauma',
-                  head_injury_red_flag: 'Head injury red flag',
-                  anaphylaxis_red_flag: 'Anaphylaxis red flag',
-                  severe_abdominal_pain: 'Severe abdominal pain',
-                  meningitis_red_flag: 'Meningitis red flag',
-                  diabetic_red_flag: 'Diabetic red flag',
-                  severe_asthma: 'Severe asthma',
-                  child_high_fever: 'Child high fever',
-                  pregnancy_emergency: 'Pregnancy emergency',
-                  standalone_emergency_pattern: 'Emergency pattern detected',
-                  high_urgency_marker: 'High urgency marker',
-                  cardiology_route: 'Cardiology route',
-                  specialty_route: 'Specialty route',
-                  insufficient_detail: 'Insufficient detail',
-                };
-                const reasonDisplay = appt.urgency_reason
-                  ? REASON_DISPLAY[appt.urgency_reason] || appt.urgency_reason.replace(/_/g, ' ')
-                  : null;
+                const reasonDisplay = translateReason(appt.urgency_reason, lang);
 
                 let timeStr = appt.appointment_time || '';
                 try {
                   const d = new Date(appt.appointment_time);
                   if (!isNaN(d.getTime())) {
-                    timeStr = d.toLocaleString(undefined, {
-                      weekday: 'short', month: 'short', day: 'numeric',
-                      hour: 'numeric', minute: '2-digit',
-                    });
+                  timeStr = translateDate(appt.appointment_time, lang, { weekday: 'short', month: 'short' }) + ' ' + translateTime(appt.appointment_time, lang);
                   }
                 } catch {}
 
@@ -925,7 +896,7 @@ export const Admin: React.FC = () => {
 
                         {appt.symptoms_reported && (
                           <p className="text-xs text-textSecondary leading-relaxed">
-                            <strong className="text-textPrimary">Symptoms:</strong> {appt.symptoms_reported}
+                            <strong className="text-textPrimary">{t('appts.symptoms')}</strong> {appt.symptoms_reported}
                           </p>
                         )}
 
@@ -935,15 +906,15 @@ export const Admin: React.FC = () => {
                             {urgencyLabel}
                           </Badge>
                           <Badge status={statusBadge as any} size="sm">
-                            {appt.status}
+                            {translateStatus(appt.status, lang)}
                           </Badge>
                           {reasonDisplay ? (
                             <span className="text-[10px] text-textSecondary italic" title={appt.urgency_reason}>
-                              Why: {reasonDisplay}
+                              {t('appts.reason')} {reasonDisplay}
                             </span>
                           ) : (
                             <span className="text-[10px] text-textSecondary italic">
-                              No triage data
+                              {t('appts.noTriageData')}
                             </span>
                           )}
                         </div>
@@ -954,7 +925,7 @@ export const Admin: React.FC = () => {
                         <p className="font-semibold text-textPrimary">{appt.clinic_name}</p>
                         {appt.clinic_address && <p>{appt.clinic_address}</p>}
                         {appt.patient_phone && <p>📞 {appt.patient_phone}</p>}
-                        {appt.patient_age != null && <p>Age: {appt.patient_age}</p>}
+                        {appt.patient_age != null && <p>{t('appts.age')} {appt.patient_age}</p>}
                       </div>
                     </div>
                   </Card>
@@ -963,8 +934,8 @@ export const Admin: React.FC = () => {
             </div>
           ) : (
             <Card radius="2xl" shadow="sm" className="p-10 text-center bg-white border border-surfaceContainerHigh">
-              <p className="font-heading font-bold text-base text-textPrimary">No appointments found</p>
-              <p className="text-xs text-textSecondary mt-1">No appointment records exist in the system yet.</p>
+              <p className="font-heading font-bold text-base text-textPrimary">{t('admin.noAppts')}</p>
+              <p className="text-xs text-textSecondary mt-1">{t('admin.noApptsDesc')}</p>
             </Card>
           )}
         </section>
@@ -977,7 +948,7 @@ export const Admin: React.FC = () => {
             <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
               <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
                 <h3 className="font-heading font-bold text-xl text-textPrimary">
-                  {editingDoctor ? 'Edit Doctor Profile' : 'Add New Doctor'}
+                  {editingDoctor ? t('admin.editDoctor') : t('admin.addNewDoctor')}
                 </h3>
                 <button
                   onClick={() => setIsDoctorModalOpen(false)}
@@ -989,7 +960,7 @@ export const Admin: React.FC = () => {
 
               <form onSubmit={handleSaveDoctor} className="space-y-4">
                 <Input
-                  label="Full Name & Title"
+                  label={t('admin.fullNameTitle')}
                   placeholder="e.g. Dr. Jane Sterling, MD"
                   value={doctorForm.name}
                   onChange={(e) => setDoctorForm({ ...doctorForm, name: e.target.value })}
@@ -997,7 +968,7 @@ export const Admin: React.FC = () => {
                 />
 
                 <Input
-                  label="Email Address"
+                  label={t('admin.emailLabel')}
                   type="email"
                   placeholder="doctor@clinic.com"
                   value={doctorForm.email}
@@ -1006,7 +977,7 @@ export const Admin: React.FC = () => {
                 />
 
                 <Input
-                  label="Specialization"
+                  label={t('admin.specializationLabel')}
                   placeholder="e.g. Cardiology & Vascular Medicine"
                   value={doctorForm.specialization}
                   onChange={(e) => setDoctorForm({ ...doctorForm, specialization: e.target.value })}
@@ -1015,7 +986,7 @@ export const Admin: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
-                    label="Consultation Fee ($)"
+                    label={t('admin.consultationFee')}
                     type="number"
                     min={0}
                     value={doctorForm.fee}
@@ -1024,7 +995,7 @@ export const Admin: React.FC = () => {
                   />
 
                   <Input
-                    label="Max Patients / Day"
+                    label={t('admin.maxPatients')}
                     type="number"
                     min={1}
                     max={50}
@@ -1036,7 +1007,7 @@ export const Admin: React.FC = () => {
 
                 {/* Clinic Facility Dropdown */}
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-textPrimary">Assigned Clinic Facility</label>
+                  <label className="text-sm font-semibold text-textPrimary">{t('admin.assignedClinic')}</label>
                   <select
                     value={doctorForm.clinicId}
                     onChange={(e) => setDoctorForm({ ...doctorForm, clinicId: e.target.value })}
@@ -1052,10 +1023,10 @@ export const Admin: React.FC = () => {
 
                 <div className="pt-3 flex items-center justify-end gap-2.5">
                   <Button type="button" variant="ghost" onClick={() => setIsDoctorModalOpen(false)}>
-                    Cancel
+                    {t('admin.cancel')}
                   </Button>
                   <Button type="submit" variant="primary">
-                    {editingDoctor ? 'Save Changes' : 'Create Doctor'}
+                    {editingDoctor ? t('admin.saveChanges') : t('admin.createDoctor')}
                   </Button>
                 </div>
               </form>
@@ -1071,7 +1042,7 @@ export const Admin: React.FC = () => {
             <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
               <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
                 <h3 className="font-heading font-bold text-xl text-textPrimary">
-                  {editingClinic ? 'Edit Clinic Facility' : 'Add New Clinic Facility'}
+                  {editingClinic ? t('admin.editClinicFacility') : t('admin.addNewClinic')}
                 </h3>
                 <button
                   onClick={() => setIsClinicModalOpen(false)}
@@ -1083,7 +1054,7 @@ export const Admin: React.FC = () => {
 
               <form onSubmit={handleSaveClinic} className="space-y-4">
                 <Input
-                  label="Clinic Facility Name"
+                  label={t('admin.clinicName')}
                   placeholder="e.g. Eastside Medical Hub"
                   value={clinicForm.name}
                   onChange={(e) => setClinicForm({ ...clinicForm, name: e.target.value })}
@@ -1092,7 +1063,7 @@ export const Admin: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
-                    label="Street Address"
+                    label={t('admin.streetAddress')}
                     placeholder="e.g. 500 Park Ave, Suite 100"
                     value={clinicForm.address}
                     onChange={(e) => setClinicForm({ ...clinicForm, address: e.target.value })}
@@ -1100,7 +1071,7 @@ export const Admin: React.FC = () => {
                   />
 
                   <Input
-                    label="City"
+                    label={t('admin.city')}
                     placeholder="e.g. New York"
                     value={clinicForm.city}
                     onChange={(e) => setClinicForm({ ...clinicForm, city: e.target.value })}
@@ -1110,14 +1081,14 @@ export const Admin: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
-                    label="Phone Number"
+                    label={t('admin.phoneLabel')}
                     placeholder="+1 (555) 012-3456"
                     value={clinicForm.phone}
                     onChange={(e) => setClinicForm({ ...clinicForm, phone: e.target.value })}
                   />
 
                   <Input
-                    label="Email"
+                    label={t('admin.emailLabel2')}
                     type="email"
                     placeholder="clinic@medibook.com"
                     value={clinicForm.email}
@@ -1127,7 +1098,7 @@ export const Admin: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <Input
-                    label="Opening Time"
+                    label={t('admin.openingTime')}
                     placeholder="08:00"
                     value={clinicForm.workingHoursStart}
                     onChange={(e) => setClinicForm({ ...clinicForm, workingHoursStart: e.target.value })}
@@ -1135,7 +1106,7 @@ export const Admin: React.FC = () => {
                   />
 
                   <Input
-                    label="Closing Time"
+                    label={t('admin.closingTime')}
                     placeholder="18:00"
                     value={clinicForm.workingHoursEnd}
                     onChange={(e) => setClinicForm({ ...clinicForm, workingHoursEnd: e.target.value })}
@@ -1146,7 +1117,7 @@ export const Admin: React.FC = () => {
                 {/* Working Days Checkboxes */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-textSecondary block">
-                    Working Days
+                    {t('admin.workingDaysLabel')}
                   </label>
                   <div className="flex flex-wrap gap-1.5">
                     {DAYS_OF_WEEK.map((day) => {
@@ -1171,10 +1142,10 @@ export const Admin: React.FC = () => {
 
                 <div className="pt-3 flex items-center justify-end gap-2.5">
                   <Button type="button" variant="ghost" onClick={() => setIsClinicModalOpen(false)}>
-                    Cancel
+                    {t('admin.cancel')}
                   </Button>
                   <Button type="submit" variant="primary">
-                    {editingClinic ? 'Save Changes' : 'Create Clinic'}
+                    {editingClinic ? t('admin.saveChanges') : t('admin.createClinic')}
                   </Button>
                 </div>
               </form>
@@ -1190,7 +1161,7 @@ export const Admin: React.FC = () => {
             <Card radius="3xl" shadow="lg" className="p-7 bg-white border border-surfaceContainerHigh space-y-5">
               <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
                 <h3 className="font-heading font-bold text-xl text-textPrimary">
-                  Review Doctor Application
+                  {t('admin.reviewApp')}
                 </h3>
                 <button
                   onClick={() => { setIsApprovalModalOpen(false); setApprovingApp(null); }}
@@ -1202,9 +1173,9 @@ export const Admin: React.FC = () => {
 
               {/* Applicant Info */}
               <div className="bg-surfaceContainer/50 border border-surfaceContainerHigh rounded-2xl p-4 space-y-1.5">
-                <p className="text-xs font-bold uppercase tracking-wider text-textSecondary mb-1">Applicant Details</p>
-                <p className="text-xs text-textSecondary">📞 {approvingApp.phone || 'Not provided'}</p>
-                <p className="text-xs text-textSecondary">📅 Applied: {new Date(approvingApp.created_at).toLocaleDateString()}</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-textSecondary mb-1">{t('admin.applicantDetails')}</p>
+                <p className="text-xs text-textSecondary">📞 {approvingApp.phone || t('admin.notProvided')}</p>
+                <p className="text-xs text-textSecondary">📅 {t('admin.applied')} {translateDate(approvingApp.created_at, lang)}</p>
                 {approvingApp.bio && (
                   <p className="text-xs text-textSecondary mt-1 italic">“{approvingApp.bio}”</p>
                 )}
@@ -1212,7 +1183,7 @@ export const Admin: React.FC = () => {
 
               <form onSubmit={handleApproveApplication} className="space-y-4">
                 <Input
-                  label="Full Name & Title"
+                  label={t('admin.fullNameTitle')}
                   placeholder="e.g. Dr. Jane Sterling, MD"
                   value={approvalForm.name}
                   onChange={(e) => setApprovalForm({ ...approvalForm, name: e.target.value })}
@@ -1220,7 +1191,7 @@ export const Admin: React.FC = () => {
                 />
 
                 <Input
-                  label="Email Address"
+                  label={t('admin.emailLabel')}
                   type="email"
                   placeholder="doctor@clinic.com"
                   value={approvalForm.email}
@@ -1229,7 +1200,7 @@ export const Admin: React.FC = () => {
                 />
 
                 <Input
-                  label="Specialization"
+                  label={t('admin.specializationLabel')}
                   placeholder="e.g. Cardiology & Vascular Medicine"
                   value={approvalForm.specialization}
                   onChange={(e) => setApprovalForm({ ...approvalForm, specialization: e.target.value })}
@@ -1238,7 +1209,7 @@ export const Admin: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
-                    label="Consultation Fee ($)"
+                    label={t('admin.consultationFee')}
                     type="number"
                     min={0}
                     value={approvalForm.fee}
@@ -1247,7 +1218,7 @@ export const Admin: React.FC = () => {
                   />
 
                   <Input
-                    label="Max Patients / Day"
+                    label={t('admin.maxPatients')}
                     type="number"
                     min={1}
                     max={50}
@@ -1259,7 +1230,7 @@ export const Admin: React.FC = () => {
 
                 {/* Clinic Facility Dropdown */}
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-textPrimary">Assigned Clinic Facility</label>
+                  <label className="text-sm font-semibold text-textPrimary">{t('admin.assignedClinic')}</label>
                   <select
                     value={approvalForm.clinicId}
                     onChange={(e) => setApprovalForm({ ...approvalForm, clinicId: e.target.value })}
@@ -1276,10 +1247,10 @@ export const Admin: React.FC = () => {
 
                 <div className="pt-3 flex items-center justify-end gap-2.5">
                   <Button type="button" variant="ghost" onClick={() => { setIsApprovalModalOpen(false); setApprovingApp(null); }}>
-                    Cancel
+                    {t('admin.cancel')}
                   </Button>
                   <Button type="submit" variant="primary">
-                    ✓ Approve & Verify Doctor
+                    {t('admin.approveVerify')}
                   </Button>
                 </div>
               </form>

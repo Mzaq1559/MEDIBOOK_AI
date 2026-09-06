@@ -2,10 +2,12 @@ import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Navbar } from '../ui/Navbar';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../i18n/LanguageContext';
 import { getNavItemsForUserType, getUserTypeLabel } from '../../utils/authRouting';
 
 export const Layout: React.FC = () => {
   const { currentUser, logout, isAuthenticated } = useAuth();
+  const { t, lang } = useLanguage();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -18,12 +20,12 @@ export const Layout: React.FC = () => {
         name: currentUser.name || 'User',
         email: currentUser.email,
         avatarUrl: currentUser.avatarUrl,
-        role: getUserTypeLabel(currentUser.userType),
+        role: getUserTypeLabel(currentUser.userType, lang),
         isPatient: currentUser.userType === 'patient',
       }
     : null;
 
-  const navItems = currentUser ? getNavItemsForUserType(currentUser.userType) : undefined;
+  const navItems = currentUser ? getNavItemsForUserType(currentUser.userType, lang) : undefined;
 
   return (
     <div className="min-h-screen bg-background text-textPrimary flex flex-col font-sans selection:bg-primaryContainer/20 selection:text-primary">
@@ -38,12 +40,12 @@ export const Layout: React.FC = () => {
       <footer className="mt-auto border-t border-surfaceContainerHigh bg-white/70 py-6 text-center">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs text-textSecondary">
-            © {new Date().getFullYear()} MediBook AI. All rights reserved. Design System & Healthcare Platform.
+            © {new Date().getFullYear()} MediBook AI. {t('footer.allRightsReserved')}
           </p>
           <div className="flex items-center gap-4 text-xs font-medium text-textSecondary">
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-secondary"></span>
-              Design System Active
+              {t('footer.designSystemActive')}
             </span>
           </div>
         </div>

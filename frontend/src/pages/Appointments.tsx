@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Card, Button, Badge } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { listAppointments, getPatientAppointments, cancelAppointment, submitAppointmentFeedback } from '../services/appointments';
+import { useLanguage } from '../i18n/LanguageContext';
+import { translateUrgency, translateStatus, translateReason, translateDate, translateTime } from '../i18n/translations';
 
 type AppointmentStatus = 'Upcoming' | 'Completed' | 'Cancelled' | 'No-show';
 type FilterTab = 'All' | AppointmentStatus;
@@ -63,6 +65,7 @@ interface PatientAppointment {
 /* ══════════════════════════════════════════════════════════════════════ */
 export const Appointments: React.FC = () => {
   const { currentUser } = useAuth();
+  const { t, lang } = useLanguage();
 
   const [doctorAppts, setDoctorAppts] = useState<DoctorAppointment[]>([]);
   const [patientAppts, setPatientAppts] = useState<PatientAppointment[]>([]);
@@ -161,9 +164,9 @@ export const Appointments: React.FC = () => {
 
   /* ── Actions ───────────────────────────────────────────────────── */
   const handleCancel = async (id: string) => {
-    if (!window.confirm('Cancel this appointment?')) return;
-    try { await cancelAppointment(id); setToast('Appointment cancelled.'); fetch(); setTimeout(() => setToast(null), 3000); }
-    catch (err: any) { alert(err?.response?.data?.detail?.message || 'Failed to cancel'); }
+    if (!window.confirm(t('appts.cancelConfirm'))) return;
+    try { await cancelAppointment(id); setToast(t('appts.cancelledMsg')); fetch(); setTimeout(() => setToast(null), 3000); }
+    catch (err: any) { alert(err?.response?.data?.detail?.message || t('appts.failedCancel')); }
   };
 
   const handleRatingChange = (id: string, star: number) =>
@@ -174,13 +177,13 @@ export const Appointments: React.FC = () => {
 
   const handleSubmitFeedback = async (id: string) => {
     const d = ratingInputs[id];
-    if (!d || d.rating === 0) { alert('Please select a star rating.'); return; }
+    if (!d || d.rating === 0) { alert(t('appts.selectStar')); return; }
     try {
       await submitAppointmentFeedback(id, { feedback_score: d.rating, feedback_text: d.feedback });
-      setToast('Thank you! Your review has been submitted.');
+      setToast(t('appts.reviewSuccess'));
       fetch();
       setTimeout(() => setToast(null), 3000);
-    } catch (err: any) { alert(err?.response?.data?.detail?.message || 'Failed to submit review'); }
+    } catch (err: any) { alert(err?.response?.data?.detail?.message || t('appts.failedReview')); }
   };
 
   /* ── Status counts ─────────────────────────────────────────────── */
@@ -195,11 +198,11 @@ export const Appointments: React.FC = () => {
   });
 
   const filterTabs: { key: FilterTab; label: string }[] = [
-    { key: 'All', label: `All (${allAppts.length})` },
-    { key: 'Upcoming', label: `Upcoming (${countByStatus('Upcoming')})` },
-    { key: 'Completed', label: `Completed (${countByStatus('Completed')})` },
-    { key: 'Cancelled', label: `Cancelled (${countByStatus('Cancelled')})` },
-    { key: 'No-show', label: `No-show (${countByStatus('No-show')})` },
+    { key: 'All', label: `${t('appts.all')} (${allAppts.length})` },
+    { key: 'Upcoming', label: `${t('appts.upcoming')} (${countByStatus('Upcoming')})` },
+    { key: 'Completed', label: `${t('appts.completed')} (${countByStatus('Completed')})` },
+    { key: 'Cancelled', label: `${t('appts.cancelled')} (${countByStatus('Cancelled')})` },
+    { key: 'No-show', label: `${t('appts.noShow')} (${countByStatus('No-show')})` },
   ];
 
   /* ── Chevron icon ──────────────────────────────────────────────── */
@@ -230,7 +233,7 @@ export const Appointments: React.FC = () => {
             <span className="w-2.5 h-2.5 rounded-full bg-secondary animate-pulse" />
             <p className="text-sm font-medium text-textPrimary">{toast}</p>
           </div>
-          <button onClick={() => setToast(null)} className="text-xs font-semibold text-textSecondary hover:text-textPrimary">Dismiss</button>
+          <button onClick={() => setToast(null)} className="text-xs font-semibold text-textSecondary hover:text-textPrimary">{t('appts.dismiss')}</button>
         </div>
       )}
 
@@ -239,23 +242,23 @@ export const Appointments: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 mb-1.5">
             <Badge status={isAdmin ? 'success' : isStaffView ? 'primary' : 'success'} size="sm">
-              {isAdmin ? 'Admin Overview' : isStaffView ? 'Clinical Queue' : 'Care History'}
+              {isAdmin ? t('appts.adminOverview') : isStaffView ? t('appts.clinicalQueue') : t('appts.careHistory')}
             </Badge>
           </div>
           <h1 className="font-heading font-extrabold text-3xl sm:text-4xl text-textPrimary tracking-tight">
-            {isAdmin ? 'System-Wide Appointments' : isStaffView ? 'Patient Appointments' : 'My Appointments'}
+            {isAdmin ? t('appts.systemWide') : isStaffView ? t('appts.patientAppts') : t('appts.myAppts')}
           </h1>
-          <p className="text-sm sm:text-base text-textSecondary mt-1">
+          <p className="text-sm sm:text-base text-textSecondary mt-7">
             {isAdmin
-              ? 'View all appointments across doctors and patients with triage urgency data.'
+              ? t('appts.systemWideDesc')
               : isStaffView
-                ? 'View patient details, reviews, and manage your clinical schedule.'
-                : 'View, manage, and review your past and upcoming clinical visits.'}
+                ? t('appts.staffDesc')
+                : t('appts.patientDesc')}
           </p>
         </div>
         {!isStaffView && (
           <Link to="/chat" className="shrink-0">
-            <Button variant="primary" size="md">+ Book New Appointment</Button>
+            <Button variant="primary" size="md">{t('appts.bookNew')}</Button>
           </Link>
         )}
       </div>
@@ -278,7 +281,7 @@ export const Appointments: React.FC = () => {
       {error && (
         <div className="p-4 bg-errorContainer/30 border border-error/30 rounded-2xl flex items-center justify-between text-xs text-error">
           <p className="font-medium">⚠️ {error}</p>
-          <Button size="sm" variant="ghost" onClick={fetch}>Retry</Button>
+          <Button size="sm" variant="ghost" onClick={fetch}>{t('appts.retry')}</Button>
         </div>
       )}
 
@@ -286,7 +289,7 @@ export const Appointments: React.FC = () => {
       {loading ? (
         <Card radius="2xl" shadow="sm" className="p-12 text-center bg-white border border-surfaceContainerHigh">
           <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-xs text-textSecondary font-medium">Fetching appointments...</p>
+          <p className="text-xs text-textSecondary font-medium">{t('appts.loading')}</p>
         </Card>
       ) : (
         <div className="space-y-5">
@@ -303,9 +306,9 @@ export const Appointments: React.FC = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
                 </svg>
               </div>
-              <h3 className="font-heading font-bold text-lg text-textPrimary">No {activeTab !== 'All' ? activeTab.toLowerCase() : ''} appointments found</h3>
-              <p className="text-xs text-textSecondary">No appointments match the selected filter.</p>
-              <Button size="sm" variant="secondary" onClick={() => setActiveTab('All')}>View All</Button>
+              <h3 className="font-heading font-bold text-lg text-textPrimary">{t('appts.noFound')}</h3>
+              <p className="text-xs text-textSecondary">{t('appts.noMatchFilter')}</p>
+              <Button size="sm" variant="secondary" onClick={() => setActiveTab('All')}>{t('appts.viewAll')}</Button>
             </Card>
           )}
         </div>
@@ -331,35 +334,9 @@ export const Appointments: React.FC = () => {
       normal: 'primary' as const,
       low: 'neutral' as const,
     } as Record<string, 'error' | 'pending' | 'primary' | 'neutral'>)[urgencyNorm] || 'neutral';
-    const urgencyLabel = ({
-      critical: 'Critical', high: 'High', normal: 'Normal', low: 'Low',
-    } as Record<string, string>)[urgencyNorm] || 'Not assessed';
+    const urgencyLabel = translateUrgency(urgencyNorm, lang);
 
-    // Display-only dictionary: translates backend reason codes to friendly text.
-    // NEVER infers or determines the reason — only displays what the API provides.
-    const REASON_DISPLAY: Record<string, string> = {
-      chest_pain_with_breathing_distress: 'Chest pain with breathing distress',
-      chest_pain_radiating: 'Chest pain radiating',
-      worsening_chest_pain: 'Worsening chest pain',
-      severe_bleeding: 'Severe bleeding',
-      serious_trauma: 'Serious trauma',
-      head_injury_red_flag: 'Head injury red flag',
-      anaphylaxis_red_flag: 'Anaphylaxis red flag',
-      severe_abdominal_pain: 'Severe abdominal pain',
-      meningitis_red_flag: 'Meningitis red flag',
-      diabetic_red_flag: 'Diabetic red flag',
-      severe_asthma: 'Severe asthma',
-      child_high_fever: 'Child high fever',
-      pregnancy_emergency: 'Pregnancy emergency',
-      standalone_emergency_pattern: 'Emergency pattern detected',
-      high_urgency_marker: 'High urgency marker',
-      cardiology_route: 'Cardiology route',
-      specialty_route: 'Specialty route',
-      insufficient_detail: 'Insufficient detail',
-    };
-    const reasonDisplay = apt.urgency_reason
-      ? REASON_DISPLAY[apt.urgency_reason] || apt.urgency_reason.replace(/_/g, ' ')
-      : null;
+    const reasonDisplay = translateReason(apt.urgency_reason, lang);
 
     // Status-based left border color (light, soft tones)
     const statusNorm = (apt.status || '').toLowerCase();
@@ -377,7 +354,7 @@ export const Appointments: React.FC = () => {
         {/* ── Compact top metadata row ──────────────────────────── */}
         <div className="px-5 pt-4 pb-2.5 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge status={badgeStatus(statusDisp)} size="sm" withDot>{statusDisp}</Badge>
+            <Badge status={badgeStatus(statusDisp)} size="sm" withDot>{translateStatus(statusDisp, lang)}</Badge>
             <Badge status={urgencyBadge} size="sm" withDot>{urgencyLabel}</Badge>
             {apt.appointment_type && (
               <span className="bg-surfaceContainer/80 border border-surfaceContainerHigh px-2 py-0.5 rounded-pill text-[10px] font-semibold uppercase text-textSecondary">
@@ -404,7 +381,7 @@ export const Appointments: React.FC = () => {
                 <svg className="w-3.5 h-3.5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" /></svg>
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-teal-600/80">Doctor</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-teal-600/80">{t('appts.doctor')}</span>
                 <span className="font-heading font-bold text-sm text-teal-900 leading-tight">{apt.doctor_name}</span>
               </div>
             </div>
@@ -421,7 +398,7 @@ export const Appointments: React.FC = () => {
                 <svg className="w-3.5 h-3.5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-violet-600/80">Patient</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-violet-600/80">{t('appts.patient')}</span>
                 <span className="font-heading font-bold text-sm text-violet-900 leading-tight">{apt.patient_name}</span>
               </div>
             </div>
@@ -438,8 +415,8 @@ export const Appointments: React.FC = () => {
           {/* Date/Time */}
           <span className="flex items-center gap-1.5 text-textSecondary">
             <svg className="w-3.5 h-3.5 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
-            <span className="font-semibold text-textPrimary">{dt.date}</span>
-            <span className="text-textSecondary">{dt.time}</span>
+            <span className="font-semibold text-textPrimary">{translateDate(apt.appointment_time, lang, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="text-textSecondary">{translateTime(apt.appointment_time, lang)}</span>
           </span>
           {/* Clinic */}
           <span className="flex items-center gap-1.5 text-textSecondary">
@@ -449,7 +426,7 @@ export const Appointments: React.FC = () => {
           {/* Symptoms - inline */}
           {apt.symptoms_reported && (
             <span className="flex items-start gap-1.5 text-textSecondary flex-1 min-w-[180px]">
-              <span className="font-semibold text-textPrimary shrink-0">Symptoms:</span>
+              <span className="font-semibold text-textPrimary shrink-0">{t('appts.symptoms')}</span>
               <span className="leading-relaxed line-clamp-2">{apt.symptoms_reported}</span>
             </span>
           )}
@@ -459,9 +436,9 @@ export const Appointments: React.FC = () => {
         <div className="px-5 pb-3.5 flex items-center gap-1.5 text-xs">
           <svg className="w-3.5 h-3.5 shrink-0 text-textSecondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>
           {reasonDisplay ? (
-            <span className="text-textSecondary" title={apt.urgency_reason || ''}>Triage: <span className="font-medium text-textPrimary">{reasonDisplay}</span></span>
+            <span className="text-textSecondary" title={apt.urgency_reason || ''}>{t('appts.triage')} <span className="font-medium text-textPrimary">{reasonDisplay}</span></span>
           ) : (
-            <span className="text-textSecondary italic">No triage data</span>
+            <span className="text-textSecondary italic">{t('appts.noTriageData')}</span>
           )}
         </div>
 
@@ -471,43 +448,43 @@ export const Appointments: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               {/* Patient information */}
               <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5">
-                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Patient Information</h4>
-                <p className="text-textSecondary"><strong>Name:</strong> {apt.patient_name}</p>
-                {apt.patient_gender && <p className="text-textSecondary"><strong>Gender:</strong> {apt.patient_gender === 'M' ? 'Male' : apt.patient_gender === 'F' ? 'Female' : apt.patient_gender}</p>}
-                {apt.patient_age != null && <p className="text-textSecondary"><strong>Age:</strong> {apt.patient_age} years</p>}
-                {apt.patient_dob && apt.patient_dob !== '1990-01-01' && <p className="text-textSecondary"><strong>DOB:</strong> {new Date(apt.patient_dob).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>}
-                {apt.patient_blood_type && <p className="text-textSecondary"><strong>Blood Type:</strong> <span className="font-semibold text-error">{apt.patient_blood_type}</span></p>}
-                {apt.patient_email && <p className="text-textSecondary"><strong>Email:</strong> {apt.patient_email}</p>}
-                {apt.patient_phone && <p className="text-textSecondary"><strong>Phone:</strong> {apt.patient_phone}</p>}
+                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">{t('appts.patientInfo')}</h4>
+                <p className="text-textSecondary"><strong>{t('appts.name')}</strong> {apt.patient_name}</p>
+                {apt.patient_gender && <p className="text-textSecondary"><strong>{t('appts.gender')}</strong> {apt.patient_gender === 'M' ? t('appts.male') : apt.patient_gender === 'F' ? t('appts.female') : apt.patient_gender}</p>}
+                {apt.patient_age != null && <p className="text-textSecondary"><strong>{t('appts.age')}</strong> {apt.patient_age} {t('appts.years')}</p>}
+                {apt.patient_dob && apt.patient_dob !== '1990-01-01' && <p className="text-textSecondary"><strong>{t('appts.dob')}</strong> {translateDate(new Date(apt.patient_dob).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), lang)}</p>}
+                {apt.patient_blood_type && <p className="text-textSecondary"><strong>{t('appts.bloodType')}</strong> <span className="font-semibold text-error">{apt.patient_blood_type}</span></p>}
+                {apt.patient_email && <p className="text-textSecondary"><strong>{t('appts.email')}</strong> {apt.patient_email}</p>}
+                {apt.patient_phone && <p className="text-textSecondary"><strong>{t('appts.phone')}</strong> {apt.patient_phone}</p>}
               </div>
               {/* Appointment + Doctor information */}
               <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5">
-                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Appointment Details</h4>
-                <p className="text-textSecondary"><strong>Doctor:</strong> {apt.doctor_name}</p>
-                {apt.doctor_specialization && <p className="text-textSecondary"><strong>Specialization:</strong> {apt.doctor_specialization}</p>}
-                <p className="text-textSecondary"><strong>Clinic:</strong> {apt.clinic_name}</p>
-                {apt.clinic_address && <p className="text-textSecondary"><strong>Address:</strong> {apt.clinic_address}</p>}
-                <p className="text-textSecondary"><strong>Type:</strong> {apt.appointment_type.replace('_', ' ')}</p>
-                <p className="text-textSecondary"><strong>Urgency:</strong> {urgencyLabel}</p>
-                {apt.urgency_reason && <p className="text-textSecondary"><strong>Reason:</strong> {reasonDisplay || apt.urgency_reason}</p>}
+                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">{t('appts.apptDetails')}</h4>
+                <p className="text-textSecondary"><strong>{t('appts.doctor')}</strong> {apt.doctor_name}</p>
+                {apt.doctor_specialization && <p className="text-textSecondary"><strong>{t('appts.specialization')}</strong> {apt.doctor_specialization}</p>}
+                <p className="text-textSecondary"><strong>{t('appts.clinic')}</strong> {apt.clinic_name}</p>
+                {apt.clinic_address && <p className="text-textSecondary"><strong>{t('appts.address')}</strong> {apt.clinic_address}</p>}
+                <p className="text-textSecondary"><strong>{t('appts.type')}</strong> {apt.appointment_type.replace('_', ' ')}</p>
+                <p className="text-textSecondary"><strong>{t('appts.urgency')}</strong> {urgencyLabel}</p>
+                {apt.urgency_reason && <p className="text-textSecondary"><strong>{t('appts.reason')}</strong> {reasonDisplay || apt.urgency_reason}</p>}
               </div>
             </div>
 
             {/* Medical history */}
             <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5 text-xs">
-              <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Medical History <span className="font-normal normal-case text-textSecondary">(patient-reported)</span></h4>
+              <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">{t('appts.medicalHistory')} <span className="font-normal normal-case text-textSecondary">{t('appts.patientReported')}</span></h4>
               {allergies.length > 0 ? (
-                <div><strong className="text-textPrimary">Allergies:</strong><div className="flex flex-wrap gap-1 mt-1">{allergies.map((a, i) => <span key={i} className="bg-errorContainer/40 text-error text-[10px] px-2 py-0.5 rounded-pill">{a}</span>)}</div></div>
-              ) : <p className="text-textSecondary italic">No allergies reported</p>}
+                <div><strong className="text-textPrimary">{t('appts.allergies')}</strong><div className="flex flex-wrap gap-1 mt-1">{allergies.map((a, i) => <span key={i} className="bg-errorContainer/40 text-error text-[10px] px-2 py-0.5 rounded-pill">{a}</span>)}</div></div>
+              ) : <p className="text-textSecondary italic">{t('appts.noAllergies')}</p>}
               {conditions.length > 0 ? (
-                <div className="pt-1"><strong className="text-textPrimary">Conditions:</strong><div className="flex flex-wrap gap-1 mt-1">{conditions.map((c, i) => <span key={i} className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-pill">{c}</span>)}</div></div>
-              ) : <p className="text-textSecondary italic">No conditions reported</p>}
+                <div className="pt-1"><strong className="text-textPrimary">{t('appts.conditions')}</strong><div className="flex flex-wrap gap-1 mt-1">{conditions.map((c, i) => <span key={i} className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-pill">{c}</span>)}</div></div>
+              ) : <p className="text-textSecondary italic">{t('appts.noConditions')}</p>}
             </div>
 
             {/* Doctor notes */}
             {apt.doctor_notes && (
               <div className="p-3 bg-surfaceContainer/80 rounded-xl text-xs border border-surfaceContainerHigh">
-                <span className="font-bold text-secondary uppercase text-[10px] tracking-wider block">Clinical Notes:</span>
+                <span className="font-bold text-secondary uppercase text-[10px] tracking-wider block">{t('appts.clinicalNotes')}</span>
                 <p className="text-textPrimary italic mt-1">{apt.doctor_notes}</p>
               </div>
             )}
@@ -516,7 +493,7 @@ export const Appointments: React.FC = () => {
             {apt.feedback_submitted && apt.feedback_score && (
               <div className="p-3 bg-surfaceContainer/40 rounded-xl space-y-2">
                 <span className="text-xs font-bold text-textPrimary flex items-center gap-1.5">
-                  <span>⭐</span> Patient Review
+                  <span>⭐</span> {t('appts.patientReview')}
                 </span>
                 <div className="space-y-1">
                   <div className="flex items-center gap-1 text-amber-500 text-sm">
@@ -567,30 +544,30 @@ export const Appointments: React.FC = () => {
                 <span className="text-xs text-textSecondary">
                   <code className="text-[10px] font-mono text-primary bg-surfaceContainer px-1.5 py-0.5 rounded">{`PT-${apt.patient_id.slice(0, 6)}`}</code>
                 </span>
-                <Badge status={badgeStatus(statusDisp)} size="sm" withDot>{statusDisp}</Badge>
+                <Badge status={badgeStatus(statusDisp)} size="sm" withDot>{translateStatus(statusDisp, lang)}</Badge>
                 {apt.urgency_level && (
                   <Badge status={apt.urgency_level === 'critical' ? 'error' : apt.urgency_level === 'high' ? 'pending' : 'neutral'} size="sm">
-                    {apt.urgency_level}
+                    {translateUrgency(apt.urgency_level, lang)}
                   </Badge>
                 )}
               </div>
 
               {apt.symptoms_reported && (
-                <p className="text-xs text-textSecondary"><strong className="text-textPrimary">Symptoms:</strong> {apt.symptoms_reported}</p>
+                <p className="text-xs text-textSecondary"><strong className="text-textPrimary">{t('appts.symptoms')}</strong> {apt.symptoms_reported}</p>
               )}
 
               {/* Feedback preview (if submitted) */}
               {apt.feedback_submitted && apt.feedback_score && (
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-amber-500"><Stars score={apt.feedback_score} /></span>
-                  <span className="text-textSecondary font-medium">Patient Review</span>
+                  <span className="text-textSecondary font-medium">{t('appts.patientReview')}</span>
                 </div>
               )}
 
               <div className="flex items-center gap-3 pt-1 text-xs text-textSecondary">
                 <span className="flex items-center gap-1.5">
                   <svg className="w-3.5 h-3.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
-                  {dt.date} • {dt.time}
+                  {translateDate(apt.appointment_time, lang, { weekday: 'short', month: 'short', day: 'numeric' })} • {translateTime(apt.appointment_time, lang)}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <svg className="w-3.5 h-3.5 text-textSecondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg>
@@ -605,7 +582,7 @@ export const Appointments: React.FC = () => {
             <a href={calLink} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" size="sm" className="flex items-center gap-1.5">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
-                Calendar
+                {t('appts.calendar')}
               </Button>
             </a>
             <button onClick={() => toggleExpand(apt.appointment_id)} className="p-2 rounded-xl hover:bg-surfaceContainer transition-colors" aria-label="Toggle details">
@@ -620,29 +597,29 @@ export const Appointments: React.FC = () => {
             {/* Patient medical details */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5">
-                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Patient Information</h4>
-                {apt.patient_gender && <p className="text-textSecondary"><strong>Gender:</strong> {apt.patient_gender === 'M' ? 'Male' : apt.patient_gender === 'F' ? 'Female' : apt.patient_gender}</p>}
-                {apt.patient_age != null && <p className="text-textSecondary"><strong>Age:</strong> {apt.patient_age} years</p>}
-                {apt.patient_dob && apt.patient_dob !== '1990-01-01' && <p className="text-textSecondary"><strong>DOB:</strong> {new Date(apt.patient_dob).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>}
-                {apt.patient_blood_type && <p className="text-textSecondary"><strong>Blood Type:</strong> <span className="font-semibold text-error">{apt.patient_blood_type}</span></p>}
-                {apt.patient_email && <p className="text-textSecondary"><strong>Email:</strong> {apt.patient_email}</p>}
-                {apt.patient_phone && <p className="text-textSecondary"><strong>Phone:</strong> {apt.patient_phone}</p>}
+                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">{t('appts.patientInfo')}</h4>
+                {apt.patient_gender && <p className="text-textSecondary"><strong>{t('appts.gender')}</strong> {apt.patient_gender === 'M' ? t('appts.male') : apt.patient_gender === 'F' ? t('appts.female') : apt.patient_gender}</p>}
+                {apt.patient_age != null && <p className="text-textSecondary"><strong>{t('appts.age')}</strong> {apt.patient_age} {t('appts.years')}</p>}
+                {apt.patient_dob && apt.patient_dob !== '1990-01-01' && <p className="text-textSecondary"><strong>{t('appts.dob')}</strong> {translateDate(new Date(apt.patient_dob).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), lang)}</p>}
+                {apt.patient_blood_type && <p className="text-textSecondary"><strong>{t('appts.bloodType')}</strong> <span className="font-semibold text-error">{apt.patient_blood_type}</span></p>}
+                {apt.patient_email && <p className="text-textSecondary"><strong>{t('appts.email')}</strong> {apt.patient_email}</p>}
+                {apt.patient_phone && <p className="text-textSecondary"><strong>{t('appts.phone')}</strong> {apt.patient_phone}</p>}
               </div>
               <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5">
-                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Medical History <span className="font-normal normal-case text-textSecondary">(patient-reported)</span></h4>
+                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">{t('appts.medicalHistory')} <span className="font-normal normal-case text-textSecondary">{t('appts.patientReported')}</span></h4>
                 {allergies.length > 0 ? (
-                  <div><strong className="text-textPrimary">Allergies:</strong><div className="flex flex-wrap gap-1 mt-1">{allergies.map((a, i) => <span key={i} className="bg-errorContainer/40 text-error text-[10px] px-2 py-0.5 rounded-pill">{a}</span>)}</div></div>
-                ) : <p className="text-textSecondary italic">No allergies reported</p>}
+                  <div><strong className="text-textPrimary">{t('appts.allergies')}</strong><div className="flex flex-wrap gap-1 mt-1">{allergies.map((a, i) => <span key={i} className="bg-errorContainer/40 text-error text-[10px] px-2 py-0.5 rounded-pill">{a}</span>)}</div></div>
+                ) : <p className="text-textSecondary italic">{t('appts.noAllergies')}</p>}
                 {conditions.length > 0 ? (
-                  <div className="pt-1"><strong className="text-textPrimary">Conditions:</strong><div className="flex flex-wrap gap-1 mt-1">{conditions.map((c, i) => <span key={i} className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-pill">{c}</span>)}</div></div>
-                ) : <p className="text-textSecondary italic">No conditions reported</p>}
+                  <div className="pt-1"><strong className="text-textPrimary">{t('appts.conditions')}</strong><div className="flex flex-wrap gap-1 mt-1">{conditions.map((c, i) => <span key={i} className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-pill">{c}</span>)}</div></div>
+                ) : <p className="text-textSecondary italic">{t('appts.noConditions')}</p>}
               </div>
             </div>
 
             {/* Doctor notes (if any) */}
             {apt.doctor_notes && (
               <div className="p-3 bg-surfaceContainer/80 rounded-xl text-xs border border-surfaceContainerHigh">
-                <span className="font-bold text-secondary uppercase text-[10px] tracking-wider block">Clinical Notes:</span>
+                <span className="font-bold text-secondary uppercase text-[10px] tracking-wider block">{t('appts.clinicalNotes')}</span>
                 <p className="text-textPrimary italic mt-1">{apt.doctor_notes}</p>
               </div>
             )}
@@ -701,7 +678,7 @@ export const Appointments: React.FC = () => {
             <div className="space-y-1.5 flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
                 <h3 className="font-heading font-bold text-lg text-textPrimary">{apt.doctor_name}</h3>
-                <Badge status={badgeStatus(statusDisp)} size="sm" withDot>{statusDisp}</Badge>
+                <Badge status={badgeStatus(statusDisp)} size="sm" withDot>{translateStatus(statusDisp, lang)}</Badge>
               </div>
               {apt.doctor_specialization && (
                 <p className="text-xs font-semibold text-secondary">{apt.doctor_specialization}</p>
@@ -710,7 +687,7 @@ export const Appointments: React.FC = () => {
               <div className="flex items-center gap-3 pt-1 text-xs text-textSecondary">
                 <span className="flex items-center gap-1.5">
                   <svg className="w-4 h-4 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
-                  <span className="font-semibold text-textPrimary">{dt.date} • {dt.time}</span>
+                  <span className="font-semibold text-textPrimary">{translateDate(apt.appointment_time, lang, { weekday: 'short', month: 'short', day: 'numeric' })} • {translateTime(apt.appointment_time, lang)}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <svg className="w-4 h-4 text-textSecondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg>
@@ -720,7 +697,7 @@ export const Appointments: React.FC = () => {
 
               {apt.doctor_notes && (
                 <div className="mt-2 p-2.5 bg-surfaceContainer rounded-xl text-xs text-textSecondary border border-surfaceContainerHigh">
-                  <strong className="text-textPrimary">Doctor Notes:</strong> {apt.doctor_notes}
+                  <strong className="text-textPrimary">{t('appts.clinicalNotes')}</strong> {apt.doctor_notes}
                 </div>
               )}
             </div>
@@ -731,18 +708,18 @@ export const Appointments: React.FC = () => {
             {isUpcoming && (
               <>
                 <Link to="/chat">
-                  <Button size="sm" variant="secondary">Reschedule</Button>
+                  <Button size="sm" variant="secondary">{t('appts.reschedule')}</Button>
                 </Link>
                 <button type="button" onClick={() => handleCancel(apt.appointment_id)}
                   className="text-xs font-semibold text-error hover:underline px-3 py-1.5 rounded-pill hover:bg-errorContainer/30 transition-colors">
-                  Cancel
+                  {t('appts.cancel')}
                 </button>
               </>
             )}
             <a href={calLink} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" size="sm" className="flex items-center gap-1.5">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
-                Calendar
+                {t('appts.calendar')}
               </Button>
             </a>
             <button onClick={() => toggleExpand(apt.appointment_id)} className="p-2 rounded-xl hover:bg-surfaceContainer transition-colors" aria-label="Toggle details">
@@ -757,26 +734,26 @@ export const Appointments: React.FC = () => {
             {/* Doctor details */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5">
-                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Doctor Information</h4>
-                <p className="text-textSecondary"><strong>Name:</strong> {apt.doctor_name}</p>
-                {apt.doctor_specialization && <p className="text-textSecondary"><strong>Specialization:</strong> {apt.doctor_specialization}</p>}
-                <p className="text-textSecondary"><strong>Clinic:</strong> {apt.clinic_name}</p>
-                {apt.clinic_address && <p className="text-textSecondary"><strong>Address:</strong> {apt.clinic_address}</p>}
+                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">{t('appts.doctorInfo')}</h4>
+                <p className="text-textSecondary"><strong>{t('appts.name')}</strong> {apt.doctor_name}</p>
+                {apt.doctor_specialization && <p className="text-textSecondary"><strong>{t('appts.specialization')}</strong> {apt.doctor_specialization}</p>}
+                <p className="text-textSecondary"><strong>{t('appts.clinic')}</strong> {apt.clinic_name}</p>
+                {apt.clinic_address && <p className="text-textSecondary"><strong>{t('appts.address')}</strong> {apt.clinic_address}</p>}
               </div>
               <div className="p-3 bg-surfaceContainer/60 rounded-xl space-y-1.5">
-                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">Appointment Details</h4>
-                <p className="text-textSecondary"><strong>Date:</strong> {dt.date}</p>
-                <p className="text-textSecondary"><strong>Time:</strong> {dt.time}{apt.end_time ? ` — ${fmtTime(apt.end_time)}` : ''}</p>
-                <p className="text-textSecondary"><strong>Status:</strong> <Badge status={badgeStatus(statusDisp)} size="sm">{statusDisp}</Badge></p>
-                {apt.symptoms && <p className="text-textSecondary"><strong>Symptoms:</strong> {apt.symptoms}</p>}
-                {apt.urgency && <p className="text-textSecondary"><strong>Urgency:</strong> {apt.urgency}</p>}
+                <h4 className="font-bold text-textPrimary uppercase text-[10px] tracking-wider">{t('appts.apptDetails')}</h4>
+                <p className="text-textSecondary"><strong>{t('appts.date')}</strong> {translateDate(apt.appointment_time, lang, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                <p className="text-textSecondary"><strong>{t('appts.time')}</strong> {translateTime(apt.appointment_time, lang)}{apt.end_time ? ` — ${translateTime(apt.end_time, lang)}` : ''}</p>
+                <p className="text-textSecondary"><strong>{t('appts.status')}</strong> <Badge status={badgeStatus(statusDisp)} size="sm">{translateStatus(statusDisp, lang)}</Badge></p>
+                {apt.symptoms && <p className="text-textSecondary"><strong>{t('appts.symptoms')}</strong> {apt.symptoms}</p>}
+                {apt.urgency && <p className="text-textSecondary"><strong>{t('appts.urgency')}</strong> {translateUrgency(apt.urgency, lang)}</p>}
               </div>
             </div>
 
             {/* Doctor notes */}
             {apt.doctor_notes && (
               <div className="p-3 bg-surfaceContainer/80 rounded-xl text-xs border border-surfaceContainerHigh">
-                <span className="font-bold text-secondary uppercase text-[10px] tracking-wider block">Clinical Notes:</span>
+                <span className="font-bold text-secondary uppercase text-[10px] tracking-wider block">{t('appts.clinicalNotes')}</span>
                 <p className="text-textPrimary italic mt-1">{apt.doctor_notes}</p>
               </div>
             )}
@@ -790,16 +767,16 @@ export const Appointments: React.FC = () => {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-bold text-textPrimary flex items-center gap-1.5">
                   <span>⭐</span>
-                  {isFeedbackSubmitted ? 'Your Consultation Review:' : `Rate your visit with ${apt.doctor_name}:`}
+                  {isFeedbackSubmitted ? t('appts.yourReview') : t('appts.rateVisit', { name: apt.doctor_name })}
                 </span>
-                {isFeedbackSubmitted && <Badge status="success" size="sm">Review Verified</Badge>}
+                {isFeedbackSubmitted && <Badge status="success" size="sm">{t('appts.reviewVerified')}</Badge>}
               </div>
 
               {isFeedbackSubmitted ? (
                 <div className="space-y-1">
                   <div className="flex items-center gap-1 text-amber-500 text-sm">
                     <Stars score={apt.feedback_score || currentRating.rating || 5} size="md" />
-                    <span className="text-xs text-textSecondary ml-2">({apt.feedback_score || currentRating.rating || 5}/5 Stars)</span>
+                    <span className="text-xs text-textSecondary ml-2">({apt.feedback_score || currentRating.rating || 5}/5 {t('appts.stars')})</span>
                   </div>
                   {(apt.feedback_text || currentRating.feedback) && (
                     <p className="text-xs text-textSecondary italic">"{apt.feedback_text || currentRating.feedback}"</p>
@@ -817,16 +794,16 @@ export const Appointments: React.FC = () => {
                       </button>
                     ))}
                     <span className="text-xs font-semibold text-textSecondary ml-2">
-                      {currentRating.rating > 0 ? `${currentRating.rating} of 5 stars` : 'Select stars'}
+                      {currentRating.rating > 0 ? `${currentRating.rating} ${t('appts.of5')}` : t('appts.selectStars')}
                     </span>
                   </div>
                   {/* Comment + Submit */}
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input type="text" value={currentRating.feedback} onChange={(e) => handleFeedbackText(apt.appointment_id, e.target.value)}
-                      placeholder="Write a brief comment (optional)..."
+                      placeholder={t('appts.commentPlaceholder')}
                       className="flex-1 text-xs bg-white rounded-xl border border-outline/40 px-3 py-2 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
                     <Button size="sm" variant="secondary" onClick={() => handleSubmitFeedback(apt.appointment_id)}>
-                      Submit Review
+                      {t('appts.submitReview')}
                     </Button>
                   </div>
                 </div>
