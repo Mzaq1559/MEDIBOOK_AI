@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button, Badge } from '../ui';
 import { type ParsedRescheduleSummary } from '../../services/chat';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface RescheduleConfirmationProps {
   reschedule: ParsedRescheduleSummary;
@@ -19,6 +20,7 @@ export const RescheduleConfirmation: React.FC<RescheduleConfirmationProps> = ({
 }) => {
   // Prevent double-submission: once clicked, the button stays disabled.
   const [hasConfirmed, setHasConfirmed] = useState(false);
+  const { t } = useLanguage();
 
   // Drive state strictly from the backend status field.
   const status = reschedule.status ?? 'pending';
@@ -29,21 +31,21 @@ export const RescheduleConfirmation: React.FC<RescheduleConfirmationProps> = ({
   const isPending = status === 'pending';
 
   const headingLabel = isExecuted
-    ? 'Reschedule Confirmed'
+    ? t('reschedule.confirmed')
     : isExpired
-    ? 'Request Expired'
+    ? t('reschedule.expired')
     : isFailed
-    ? 'Reschedule Failed'
-    : 'Confirm Reschedule';
+    ? t('reschedule.failed')
+    : t('reschedule.confirm');
 
   const badgeStatus = isExecuted ? 'success' : isExpired || isFailed ? 'error' : 'pending';
   const badgeLabel = isExecuted
-    ? 'Rescheduled'
+    ? t('reschedule.rescheduled')
     : isExpired
-    ? 'Expired'
+    ? t('reschedule.expired')
     : isFailed
-    ? 'Failed'
-    : 'Pending';
+    ? t('reschedule.failed')
+    : t('reschedule.pending');
 
   const handleConfirm = () => {
     setHasConfirmed(true);
@@ -70,15 +72,15 @@ export const RescheduleConfirmation: React.FC<RescheduleConfirmationProps> = ({
           <span className="text-base leading-none mt-0.5">⚠️</span>
           <p className="leading-relaxed">
             {isExpired
-              ? 'This reschedule request has expired. Please start a new request to reschedule your appointment.'
-              : 'Something went wrong while rescheduling. Please try again.'}
+              ? t('reschedule.expiredMsg')
+              : t('reschedule.failedMsg')}
           </p>
         </div>
       )}
 
       <div className="text-xs space-y-1 mb-2">
-        <span className="text-textSecondary">Doctor: </span>
-        <span className="font-bold text-textPrimary">{reschedule.doctor?.name || 'Your Doctor'}</span>
+        <span className="text-textSecondary">{t('reschedule.doctor')} </span>
+        <span className="font-bold text-textPrimary">{reschedule.doctor?.name || t('reschedule.yourDoctor')}</span>
       </div>
 
       <div className="grid grid-cols-2 gap-3 text-xs relative">
@@ -88,14 +90,14 @@ export const RescheduleConfirmation: React.FC<RescheduleConfirmationProps> = ({
         </div>
 
         <div className="p-3 bg-surfaceContainer rounded-xl opacity-70">
-          <span className="text-[10px] text-error uppercase font-bold block mb-0.5">Old Time</span>
+          <span className="text-[10px] text-error uppercase font-bold block mb-0.5">{t('reschedule.oldTime')}</span>
           <span className="font-semibold text-textSecondary text-xs block line-through">
             {reschedule.oldSlot}
           </span>
         </div>
 
         <div className="p-3 bg-primary/10 rounded-xl border border-primary/20">
-          <span className="text-[10px] text-primary uppercase font-bold block mb-0.5">New Time</span>
+          <span className="text-[10px] text-primary uppercase font-bold block mb-0.5">{t('reschedule.newTime')}</span>
           <span className="font-bold text-primary text-xs block">
             {reschedule.newSlot}
           </span>
@@ -113,7 +115,7 @@ export const RescheduleConfirmation: React.FC<RescheduleConfirmationProps> = ({
             disabled={disabled || hasConfirmed}
             onClick={handleConfirm}
           >
-            {isLoading ? 'Rescheduling...' : 'Confirm Reschedule'}
+            {isLoading ? t('reschedule.rescheduling') : t('reschedule.confirmBtn')}
           </Button>
           <Button
             variant="secondary"
@@ -122,7 +124,7 @@ export const RescheduleConfirmation: React.FC<RescheduleConfirmationProps> = ({
             disabled={disabled || isLoading || hasConfirmed}
             onClick={onChange}
           >
-            Change Time
+            {t('reschedule.changeTime')}
           </Button>
         </div>
       )}

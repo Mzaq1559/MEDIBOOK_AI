@@ -15,6 +15,7 @@ import { TimeSlotGrid } from '../components/chat/TimeSlotGrid';
 import { ConfirmationCard } from '../components/chat/ConfirmationCard';
 import { RescheduleConfirmation } from '../components/chat/RescheduleConfirmation';
 import { AppointmentCard } from '../components/chat/AppointmentCard';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface ChatMessage {
   id: string;
@@ -85,6 +86,7 @@ function mapApiResponseToBotMessage(
 
 export const Chat: React.FC = () => {
   const { currentUser } = useAuth();
+  const { t, lang: globalLang } = useLanguage();
   const rawName = (currentUser?.name || '').trim();
   let userName = 'there';
   if (rawName.includes(',')) {
@@ -108,9 +110,10 @@ export const Chat: React.FC = () => {
   const [isBookingInProgress, setIsBookingInProgress] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
 
-  const [language, setLanguage] = useState<'en' | 'ur'>(() => {
-    return (localStorage.getItem('preferredLanguage') as 'en' | 'ur') || 'en';
-  });
+  // Sync voice language with global language
+  const [language, setLanguage] = useState<'en' | 'ur'>(() => globalLang);
+  // Keep voice language in sync with global language
+  useEffect(() => { setLanguage(globalLang); }, [globalLang]);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('⚪ Idle');
   const recognitionRef = useRef<any>(null);
@@ -136,6 +139,7 @@ export const Chat: React.FC = () => {
   }, [messages, isBotTyping]);
 
   const toggleLanguage = useCallback(() => {
+    // This now just toggles voice input language independently
     const newLang = language === 'en' ? 'ur' : 'en';
     setLanguage(newLang);
     localStorage.setItem('preferredLanguage', newLang);
@@ -214,10 +218,10 @@ export const Chat: React.FC = () => {
   }, [isRecording, isBotTyping, startVoiceInput]);
 
   const quickSymptoms = [
-    'Book an appointment',
-    'Cancel my appointment',
-    'Reschedule appointment',
-    'What are my appointments?',
+    t('chat.bookAppt'),
+    t('chat.cancelAppt'),
+    t('chat.rescheduleAppt'),
+    t('chat.myAppts'),
   ];
 
   const callChatApi = useCallback(
@@ -307,21 +311,21 @@ export const Chat: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-heading font-extrabold text-xl sm:text-2xl text-textPrimary tracking-tight">
-                AI Health Assistant
+                {t('chat.title')}
               </h1>
               <Badge status="success" size="sm" withDot>
-                Online
+                {t('chat.online')}
               </Badge>
             </div>
-            <p className="text-xs text-textSecondary">
-              Describe your symptoms and I'll help you book the right appointment
+            <p className="text-xs text-textSecondary mt-2">
+              {t('chat.subtitle')}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <Badge status="primary" size="sm">
-            RAG Clinical Triage
+            {t('chat.triage')}
           </Badge>
         </div>
       </div>
@@ -348,13 +352,13 @@ export const Chat: React.FC = () => {
 
             if (msg.isEmergency) {
               return (
-                <div key={msg.id} className="flex justify-start items-start gap-3 animate-fadeIn">
+                <div key={msg.id} dir="ltr" className="flex justify-start items-start gap-3 animate-fadeIn">
                   <div className="w-8 h-8 rounded-xl bg-error text-white flex items-center justify-center shrink-0 mt-1 shadow-soft-sm">🚨</div>
                   <div className="w-full max-w-xl">
                     <div className="bg-errorContainer border-2 border-error/40 p-5 rounded-2xl rounded-tl-sm text-textPrimary shadow-soft-sm space-y-3">
                       <div className="flex items-center gap-2">
                         <span className="font-heading font-extrabold text-sm text-error uppercase tracking-wider">
-                          Emergency Medical Alert
+                          {t('chat.emergencyAlert')}
                         </span>
                       </div>
                       <p className="text-sm font-semibold text-textPrimary leading-relaxed whitespace-pre-line">
@@ -362,7 +366,7 @@ export const Chat: React.FC = () => {
                       </p>
                       <div className="pt-2 flex flex-wrap gap-2.5">
                         <a href="tel:911" className="inline-flex items-center gap-1.5 bg-error text-white text-xs font-bold px-4 py-2 rounded-pill hover:bg-[#a01616] shadow-soft transition-all">
-                          📞 Call Emergency (911)
+                          {t('chat.callEmergency')}
                         </a>
                       </div>
                     </div>
@@ -373,7 +377,7 @@ export const Chat: React.FC = () => {
             }
 
             return (
-              <div key={msg.id} className="flex justify-start items-start gap-3 animate-fadeIn">
+              <div key={msg.id} dir="ltr" className="flex justify-start items-start gap-3 animate-fadeIn">
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primaryContainer text-white flex items-center justify-center shrink-0 mt-1 shadow-soft-sm text-xs font-bold">
                   AI
                 </div>
@@ -389,7 +393,7 @@ export const Chat: React.FC = () => {
                     <div className="pt-1">
                       <Link to="/login">
                         <Button size="sm" variant="primary">
-                          Log in to continue
+                          {t('chat.loginContinue')}
                         </Button>
                       </Link>
                     </div>
@@ -476,14 +480,14 @@ export const Chat: React.FC = () => {
 
                   {msg.uiData?.triage?.rag_used && (msg.uiData.triage.sources?.length ?? 0) > 0 && (
                     <div className="bg-surfaceContainer/60 border border-surfaceContainerHigh rounded-xl p-4 text-xs text-textSecondary space-y-2">
-                      <p className="font-semibold text-textPrimary">Based on medical knowledge</p>
+                      <p className="font-semibold text-textPrimary">{t('chat.basedOnKnowledge')}</p>
                       <ul className="list-disc pl-4 space-y-1">
                         {msg.uiData.triage.sources!.map((source) => (
                           <li key={source.id}>{source.title}</li>
                         ))}
                       </ul>
                       <p>
-                        This information is for general guidance and does not replace professional medical evaluation.
+                        {t('chat.disclaimer')}
                       </p>
                     </div>
                   )}
@@ -498,7 +502,7 @@ export const Chat: React.FC = () => {
             <div className="flex items-center gap-2.5 text-xs text-textSecondary animate-fadeIn pl-2">
               <LoadingSpinner size="sm" color="primary" />
               <span className="transition-all duration-200 font-medium text-textPrimary">
-                {currentStatusLabel || 'AI is thinking...'}
+                {currentStatusLabel || t('chat.thinking')}
               </span>
             </div>
           )}
@@ -509,7 +513,7 @@ export const Chat: React.FC = () => {
         <div className="pt-4 border-t border-surfaceContainerHigh">
           <div className="flex items-center gap-1.5 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-textSecondary">
-              Suggestions:
+              {t('chat.suggestions')}
             </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -552,7 +556,7 @@ export const Chat: React.FC = () => {
                 : 'bg-surfaceContainer hover:bg-surfaceContainerHigh text-textPrimary'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {isRecording ? '🔴 Recording...' : '🎤 Speak'}
+            {isRecording ? t('chat.recording') : t('chat.speak')}
           </button>
 
           <span className="text-xs text-textSecondary/70 italic ml-auto">
@@ -571,7 +575,7 @@ export const Chat: React.FC = () => {
             type="text"
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
-            placeholder={language === 'en' ? "Type or speak your message..." : "اپنا پیغام ٹائپ کریں یا بولیں..."}
+            placeholder={globalLang === 'en' ? t('chat.placeholder') : t('chat.placeholderUrdu')}
             className="flex-1 bg-transparent px-4 py-2 text-sm text-textPrimary placeholder:text-textSecondary/60 outline-none"
             disabled={isBotTyping}
           />
@@ -580,7 +584,7 @@ export const Chat: React.FC = () => {
             type="submit"
             disabled={!inputVal.trim() || isBotTyping}
             className="w-10 h-10 rounded-pill bg-primary hover:bg-primaryContainer text-white flex items-center justify-center shrink-0 disabled:opacity-40 disabled:cursor-not-allowed shadow-soft-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary"
-            aria-label="Send message"
+            aria-label={t('chat.send')}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
@@ -589,7 +593,7 @@ export const Chat: React.FC = () => {
         </form>
 
         <div className="text-center text-[10px] text-textSecondary/50">
-          Press <kbd className="px-1.5 py-0.5 bg-surfaceContainer rounded text-xs font-mono">Space</kbd> to start voice input
+          Press <kbd className="px-1.5 py-0.5 bg-surfaceContainer rounded text-xs font-mono">Space</kbd> for voice input
         </div>
       </div>
     </div>

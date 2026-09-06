@@ -1,5 +1,6 @@
 import React from 'react';
 import { type ParsedDoctorOption, avatarBgForName } from '../../services/chat';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface DoctorCardProps {
   doctor: ParsedDoctorOption;
@@ -10,6 +11,7 @@ interface DoctorCardProps {
 
 export const DoctorCard: React.FC<DoctorCardProps> = ({ doctor, isSelected, onClick, disabled }) => {
   const bg = avatarBgForName(doctor.name);
+  const { t } = useLanguage();
   
   return (
     <button
@@ -49,7 +51,7 @@ export const DoctorCard: React.FC<DoctorCardProps> = ({ doctor, isSelected, onCl
           {doctor.rating > 0 && (
             <div className="flex items-center gap-1.5">
               <span>⭐</span>
-              <span className="font-medium">{doctor.rating.toFixed(1)} Rating</span>
+              <span className="font-medium">{doctor.rating.toFixed(1)} {t('doctorCard.rating')}</span>
             </div>
           )}
         </div>

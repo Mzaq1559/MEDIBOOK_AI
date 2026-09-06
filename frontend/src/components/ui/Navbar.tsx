@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { cn } from '../../lib/utils';
 import { Button } from './Button';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 export interface NavItem {
   label: string;
@@ -26,17 +27,9 @@ export interface NavbarProps {
   className?: string;
 }
 
-const defaultAuthenticatedNavItems: NavItem[] = [
-  { label: 'Dashboard', path: '/dashboard' },
-  { label: 'Appointments', path: '/appointments' },
-  { label: 'AI Health Chat', path: '/chat', badge: 'AI' },
-  { label: 'Doctor Portal', path: '/doctor-dashboard' },
-  { label: 'Admin', path: '/admin' },
-];
-
 export const Navbar: React.FC<NavbarProps> = ({
   logoText = 'MediBook AI',
-  navItems = defaultAuthenticatedNavItems,
+  navItems = [],
   user = null,
   onLoginClick,
   onRegisterClick,
@@ -44,6 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   className,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { t, toggleLang, lang } = useLanguage();
 
   // Link for the logo based on login status
   const logoDestination = user
@@ -87,7 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="text-primary ml-1">{logoText.split(' ').slice(1).join(' ')}</span>
               </span>
               <span className="text-[10px] uppercase font-semibold tracking-wider text-secondary -mt-1">
-                Healthcare Platform
+                {t('nav.healthcarePlatform')}
               </span>
             </div>
           </Link>
@@ -119,23 +113,37 @@ export const Navbar: React.FC<NavbarProps> = ({
             </nav>
           )}
 
-          {/* User Profile / Auth Actions (Right) */}
+          {/* Language Toggle + User Profile / Auth Actions (Right) */}
           <div className="hidden md:flex items-center gap-3">
+            {/* EN / اردو toggle */}
+            <button
+              type="button"
+              onClick={toggleLang}
+              className={cn(
+                'px-3 py-1.5 rounded-pill text-xs font-bold transition-all border focus:outline-none focus:ring-2 focus:ring-primary/20',
+                lang === 'ur'
+                  ? 'bg-orange-500 text-white border-orange-500 hover:bg-orange-600'
+                  : 'bg-primary text-white border-primary hover:bg-primary/90'
+              )}
+            >
+              {lang === 'en' ? 'EN / اردو' : 'اردو / EN'}
+            </button>
+
             {user ? (
               <div className="flex items-center gap-3 pl-2">
-                <div className="text-right">
+                <div className={cn("text-sm", lang === 'ur' ? 'text-right' : 'text-right')}>
                   <p className="text-sm font-semibold text-textPrimary leading-tight">
                     {user.name}
                   </p>
                   <p className="text-xs text-textSecondary font-medium">
-                    {user.specialization || user.role || 'Patient'}
+                    {user.specialization || user.role || t('common.patient')}
                   </p>
                 </div>
                 {user.isPatient ? (
                   <Link
                     to="/medical-profile"
                     className="w-9 h-9 rounded-pill bg-surfaceContainer text-primary flex items-center justify-center font-bold border border-primary/20 shadow-soft-sm transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-primary/40 hover:shadow-lg cursor-pointer"
-                    title="View Medical Profile"
+                    title={t('nav.viewMedicalProfile')}
                   >
                     {user.avatarUrl ? (
                       <img
@@ -168,9 +176,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                     size="sm"
                     onClick={onLogout}
                     className="text-textSecondary hover:text-error hover:bg-errorContainer/30 transition-colors ml-1"
-                    title="Log out of MediBook AI"
+                    title={t('nav.logout')}
                   >
-                    Logout
+                    {t('nav.logout')}
                   </Button>
                 )}
               </div>
@@ -182,7 +190,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     size="sm"
                     onClick={onLoginClick}
                   >
-                    Sign In
+                    {t('nav.login')}
                   </Button>
                 </Link>
                 <Link to="/register">
@@ -191,15 +199,27 @@ export const Navbar: React.FC<NavbarProps> = ({
                     size="sm"
                     onClick={onRegisterClick}
                   >
-                    Get Started
+                    {t('nav.register')}
                   </Button>
                 </Link>
               </div>
             )}
           </div>
 
-          {/* Mobile menu button */}
+          {/* Mobile menu button + lang toggle */}
           <div className="flex md:hidden items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleLang}
+              className={cn(
+                'px-2.5 py-1.5 rounded-pill text-[10px] font-bold transition-all border',
+                lang === 'ur'
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-primary text-white border-primary'
+              )}
+            >
+              {lang === 'en' ? 'EN / اردو' : 'اردو / EN'}
+            </button>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -229,7 +249,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         to="/medical-profile"
                         onClick={() => setMobileMenuOpen(false)}
                         className="w-8 h-8 rounded-pill bg-primary text-white flex items-center justify-center font-bold text-xs transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-primary/40"
-                        title="View Medical Profile"
+                        title={t('nav.viewMedicalProfile')}
                       >
                         {(user.name || '?').charAt(0)}
                       </Link>
@@ -251,7 +271,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       }}
                       className="text-xs font-semibold text-error hover:underline"
                     >
-                      Logout
+                      {t('nav.logout')}
                     </button>
                   )}
                 </div>
@@ -283,12 +303,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="pt-2 flex flex-col gap-2">
                 <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
                   <Button variant="outline" className="w-full justify-center">
-                    Sign In
+                    {t('nav.login')}
                   </Button>
                 </Link>
                 <Link to="/register" onClick={() => setMobileMenuOpen(false)}>
                   <Button variant="primary" className="w-full justify-center">
-                    Get Started
+                    {t('nav.register')}
                   </Button>
                 </Link>
               </div>

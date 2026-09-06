@@ -1,8 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Badge } from '../components/ui';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export const LandingPage: React.FC = () => {
+  const { t } = useLanguage();
+
   const features = [
     {
       icon: (
@@ -15,10 +18,9 @@ export const LandingPage: React.FC = () => {
         </svg>
       ),
       iconBg: 'bg-primary/10 text-primary',
-      title: 'AI Symptom Triage',
-      badge: 'Natural Language',
-      description:
-        'Interactive real-time clinical assessment that understands natural symptom descriptions, evaluates urgency, and matches you with specialized physicians.',
+      title: t('landing.feat1Title'),
+      badge: t('landing.feat1Badge'),
+      description: t('landing.feat1Desc'),
     },
     {
       icon: (
@@ -31,10 +33,9 @@ export const LandingPage: React.FC = () => {
         </svg>
       ),
       iconBg: 'bg-[#62FAE3]/35 text-secondary border border-secondary/20',
-      title: 'Smart Appointment Booking',
-      badge: 'Instant Sync',
-      description:
-        'Browse verified doctor profiles, view live slot availability, book in-clinic visits or HD telehealth video consultations with zero waiting times.',
+      title: t('landing.feat2Title'),
+      badge: t('landing.feat2Badge'),
+      description: t('landing.feat2Desc'),
     },
     {
       icon: (
@@ -47,10 +48,9 @@ export const LandingPage: React.FC = () => {
         </svg>
       ),
       iconBg: 'bg-surfaceContainerHigh text-primary',
-      title: 'Automated Reminders',
-      badge: 'WhatsApp & SMS',
-      description:
-        'Smart automated notifications delivered 24 hours and 1 hour before scheduled consultations, drastically cutting clinic no-show rates.',
+      title: t('landing.feat3Title'),
+      badge: t('landing.feat3Badge'),
+      description: t('landing.feat3Desc'),
     },
     {
       icon: (
@@ -63,10 +63,9 @@ export const LandingPage: React.FC = () => {
         </svg>
       ),
       iconBg: 'bg-primary/10 text-primary',
-      title: 'Doctor Clinical Portal',
-      badge: 'Clinician Workflow',
-      description:
-        'A streamlined workspace for healthcare professionals to review incoming patient queues, assess triage urgency, save clinical notes, and manage daily shifts.',
+      title: t('landing.feat4Title'),
+      badge: t('landing.feat4Badge'),
+      description: t('landing.feat4Desc'),
     },
     {
       icon: (
@@ -79,10 +78,9 @@ export const LandingPage: React.FC = () => {
         </svg>
       ),
       iconBg: 'bg-errorContainer text-error border border-error/20',
-      title: 'Emergency Detection',
-      badge: 'Life-Saving Triage',
-      description:
-        'Instant pattern detection for acute conditions such as sudden chest pain or respiratory failure, immediately prompting emergency 911 dialing and ER guidance.',
+      title: t('landing.feat5Title'),
+      badge: t('landing.feat5Badge'),
+      description: t('landing.feat5Desc'),
     },
   ];
 
@@ -95,32 +93,32 @@ export const LandingPage: React.FC = () => {
           <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
             <div className="inline-flex items-center gap-2">
               <Badge status="primary" size="md" withDot>
-                Next-Gen Healthcare AI
+                {t('landing.badge1')}
               </Badge>
               <Badge status="success" size="md">
-                24/7 Availability
+                {t('landing.badge2')}
               </Badge>
             </div>
 
             <h1 className="font-heading font-extrabold text-4xl sm:text-5xl lg:text-6xl text-textPrimary tracking-tight leading-[1.15]">
-              Your 24/7 AI Health Receptionist & Smart Clinic Platform
+              {t('landing.title')}
             </h1>
 
-            <p className="text-base sm:text-lg text-textSecondary leading-relaxed max-w-2xl mx-auto lg:mx-0">
-              Transforming patient triage and clinic appointments. Describe symptoms in plain English, match with top specialists, and manage healthcare with intelligent automation.
+            <p className="text-base sm:text-lg text-textSecondary leading-relaxed max-w-2xl mx-auto lg:mx-0 mt-8">
+              {t('landing.subtitle')}
             </p>
 
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5 pt-2">
               <Link to="/register" className="w-full sm:w-auto">
                 <Button variant="primary" size="lg" className="w-full sm:w-auto justify-center px-8 text-base">
-                  Get Started Free &rarr;
+                  {t('landing.getStarted')} &rarr;
                 </Button>
               </Link>
 
               <Link to="/login" className="w-full sm:w-auto">
                 <Button variant="secondary" size="lg" className="w-full sm:w-auto justify-center px-8 text-base">
-                  Sign In to Portal
+                  {t('landing.signIn')}
                 </Button>
               </Link>
             </div>
@@ -133,11 +131,11 @@ export const LandingPage: React.FC = () => {
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-secondary text-sm">✓</span>
-                <span>Verified Board Physicians</span>
+                <span>{t('landing.verified')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-secondary text-sm">✓</span>
-                <span>Instant WhatsApp Reminders</span>
+                <span>{t('landing.reminders')}</span>
               </div>
             </div>
           </div>
@@ -160,12 +158,12 @@ export const LandingPage: React.FC = () => {
                       AI
                     </div>
                     <div>
-                      <p className="font-heading font-bold text-xs text-textPrimary">MediBook Assistant</p>
-                      <p className="text-[10px] text-secondary">Clinical Triage Active</p>
+                      <p className="font-heading font-bold text-xs text-textPrimary">{t('landing.assistant')}</p>
+                      <p className="text-[10px] text-secondary">{t('landing.triageActive')}</p>
                     </div>
                   </div>
                   <Badge status="success" size="sm" withDot>
-                    Online
+                    {t('landing.online')}
                   </Badge>
                 </div>
 
@@ -198,10 +196,10 @@ export const LandingPage: React.FC = () => {
                 {/* Booking Notice */}
                 <div className="pt-2 border-t border-surfaceContainerHigh flex items-center justify-between text-[11px] text-textSecondary">
                   <span className="flex items-center gap-1">
-                    <span>📲</span> WhatsApp Notification Ready
+                    <span>📲</span> {t('landing.whatsappReady')}
                   </span>
                   <Link to="/register" className="font-bold text-primary hover:underline">
-                    Try Live Demo &rarr;
+                    {t('landing.tryDemo')} &rarr;
                   </Link>
                 </div>
               </Card>
@@ -214,13 +212,13 @@ export const LandingPage: React.FC = () => {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
         <div className="text-center max-w-2xl mx-auto space-y-3">
           <Badge status="primary" size="md">
-            Engineered For Excellence
+            {t('landing.engineered')}
           </Badge>
           <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-textPrimary tracking-tight">
-            Key Platform Capabilities
+            {t('landing.capabilities')}
           </h2>
-          <p className="text-sm sm:text-base text-textSecondary">
-            Everything you need for seamless patient triage, appointment coordination, and clinical oversight.
+          <p className="text-sm sm:text-base text-textSecondary mt-3">
+            {t('landing.capDesc')}
           </p>
         </div>
 
@@ -256,7 +254,7 @@ export const LandingPage: React.FC = () => {
                   to="/register"
                   className="text-xs font-semibold text-primary hover:text-primaryContainer transition-colors inline-flex items-center gap-1"
                 >
-                  Explore Feature <span>&rarr;</span>
+                  {t('landing.explore')} <span>&rarr;</span>
                 </Link>
               </div>
             </Card>
@@ -277,10 +275,10 @@ export const LandingPage: React.FC = () => {
 
           <div className="relative z-10 max-w-2xl mx-auto space-y-4">
             <h2 className="font-heading font-extrabold text-3xl sm:text-4xl text-white tracking-tight">
-              Ready to modernize your healthcare journey?
+              {t('landing.ctaTitle')}
             </h2>
-            <p className="text-white/90 text-base leading-relaxed">
-              Join patients and healthcare providers experiencing faster triage, intelligent doctor appointments, and zero scheduling friction.
+            <p className="text-white/90 text-base leading-relaxed mt-3">
+              {t('landing.ctaDesc')}
             </p>
 
             <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3.5">
@@ -289,7 +287,7 @@ export const LandingPage: React.FC = () => {
                   size="lg"
                   className="w-full sm:w-auto bg-white text-primary hover:bg-white/90 shadow-soft-md border-none px-8 font-bold"
                 >
-                  Create Your Account
+                  {t('landing.createAccount')}
                 </Button>
               </Link>
               <Link to="/login" className="w-full sm:w-auto">
@@ -298,7 +296,7 @@ export const LandingPage: React.FC = () => {
                   variant="secondary"
                   className="w-full sm:w-auto text-white border-white/50 hover:bg-white/10 px-8"
                 >
-                  Sign In
+                  {t('landing.signInBtn')}
                 </Button>
               </Link>
             </div>

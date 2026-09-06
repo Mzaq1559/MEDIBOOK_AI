@@ -4,12 +4,14 @@ import { Card, Button, Input, ErrorBanner } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { parseApiError } from '../utils/authErrors';
 import { getDashboardPath, mapRegisterRoleToUserType } from '../utils/authRouting';
+import { useLanguage } from '../i18n/LanguageContext';
 
 type UserRole = 'Patient' | 'Doctor';
 
 export const Register: React.FC = () => {
   const navigate = useNavigate();
   const { register } = useAuth();
+  const { t } = useLanguage();
 
   const [role, setRole] = useState<UserRole>('Patient');
   const [fullName, setFullName] = useState('');
@@ -31,38 +33,37 @@ export const Register: React.FC = () => {
     const newErrors: typeof errors = {};
 
     if (!fullName.trim()) {
-      newErrors.fullName = 'Full name is required';
+      newErrors.fullName = t('register.fullNameRequired');
     } else if (fullName.trim().length < 2) {
-      newErrors.fullName = 'Please enter your real full name';
+      newErrors.fullName = t('register.fullNameInvalid');
     }
 
     if (!email.trim()) {
-      newErrors.email = 'Email address is required';
+      newErrors.email = t('login.emailRequired');
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      newErrors.email = 'Please enter a valid email address';
+      newErrors.email = t('login.emailInvalid');
     }
 
     if (!phone.trim()) {
-      newErrors.phone = 'Phone number is required';
+      newErrors.phone = t('register.phoneRequired');
     } else {
       const digits = phone.replace(/[\s\-+()]/g, '');
       if (!/^\d{10,15}$/.test(digits)) {
-        newErrors.phone = 'Phone number must contain 10–15 digits';
+        newErrors.phone = t('register.phoneInvalid');
       }
     }
 
     if (!password) {
-      newErrors.password = 'Password is required';
+      newErrors.password = t('login.passwordRequired');
     } else if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
+      newErrors.password = t('register.passwordMin');
     } else {
       const hasUppercase = /[A-Z]/.test(password);
       const hasLowercase = /[a-z]/.test(password);
       const hasNumber = /[0-9]/.test(password);
       const hasSpecial = /[^A-Za-z0-9]/.test(password);
       if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecial) {
-        newErrors.password =
-          'Password must include uppercase, lowercase, number, and special character';
+        newErrors.password = t('register.passwordInvalid');
       }
     }
 
@@ -105,8 +106,8 @@ export const Register: React.FC = () => {
   };
 
   const roles: { key: UserRole; label: string; icon: string }[] = [
-    { key: 'Patient', label: 'Patient', icon: '👤' },
-    { key: 'Doctor', label: 'Doctor', icon: '🩺' },
+    { key: 'Patient', label: t('register.patient'), icon: '👤' },
+    { key: 'Doctor', label: t('register.doctor'), icon: '🩺' },
   ];
 
   return (
@@ -137,17 +138,16 @@ export const Register: React.FC = () => {
             </Link>
 
             <h1 className="text-2xl sm:text-3xl font-extrabold text-textPrimary tracking-tight">
-              Create Account
+              {t('register.title')}
             </h1>
-            <p className="text-sm text-textSecondary mt-1.5 leading-relaxed">
-              Join <span className="font-semibold text-primary">MediBook AI</span> to book
-              appointments, manage health records, and access care.
+            <p className="text-sm text-textSecondary mt-3 leading-relaxed">
+              {t('register.subtitle').split('MediBook AI')[0]}<span className="font-semibold text-primary">MediBook AI</span>{t('register.subtitle').split('MediBook AI')[1]}
             </p>
           </div>
 
           <div className="mb-6">
             <label className="block text-xs font-bold uppercase tracking-wider text-textSecondary mb-2.5 text-center">
-              Select Account Type
+              {t('register.selectType')}
             </label>
             <div className="grid grid-cols-2 gap-2 p-1.5 bg-surfaceContainer rounded-pill border border-surfaceContainerHigh">
               {roles.map((r) => {
@@ -172,7 +172,7 @@ export const Register: React.FC = () => {
 
             {role === 'Doctor' && (
               <p className="text-[11px] text-secondary bg-secondaryContainer/30 p-2.5 rounded-xl mt-2 text-center border border-secondary/20 animate-fadeIn">
-                Doctor accounts require clinical verification. After registration, your application will be reviewed by our admin team before you can access the Doctor Portal.
+                {t('register.doctorNotice')}
               </p>
             )}
           </div>
@@ -180,7 +180,7 @@ export const Register: React.FC = () => {
           {submitError && (
             <div className="mb-6 animate-fadeIn">
               <ErrorBanner
-                title="Registration Error"
+                title={t('register.error')}
                 message={submitError}
                 onDismiss={() => setSubmitError(null)}
               />
@@ -189,7 +189,7 @@ export const Register: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <Input
-              label={role === 'Doctor' ? 'Full Name & Title' : 'Full Name'}
+              label={role === 'Doctor' ? t('register.fullNameDoctor') : t('register.fullName')}
               placeholder={role === 'Doctor' ? 'e.g. Dr. Jane Sterling, MD' : 'e.g. Sarah Jenkins'}
               value={fullName}
               onChange={(e) => {
@@ -210,7 +210,7 @@ export const Register: React.FC = () => {
             />
 
             <Input
-              label="Email Address"
+              label={t('login.emailLabel')}
               type="email"
               placeholder={role === 'Doctor' ? 'doctor@clinic.com' : 'patient@example.com'}
               value={email}
@@ -232,7 +232,7 @@ export const Register: React.FC = () => {
             />
 
             <Input
-              label="Phone Number"
+              label={t('register.phoneLabel')}
               type="tel"
               placeholder="+1 (555) 019-2834"
               value={phone}
@@ -254,7 +254,7 @@ export const Register: React.FC = () => {
             />
 
             <Input
-              label="Password"
+              label={t('login.passwordLabel')}
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
               value={password}
@@ -263,7 +263,7 @@ export const Register: React.FC = () => {
                 if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
               }}
               error={errors.password}
-              helperText="Min 8 characters, uppercase, lowercase, number, and special character"
+              helperText={t('register.passwordHelper')}
               required
               leftIcon={
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -315,19 +315,19 @@ export const Register: React.FC = () => {
                 className="w-full justify-center"
                 isLoading={isLoading}
               >
-                {isLoading ? 'Creating Account...' : 'Create Account'}
+                {isLoading ? t('register.submitting') : t('register.submit')}
               </Button>
             </div>
           </form>
 
           <div className="mt-8 pt-6 border-t border-surfaceContainerHigh text-center">
             <p className="text-sm text-textSecondary">
-              Already have an account?{' '}
+              {t('register.hasAccount')}{' '}
               <Link
                 to="/login"
                 className="font-semibold text-primary hover:text-primaryContainer transition-colors inline-flex items-center gap-0.5"
               >
-                Login
+                {t('register.loginLink')}
                 <span aria-hidden="true">&rarr;</span>
               </Link>
             </p>

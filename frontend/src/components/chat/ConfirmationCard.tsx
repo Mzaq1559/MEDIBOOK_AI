@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button, Badge } from '../ui';
 import { type ParsedBookingSummary } from '../../services/chat';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface ConfirmationCardProps {
   booking: ParsedBookingSummary;
@@ -20,6 +21,7 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
   // Prevent double-submission: once clicked, the button stays disabled for the
   // lifetime of this card (the message is immutable once in the chat history).
   const [hasConfirmed, setHasConfirmed] = useState(false);
+  const { t } = useLanguage();
 
   // Derive display state strictly from the backend-authoritative `status` field.
   // Fall back to the legacy `isConfirmed` boolean only when `status` is absent
@@ -38,20 +40,20 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
     : 'pending';
 
   const badgeLabel = isExecuted
-    ? 'Verified & Saved'
+    ? t('confirm.verified')
     : isExpired
-    ? 'Expired'
+    ? t('confirm.expired')
     : isFailed
-    ? 'Failed'
-    : 'Pending Confirmation';
+    ? t('confirm.failed')
+    : t('confirm.pending');
 
   const headingLabel = isExecuted
-    ? 'Booking Confirmed'
+    ? t('confirm.bookingConfirmed')
     : isExpired
-    ? 'Request Expired'
+    ? t('confirm.requestExpired')
     : isFailed
-    ? 'Booking Failed'
-    : 'Appointment Review';
+    ? t('confirm.bookingFailed')
+    : t('confirm.appointmentReview');
 
   const handleConfirm = () => {
     setHasConfirmed(true);
@@ -86,15 +88,15 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           <span className="text-base leading-none mt-0.5">⚠️</span>
           <p className="leading-relaxed">
             {isExpired
-              ? 'This booking request has expired. Please start a new request to book an appointment.'
-              : 'Something went wrong while confirming your booking. Please try again.'}
+              ? t('confirm.expiredMsg')
+              : t('confirm.failedMsg')}
           </p>
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
         <div className="p-3 bg-surfaceContainer rounded-xl">
-          <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">Doctor</span>
+          <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">{t('confirm.doctor')}</span>
           <span className="font-bold text-textPrimary text-sm block">
             {booking.doctor.name}
           </span>
@@ -104,7 +106,7 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
         </div>
 
         <div className="p-3 bg-surfaceContainer rounded-xl">
-          <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">Date &amp; Time</span>
+          <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">{t('confirm.dateTime')}</span>
           <span className="font-bold text-textPrimary text-sm block text-primary">
             {booking.selectedSlot}
           </span>
@@ -114,7 +116,7 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           <div className="p-3 bg-surfaceContainer rounded-xl sm:col-span-2 flex items-center justify-between">
             {booking.doctor.clinic_name && (
               <div>
-                <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">Location</span>
+                <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">{t('confirm.location')}</span>
                 <span className="font-semibold text-textPrimary text-xs block">
                   {booking.doctor.clinic_name}
                 </span>
@@ -127,7 +129,7 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
             )}
             {booking.doctor.consultation_fee && (
               <div className="text-right">
-                <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">Consultation Fee</span>
+                <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">{t('confirm.fee')}</span>
                 <span className="font-bold text-primary text-sm">Rs. {booking.doctor.consultation_fee}</span>
               </div>
             )}
@@ -148,7 +150,7 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
             disabled={disabled || hasConfirmed}
             onClick={handleConfirm}
           >
-            {isLoading ? 'Confirming...' : 'Confirm Booking'}
+            {isLoading ? t('confirm.confirming') : t('confirm.booking')}
           </Button>
           <Button
             variant="secondary"
@@ -157,7 +159,7 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
             disabled={disabled || isLoading || hasConfirmed}
             onClick={onChange}
           >
-            Change
+            {t('confirm.change')}
           </Button>
         </div>
       )}

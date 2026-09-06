@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Badge } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../i18n/LanguageContext';
+import { translateUrgency, translateReason, translateDate, translateTime } from '../i18n/translations';
 import { getPatientAppointments, cancelAppointment } from '../services/appointments';
 import { getMyPatientProfile, type PatientProfile } from '../services/patient';
 
@@ -24,6 +26,7 @@ interface BackendAppointment {
 
 export const Dashboard: React.FC = () => {
   const { currentUser } = useAuth();
+  const { t, lang } = useLanguage();
 
   const [appointments, setAppointments] = useState<BackendAppointment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -85,24 +88,23 @@ export const Dashboard: React.FC = () => {
   const upcomingVisits = scheduledList.length;
 
   const handleCancelAppointment = async (id: string) => {
-    if (window.confirm('Are you sure you want to cancel this appointment?')) {
+    if (window.confirm(t('dashboard.cancelConfirm'))) {
       try {
         await cancelAppointment(id);
-        setNotification('Appointment was successfully cancelled.');
+        setNotification(t('dashboard.cancelSuccess'));
         fetchAppointments();
         setTimeout(() => setNotification(null), 4000);
       } catch (err: any) {
-        alert(err?.response?.data?.detail?.message || 'Failed to cancel appointment');
+        alert(err?.response?.data?.detail?.message || t('appts.failedCancel'));
       }
     }
   };
 
   const formatDateTime = (isoString: string) => {
     try {
-      const d = new Date(isoString);
       return {
-        date: d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
-        time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        date: translateDate(isoString, lang, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
+        time: translateTime(isoString, lang),
       };
     } catch {
       return { date: isoString, time: '' };
@@ -122,7 +124,7 @@ export const Dashboard: React.FC = () => {
             onClick={() => setNotification(null)}
             className="text-xs font-semibold text-textSecondary hover:text-textPrimary"
           >
-            Dismiss
+            {t('dashboard.dismiss')}
           </button>
         </div>
       )}
@@ -131,15 +133,15 @@ export const Dashboard: React.FC = () => {
       <section className="pb-2">
         <div className="inline-flex items-center gap-2 mb-2">
           <Badge status="success" size="sm" withDot>
-            Patient Portal
+            {t('dashboard.portal')}
           </Badge>
           <span className="text-xs text-textSecondary font-mono">ID: {patient.id}</span>
         </div>
         <h1 className="font-heading font-extrabold text-3xl sm:text-4xl text-textPrimary tracking-tight">
-          Welcome back, {patient.name}
+          {t('dashboard.welcome', { name: patient.name })}
         </h1>
-        <p className="text-base text-textSecondary mt-1 leading-relaxed">
-          Here's what's happening with your health and upcoming care schedule.
+        <p className="text-base text-textSecondary mt-8 leading-relaxed">
+          {t('dashboard.subtitle')}
         </p>
       </section>
 
@@ -148,7 +150,7 @@ export const Dashboard: React.FC = () => {
         <div className="p-4 bg-errorContainer/30 border border-error/30 rounded-2xl flex items-center justify-between text-xs text-error">
           <p className="font-medium">⚠️ {error}</p>
           <Button size="sm" variant="ghost" onClick={fetchAppointments}>
-            Retry
+            {t('dashboard.retry')}
           </Button>
         </div>
       )}
@@ -157,7 +159,7 @@ export const Dashboard: React.FC = () => {
       {loading ? (
         <Card radius="3xl" shadow="sm" className="p-12 text-center bg-white border border-surfaceContainerHigh">
           <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-xs text-textSecondary font-medium">Fetching your appointment schedule from server...</p>
+          <p className="text-xs text-textSecondary font-medium">{t('dashboard.loading')}</p>
         </Card>
       ) : (
         <>
@@ -176,15 +178,15 @@ export const Dashboard: React.FC = () => {
                     </svg>
                   </div>
                   <div>
-                    <h3 className="font-heading font-bold text-base text-amber-900">Complete Your Medical Profile</h3>
+                    <h3 className="font-heading font-bold text-base text-amber-900">{t('dashboard.completeProfile')}</h3>
                     <p className="text-sm text-amber-700 mt-0.5">
-                      Please provide your medical history and emergency contact information for safer care.
+                      {t('dashboard.completeProfileDesc')}
                     </p>
                   </div>
                 </div>
                 <Link to="/medical-profile">
                   <Button variant="secondary" size="md" className="shrink-0">
-                    Complete Now
+                    {t('dashboard.completeNow')}
                   </Button>
                 </Link>
               </Card>
@@ -195,7 +197,7 @@ export const Dashboard: React.FC = () => {
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
-                Upcoming Appointment
+                {t('dashboard.upcoming')}
               </h2>
             </div>
 
@@ -228,12 +230,12 @@ export const Dashboard: React.FC = () => {
                         </Badge>
                         {upcomingAppointment.urgency_level && (
                           <Badge status="pending" size="sm">
-                            {upcomingAppointment.urgency_level} urgency
+                            {translateUrgency(upcomingAppointment.urgency_level, lang)} {t('dashboard.urgencySuffix')}
                           </Badge>
                         )}
                         {upcomingAppointment.urgency_reason && (
                           <span className="text-[10px] text-textSecondary italic" title={upcomingAppointment.urgency_reason}>
-                            {upcomingAppointment.urgency_reason.replace(/_/g, ' ')}
+                            {translateReason(upcomingAppointment.urgency_reason, lang) || upcomingAppointment.urgency_reason}
                           </span>
                         )}
                       </div>
@@ -273,7 +275,7 @@ export const Dashboard: React.FC = () => {
 
                         {upcomingAppointment.symptoms_reported && (
                           <div className="sm:col-span-2 mt-2 p-2.5 bg-surfaceContainer rounded-xl text-xs text-textSecondary">
-                            <strong className="text-textPrimary">Symptoms Reported:</strong> {upcomingAppointment.symptoms_reported}
+                            <strong className="text-textPrimary">{t('dashboard.symptomsReported')}</strong> {upcomingAppointment.symptoms_reported}
                           </div>
                         )}
                       </div>
@@ -284,7 +286,7 @@ export const Dashboard: React.FC = () => {
                   <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between sm:justify-end gap-3 pt-4 lg:pt-0 border-t lg:border-t-0 border-surfaceContainerHigh">
                     <Link to="/chat">
                       <Button variant="secondary" size="md">
-                        Reschedule
+                        {t('dashboard.reschedule')}
                       </Button>
                     </Link>
                     <button
@@ -292,7 +294,7 @@ export const Dashboard: React.FC = () => {
                       onClick={() => handleCancelAppointment(upcomingAppointment.appointment_id)}
                       className="text-xs font-semibold text-error hover:underline px-3 py-1.5 rounded-pill hover:bg-errorContainer/30 transition-colors"
                     >
-                      Cancel Appointment
+                      {t('dashboard.cancelAppt')}
                     </button>
                   </div>
                 </div>
@@ -310,14 +312,14 @@ export const Dashboard: React.FC = () => {
                   </svg>
                 </div>
                 <h3 className="font-heading font-bold text-lg text-textPrimary mb-1">
-                  No upcoming appointments
+                  {t('dashboard.noUpcoming')}
                 </h3>
                 <p className="text-sm text-textSecondary max-w-md mx-auto mb-6">
-                  You are all caught up! Need medical advice or a routine specialist checkup?
+                  {t('dashboard.noUpcomingDesc')}
                 </p>
                 <Link to="/chat">
                   <Button variant="primary" size="md">
-                    Book Now with AI Assistant
+                    {t('dashboard.bookNow')}
                   </Button>
                 </Link>
               </Card>
@@ -327,7 +329,7 @@ export const Dashboard: React.FC = () => {
           {/* 3. Action Cards Side by Side */}
           <section className="space-y-4">
             <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
-              Quick Health Actions
+              {t('dashboard.quickActions')}
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -351,24 +353,24 @@ export const Dashboard: React.FC = () => {
                         </svg>
                       </div>
                       <Badge status="primary" size="sm">
-                        AI Guided
+                        {t('dashboard.aiGuided')}
                       </Badge>
                     </div>
 
                     <h3 className="font-heading font-bold text-2xl text-textPrimary mb-2 group-hover:text-primary transition-colors">
-                      Book New Appointment
+                      {t('dashboard.bookNew')}
                     </h3>
                     <p className="text-sm text-textSecondary leading-relaxed">
-                      Describe symptoms to our intelligent AI assistant to triage severity, match with specialized doctors, and book instant time slots.
+                      {t('dashboard.bookNewDesc')}
                     </p>
                   </div>
 
                   <div className="pt-6 flex items-center justify-between">
                     <span className="text-xs font-semibold text-primary group-hover:translate-x-1 transition-transform inline-flex items-center gap-1.5">
-                      Launch Health Chat <span>&rarr;</span>
+                      {t('dashboard.launchChat')} <span>&rarr;</span>
                     </span>
                     <Button size="sm" variant="primary">
-                      Start Triage
+                      {t('dashboard.startTriage')}
                     </Button>
                   </div>
                 </Card>
@@ -394,24 +396,24 @@ export const Dashboard: React.FC = () => {
                         </svg>
                       </div>
                       <Badge status="success" size="sm">
-                        Medical History
+                        {t('dashboard.medicalHistory')}
                       </Badge>
                     </div>
 
                     <h3 className="font-heading font-bold text-2xl text-textPrimary mb-2 group-hover:text-secondary transition-colors">
-                      Medical Profile
+                      {t('dashboard.medicalProfile')}
                     </h3>
                     <p className="text-sm text-textSecondary leading-relaxed">
-                      View and manage your allergies, medical conditions, demographics, and emergency contact information.
+                      {t('dashboard.medicalProfileDesc')}
                     </p>
                   </div>
 
                   <div className="pt-6 flex items-center justify-between">
                     <span className="text-xs font-semibold text-secondary group-hover:translate-x-1 transition-transform inline-flex items-center gap-1.5">
-                      Manage Profile <span>&rarr;</span>
+                      {t('dashboard.manageProfile')} <span>&rarr;</span>
                     </span>
                     <Button size="sm" variant="secondary">
-                      Open Profile
+                      {t('dashboard.openProfile')}
                     </Button>
                   </div>
                 </Card>
@@ -422,7 +424,7 @@ export const Dashboard: React.FC = () => {
           {/* 4. Real Stats Row */}
           <section className="space-y-4">
             <h2 className="font-heading font-bold text-xl text-textPrimary tracking-tight">
-              Care Summary
+              {t('dashboard.careSummary')}
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
@@ -430,7 +432,7 @@ export const Dashboard: React.FC = () => {
               <Card radius="2xl" shadow="sm" className="p-6 bg-white border border-surfaceContainerHigh">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-textSecondary">
-                    Total Appointments
+                    {t('dashboard.totalAppts')}
                   </span>
                   <div className="w-8 h-8 rounded-xl bg-surfaceContainer text-primary flex items-center justify-center">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -442,7 +444,7 @@ export const Dashboard: React.FC = () => {
                   <span className="font-heading font-extrabold text-3xl sm:text-4xl text-textPrimary">
                     {totalAppointments}
                   </span>
-                  <p className="text-xs text-textSecondary mt-1">Recorded in your profile</p>
+                  <p className="text-xs text-textSecondary mt-1">{t('dashboard.recorded')}</p>
                 </div>
               </Card>
 
@@ -450,7 +452,7 @@ export const Dashboard: React.FC = () => {
               <Card radius="2xl" shadow="sm" className="p-6 bg-white border border-surfaceContainerHigh">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-textSecondary">
-                    Completed Visits
+                    {t('dashboard.completedVisits')}
                   </span>
                   <div className="w-8 h-8 rounded-xl bg-[#62FAE3]/30 text-secondary flex items-center justify-center">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -462,7 +464,7 @@ export const Dashboard: React.FC = () => {
                   <span className="font-heading font-extrabold text-3xl sm:text-4xl text-secondary">
                     {completedVisits}
                   </span>
-                  <p className="text-xs text-textSecondary mt-1">Documented medical visits</p>
+                  <p className="text-xs text-textSecondary mt-1">{t('dashboard.documented')}</p>
                 </div>
               </Card>
 
@@ -470,7 +472,7 @@ export const Dashboard: React.FC = () => {
               <Card radius="2xl" shadow="sm" className="p-6 bg-white border border-surfaceContainerHigh">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-textSecondary">
-                    Upcoming
+                    {t('dashboard.upcomingStat')}
                   </span>
                   <div className="w-8 h-8 rounded-xl bg-surfaceContainerHigh text-primary flex items-center justify-center">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -483,7 +485,7 @@ export const Dashboard: React.FC = () => {
                     {upcomingVisits}
                   </span>
                   <p className="text-xs text-textSecondary mt-1">
-                    {upcomingVisits > 0 ? 'Active scheduled visits' : 'No pending sessions'}
+                    {upcomingVisits > 0 ? t('dashboard.activeScheduled') : t('dashboard.noPending')}
                   </p>
                 </div>
               </Card>

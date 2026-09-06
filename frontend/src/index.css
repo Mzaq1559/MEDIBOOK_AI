@@ -21,6 +21,25 @@
     color: #0D1C2E;
     letter-spacing: -0.02em;
   }
+
+  /* Urdu font override — applied when <body> has .font-urdu */
+  body.font-urdu {
+    font-family: 'Noto Nastaliq Urdu', 'Inter', sans-serif;
+    line-height: 2.2;
+  }
+
+  body.font-urdu h1,
+  body.font-urdu h2,
+  body.font-urdu h3,
+  body.font-urdu h4,
+  body.font-urdu h5,
+  body.font-urdu h6 {
+    font-family: 'Noto Nastaliq Urdu', 'Manrope', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    word-spacing: 0.25em;
+    line-height: 2;
+  }
 }
 
 /* Custom scrollbar */

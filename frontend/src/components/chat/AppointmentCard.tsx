@@ -1,6 +1,8 @@
 import React from 'react';
 import { type ParsedAppointment } from '../../services/chat';
 import { Badge } from '../ui';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateUrgency, translateStatus } from '../../i18n/translations';
 
 interface AppointmentCardProps {
   appointment: ParsedAppointment;
@@ -23,21 +25,11 @@ function urgencyBadgeStatus(urgency?: string | null): 'error' | 'pending' | 'pri
 }
 
 function urgencyLabel(urgency?: string | null): string {
-  switch ((urgency || '').toLowerCase()) {
-    case 'critical':
-      return 'Critical';
-    case 'high':
-      return 'High';
-    case 'normal':
-      return 'Normal';
-    case 'low':
-      return 'Low';
-    default:
-      return 'Not assessed';
-  }
+  return translateUrgency(urgency, 'en');
 }
 
 export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, onSelect, disabled }) => {
+  const { lang } = useLanguage();
   // Format datetime
   let timeStr = appointment.appointment_time;
   try {
@@ -71,11 +63,11 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
         <div className="flex items-center gap-1.5">
           {appointment.urgency_level && (
             <Badge status={urgencyBadgeStatus(appointment.urgency_level)} size="sm" withDot>
-              {urgencyLabel(appointment.urgency_level)}
+              {translateUrgency(appointment.urgency_level, lang)}
             </Badge>
           )}
           <Badge status={appointment.status === 'scheduled' ? 'success' : 'neutral'} size="sm">
-            {appointment.status}
+            {translateStatus(appointment.status, lang)}
           </Badge>
         </div>
       </div>

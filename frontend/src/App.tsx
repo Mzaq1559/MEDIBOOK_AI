@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { useLanguage } from './i18n/LanguageContext';
 import { Layout } from './components/layout/Layout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { GuestRoute } from './components/auth/GuestRoute';
@@ -17,6 +18,17 @@ import { PendingVerification } from './pages/PendingVerification';
 import { MedicalProfile } from './pages/MedicalProfile';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { getDashboardPath } from './utils/authRouting';
+
+const ReceptionistPlaceholder: React.FC = () => {
+  const { t } = useLanguage();
+  return (
+    <PlaceholderPage
+      title={t('nav.receptionistPortal')}
+      description={t('placeholder.goDashboard')}
+      path="/receptionist-dashboard"
+    />
+  );
+};
 
 const RootIndexRoute: React.FC = () => {
   const { isAuthenticated, isLoading, currentUser } = useAuth();
@@ -129,11 +141,7 @@ export function App() {
               path="/receptionist-dashboard"
               element={
                 <ProtectedRoute allowedRoles={['receptionist']}>
-                  <PlaceholderPage
-                    title="Receptionist Dashboard"
-                    description="Manage patient check-ins, desk scheduling, and appointment queues."
-                    path="/receptionist-dashboard"
-                  />
+                  <ReceptionistPlaceholder />
                 </ProtectedRoute>
               }
             />

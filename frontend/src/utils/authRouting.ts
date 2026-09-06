@@ -1,5 +1,7 @@
 import type { UserType } from '../types/auth';
 import type { NavItem } from '../components/ui/Navbar';
+import type { Lang } from '../i18n/translations';
+import { dictionaries } from '../i18n/translations';
 
 export function getDashboardPath(userType: UserType): string {
   switch (userType) {
@@ -15,17 +17,18 @@ export function getDashboardPath(userType: UserType): string {
   }
 }
 
-export function getUserTypeLabel(userType: UserType): string {
+export function getUserTypeLabel(userType: UserType, lang: Lang = 'en'): string {
+  const t = dictionaries[lang];
   switch (userType) {
     case 'doctor':
-      return 'Doctor';
+      return t['register.doctor'];
     case 'admin':
-      return 'Administrator';
+      return t['common.administrator'];
     case 'receptionist':
-      return 'Receptionist';
+      return lang === 'en' ? 'Receptionist' : 'ریسیپشنسٹ';
     case 'patient':
     default:
-      return 'Patient';
+      return t['common.patient'];
   }
 }
 
@@ -48,23 +51,24 @@ export function isPathAllowedForUserType(path: string, userType: UserType): bool
   return allowedRoles.includes(userType);
 }
 
-export function getNavItemsForUserType(userType: UserType): NavItem[] {
+export function getNavItemsForUserType(userType: UserType, lang: Lang = 'en'): NavItem[] {
+  const t = dictionaries[lang];
   const sharedItems: NavItem[] = [
-    { label: 'Appointments', path: '/appointments' },
-    { label: 'AI Health Chat', path: '/chat', badge: 'AI' },
+    { label: t['nav.appointments'], path: '/appointments' },
+    { label: t['nav.chat'], path: '/chat', badge: 'AI' },
   ];
 
   switch (userType) {
     case 'admin':
-      return [{ label: 'Admin Portal', path: '/admin' }, ...sharedItems];
+      return [{ label: t['nav.adminPortal'], path: '/admin' }, ...sharedItems];
     case 'doctor':
-      return [{ label: 'Doctor Portal', path: '/doctor-dashboard' }, ...sharedItems];
+      return [{ label: t['nav.doctorPortal'], path: '/doctor-dashboard' }, ...sharedItems];
     case 'receptionist':
-      return [{ label: 'Receptionist Portal', path: '/receptionist-dashboard' }, ...sharedItems];
+      return [{ label: t['nav.receptionistPortal'], path: '/receptionist-dashboard' }, ...sharedItems];
     case 'patient':
     default:
       return [
-        { label: 'Dashboard', path: '/dashboard' },
+        { label: t['nav.dashboard'], path: '/dashboard' },
         ...sharedItems,
       ];
   }
