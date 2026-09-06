@@ -21,8 +21,12 @@ def get_dashboard_metrics(
     if not target_date:
         target_date = date.today()
 
-    start_of_day = datetime.combine(target_date, time.min)
-    end_of_day = datetime.combine(target_date, time.max)
+    # Convert target date to UTC range based on Karachi timezone (+5)
+    # Start of day in Karachi corresponds to UTC = start_of_day - 5h
+    karachi_start = datetime.combine(target_date, time.min)
+    karachi_end = datetime.combine(target_date, time.max)
+    start_of_day = karachi_start - timedelta(hours=5)
+    end_of_day = karachi_end - timedelta(hours=5)
 
     # Base clinic query
     clinic = None
@@ -45,10 +49,10 @@ def get_dashboard_metrics(
     appts = query.all()
 
     total_today = len(appts)
-    completed_today = sum(1 for a in appts if a.status == "completed")
-    cancelled_today = sum(1 for a in appts if a.status == "cancelled")
-    no_show_today = sum(1 for a in appts if a.status == "no_show")
-    upcoming_today = sum(1 for a in appts if a.status == "scheduled")
+    completed_today = sum(1 for a in appts if a.status.lower() == "completed")
+    cancelled_today = sum(1 for a in appts if a.status.lower() == "cancelled")
+    no_show_today = sum(1 for a in appts if a.status.lower() in ("no_show", "no-show"))
+    upcoming_today = sum(1 for a in appts if a.status.lower() == "scheduled")
     high_urgency = sum(1 for a in appts if a.urgency_level in ("high", "critical"))
     critical_urgency = sum(1 for a in appts if a.urgency_level == "critical")
 

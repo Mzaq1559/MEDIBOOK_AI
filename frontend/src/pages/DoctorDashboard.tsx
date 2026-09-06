@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Card, Button, Badge } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { listAppointments, completeAppointment, markNoShow } from '../services/appointments';
+import { getDashboardMetrics } from '../services/analytics';
 
 type UrgencyLevel = 'low' | 'normal' | 'high' | 'critical';
 
@@ -32,6 +33,7 @@ interface BackendDoctorAppointment {
 export const DoctorDashboard: React.FC = () => {
   const { currentUser } = useAuth();
   const [schedule, setSchedule] = useState<BackendDoctorAppointment[]>([]);
+  const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +54,10 @@ export const DoctorDashboard: React.FC = () => {
       const res = await listAppointments({ status: 'scheduled' });
       console.log('[DoctorDashboard] API response:', JSON.stringify(res, null, 2));
       const appts = res.appointments || [];
+      // Also fetch dashboard metrics for completed count and other stats
+      const dashRes = await getDashboardMetrics();
+      setDashboard(dashRes);
+      setSchedule(appts);
       console.log(`[DoctorDashboard] Got ${appts.length} appointments`);
       if (appts.length > 0) {
         console.log('[DoctorDashboard] First appointment sample:', JSON.stringify(appts[0], null, 2));
@@ -83,8 +89,9 @@ export const DoctorDashboard: React.FC = () => {
 
   // Calculate stats dynamically
   const totalUpcoming = schedule.length;
-  const completedCount = schedule.filter((s) => s.status.toLowerCase() === 'completed').length;
-  const noShowCount = schedule.filter((s) => s.status.toLowerCase() === 'no_show' || s.status.toLowerCase() === 'no-show').length;
+  // Use dashboard metrics for completed and no-show counts
+  const completedCount = dashboard?.completed_today ?? 0;
+  const noShowCount = dashboard?.no_show_today ?? 0;
   // "Upcoming" stat = today's appointments only
   const todayStr = new Date().toDateString();
   const todayCount = schedule.filter((s) => {
@@ -187,6 +194,7 @@ export const DoctorDashboard: React.FC = () => {
       setActiveNotesId(null);
       setNotesText('');
       showToast('Appointment marked as Completed with clinical notes saved.');
+      // Refresh both schedule and dashboard metrics
       fetchSchedule();
     } catch (err: any) {
       alert(err?.response?.data?.detail?.message || 'Failed to complete appointment');
@@ -198,6 +206,7 @@ export const DoctorDashboard: React.FC = () => {
       try {
         await markNoShow(id);
         showToast('Patient marked as No-show.');
+        // Refresh both schedule and dashboard metrics
         fetchSchedule();
       } catch (err: any) {
         alert(err?.response?.data?.detail?.message || 'Failed to mark appointment as no-show');

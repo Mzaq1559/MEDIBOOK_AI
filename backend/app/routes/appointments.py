@@ -29,6 +29,7 @@ from app.models.doctor import Doctor
 from app.models.patient import Patient
 from app.models.user import User
 from app.core.auth import get_current_user, require_roles
+from app.utils.status import normalize_status
 from app.core.audit import log_audit_event
 from app.middleware.rate_limiter import limiter
 from app.services.appointment_service import (
@@ -129,7 +130,8 @@ def list_appointments(
         if clinic_id:
             query = query.filter(Appointment.clinic_id == clinic_id)
         if status_filter:
-            query = query.filter(Appointment.status == status_filter)
+            normalized = normalize_status(status_filter)
+            query = query.filter(Appointment.status == normalized)
 
         if date_filter:
             try:
