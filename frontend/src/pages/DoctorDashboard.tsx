@@ -331,8 +331,8 @@ export const DoctorDashboard: React.FC = () => {
                   radius="2xl"
                   shadow="sm"
                   className={`p-5 sm:p-6 bg-white border transition-all duration-200 ${isCritical && isPending
-                      ? 'border-error/50 shadow-soft-md ring-2 ring-error/15'
-                      : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
+                    ? 'border-error/50 shadow-soft-md ring-2 ring-error/15'
+                    : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
                     }`}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
@@ -519,8 +519,8 @@ export const DoctorDashboard: React.FC = () => {
                   radius="2xl"
                   shadow="sm"
                   className={`p-5 sm:p-6 bg-white border transition-all duration-200 ${isCritical && isPending
-                      ? 'border-error/50 shadow-soft-md ring-2 ring-error/15'
-                      : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
+                    ? 'border-error/50 shadow-soft-md ring-2 ring-error/15'
+                    : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
                     }`}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
