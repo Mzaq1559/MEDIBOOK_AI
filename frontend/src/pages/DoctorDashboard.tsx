@@ -340,6 +340,8 @@ export const DoctorDashboard: React.FC = () => {
               const isPending = statusLower === 'scheduled' || statusLower === 'confirmed' || statusLower === 'upcoming';
               const isEditingNotes = activeNotesId === apt.appointment_id;
               const isCritical = apt.urgency_level?.toLowerCase() === 'critical';
+              // Determine if the appointment time has already passed
+              const isPast = new Date(apt.appointment_time) <= new Date();
 
               const formattedTime = formatTime(apt.appointment_time);
 
@@ -438,14 +440,16 @@ export const DoctorDashboard: React.FC = () => {
                           >
                             Mark Complete
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="hover:border-error hover:text-error"
-                            onClick={() => handleMarkNoShowAction(apt.appointment_id)}
-                          >
-                            Mark No-show
-                          </Button>
+                          {isPending && isPast && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="hover:border-error hover:text-error"
+                              onClick={() => handleMarkNoShowAction(apt.appointment_id)}
+                            >
+                              Mark No-show
+                            </Button>
+                          )}
                         </div>
                       )}
 
