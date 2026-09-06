@@ -1,5 +1,6 @@
 import uuid
 import logging
+from app.utils.status import normalize_status
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
@@ -279,8 +280,11 @@ def get_patient_appointments(
             )
 
         query = db.query(Appointment).filter(Appointment.patient_id == patient.id)
+        
+        # Normalize status filter
         if status_filter:
-            query = query.filter(Appointment.status == status_filter)
+            normalized = normalize_status(status_filter)
+            query = query.filter(Appointment.status == normalized)
 
         total = query.count()
         appts = query.options(

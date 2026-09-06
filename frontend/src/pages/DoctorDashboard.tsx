@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { listAppointments, completeAppointment, markNoShow } from '../services/appointments';
 import { useLanguage } from '../i18n/LanguageContext';
 import { translateUrgency, translateStatus, translateReason, translateDate, translateTime } from '../i18n/translations';
+import { getDashboardMetrics } from '../services/analytics';
 
 type UrgencyLevel = 'low' | 'normal' | 'high' | 'critical';
 
@@ -35,6 +36,7 @@ export const DoctorDashboard: React.FC = () => {
   const { currentUser } = useAuth();
   const { t, lang } = useLanguage();
   const [schedule, setSchedule] = useState<BackendDoctorAppointment[]>([]);
+  const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +57,10 @@ export const DoctorDashboard: React.FC = () => {
       const res = await listAppointments({ status: 'scheduled' });
       console.log('[DoctorDashboard] API response:', JSON.stringify(res, null, 2));
       const appts = res.appointments || [];
+      // Also fetch dashboard metrics for completed count and other stats
+      const dashRes = await getDashboardMetrics();
+      setDashboard(dashRes);
+      setSchedule(appts);
       console.log(`[DoctorDashboard] Got ${appts.length} appointments`);
       if (appts.length > 0) {
         console.log('[DoctorDashboard] First appointment sample:', JSON.stringify(appts[0], null, 2));
@@ -86,8 +92,9 @@ export const DoctorDashboard: React.FC = () => {
 
   // Calculate stats dynamically
   const totalUpcoming = schedule.length;
-  const completedCount = schedule.filter((s) => s.status.toLowerCase() === 'completed').length;
-  const noShowCount = schedule.filter((s) => s.status.toLowerCase() === 'no_show' || s.status.toLowerCase() === 'no-show').length;
+  // Use dashboard metrics for completed and no-show counts
+  const completedCount = dashboard?.completed_today ?? 0;
+  const noShowCount = dashboard?.no_show_today ?? 0;
   // "Upcoming" stat = today's appointments only
   const todayStr = new Date().toDateString();
   const todayCount = schedule.filter((s) => {
@@ -190,6 +197,7 @@ export const DoctorDashboard: React.FC = () => {
       setActiveNotesId(null);
       setNotesText('');
       showToast(t('doctor.completeSuccess'));
+      // Refresh both schedule and dashboard metrics
       fetchSchedule();
     } catch (err: any) {
       alert(err?.response?.data?.detail?.message || t('admin.saveChanges'));
@@ -201,6 +209,7 @@ export const DoctorDashboard: React.FC = () => {
       try {
         await markNoShow(id);
         showToast(t('doctor.noShowSuccess'));
+        // Refresh both schedule and dashboard metrics
         fetchSchedule();
       } catch (err: any) {
         alert(err?.response?.data?.detail?.message || t('doctor.markNoShow'));
@@ -353,11 +362,10 @@ export const DoctorDashboard: React.FC = () => {
                   key={apt.appointment_id}
                   radius="2xl"
                   shadow="sm"
-                  className={`p-5 sm:p-6 bg-white border transition-all duration-200 ${
-                    isCritical && isPending
-                      ? 'border-error/50 shadow-soft-md ring-2 ring-error/15'
-                      : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
-                  }`}
+                  className={`p-5 sm:p-6 bg-white border transition-all duration-200 ${isCritical && isPending
+                    ? 'border-error/50 shadow-soft-md ring-2 ring-error/15'
+                    : 'border-surfaceContainerHigh hover:border-primaryContainer/30'
+                    }`}
                 >
                   <div className="space-y-3">
                     {/* Top: Patient name + Date/Time + Badges */}
@@ -430,17 +438,9 @@ export const DoctorDashboard: React.FC = () => {
                               className="hover:border-error hover:text-error"
                               onClick={() => handleMarkNoShowAction(apt.appointment_id)}
                             >
-                              Mark No-show
+                              {t('doctor.markNoShow')}
                             </Button>
                           )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="hover:border-error hover:text-error"
-                            onClick={() => handleMarkNoShowAction(apt.appointment_id)}
-                          >
-                            {t('doctor.markNoShow')}
-                          </Button>
                         </div>
                       )}
 
