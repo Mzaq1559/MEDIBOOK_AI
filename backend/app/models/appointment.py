@@ -1,8 +1,14 @@
+import enum
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, ForeignKey, Index, Uuid
 from sqlalchemy.orm import relationship
 from app.database import Base
+
+
+class AppointmentSession(str, enum.Enum):
+    MORNING = "morning"
+    EVENING = "evening"
 
 
 class Appointment(Base):
@@ -12,6 +18,7 @@ class Appointment(Base):
     clinic_id = Column(Uuid(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
     doctor_id = Column(Uuid(as_uuid=True), ForeignKey("doctors.id", ondelete="CASCADE"), nullable=False, index=True)
     patient_id = Column(Uuid(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)
+    session = Column(String(20), nullable=False, default="morning", index=True)  # 'morning', 'evening'
     appointment_time = Column(DateTime, nullable=False, index=True)
     duration_minutes = Column(Integer, default=30)
     status = Column(String(20), default="scheduled", nullable=False)  # 'scheduled', 'completed', 'no_show', 'cancelled', 'rescheduled'
@@ -41,4 +48,5 @@ class Appointment(Base):
         Index("idx_appt_doc_time", "doctor_id", "appointment_time"),
         Index("idx_appt_clinic_time", "clinic_id", "appointment_time"),
         Index("idx_appt_pat_status", "patient_id", "status"),
+        Index("idx_appt_doc_date_session", "doctor_id", "session", "appointment_time"),
     )

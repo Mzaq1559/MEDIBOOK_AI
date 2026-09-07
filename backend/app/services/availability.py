@@ -9,7 +9,7 @@ from app.models.clinic import Clinic
 from app.models.doctor_schedule import DoctorSchedule
 from app.models.clinic_holiday import ClinicHoliday
 from app.models.appointment import Appointment
-from app.schemas.doctor import AvailabilityResponse, DayAvailability, AvailabilitySlot
+from app.schemas.doctor import AvailabilityResponse, DayAvailability, AvailabilitySlot, SessionAvailability
 
 KARACHI_TZ = pytz.timezone(settings.TIMEZONE)
 
@@ -40,7 +40,7 @@ def compute_doctor_availability(
     start_date: date,
     next_days: int = 1
 ) -> AvailabilityResponse:
-    """Calculate slot availability for a doctor over next_days starting from start_date."""
+    """Calculate session availability for a doctor over next_days starting from start_date."""
     doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
     if not doctor:
         raise ValueError("Doctor not found")
@@ -49,11 +49,16 @@ def compute_doctor_availability(
     if not clinic:
         raise ValueError("Clinic not found")
 
-    now_karachi = datetime.now(KARACHI_TZ)
+    clinic_tz_name = (clinic.timezone if clinic and clinic.timezone else None) or settings.TIMEZONE or "Asia/Karachi"
+    try:
+        clinic_tz = pytz.timezone(clinic_tz_name)
+    except Exception:
+        clinic_tz = KARACHI_TZ
+
+    now_local = datetime.now(clinic_tz)
     working_days_list = [d.strip() for d in clinic.working_days.split(",") if d.strip()]
 
     duration_mins = doctor.appointment_duration_minutes or 30
-    duration_delta = timedelta(minutes=duration_mins)
 
     day_availabilities: List[DayAvailability] = []
 
@@ -70,6 +75,10 @@ def compute_doctor_availability(
                     date=target_date.strftime("%Y-%m-%d"),
                     day=day_full,
                     working_hours="CLOSED",
+                    sessions=[
+                        SessionAvailability(session="morning", capacity=10, booked=0, remaining=0, available=False),
+                        SessionAvailability(session="evening", capacity=5, booked=0, remaining=0, available=False)
+                    ],
                     slots=[],
                     booked_count=0,
                     available_count=0
@@ -89,6 +98,10 @@ def compute_doctor_availability(
                     date=target_date.strftime("%Y-%m-%d"),
                     day=day_full,
                     working_hours="HOLIDAY",
+                    sessions=[
+                        SessionAvailability(session="morning", capacity=10, booked=0, remaining=0, available=False),
+                        SessionAvailability(session="evening", capacity=5, booked=0, remaining=0, available=False)
+                    ],
                     slots=[],
                     booked_count=0,
                     available_count=0
@@ -103,6 +116,10 @@ def compute_doctor_availability(
                     date=target_date.strftime("%Y-%m-%d"),
                     day=day_full,
                     working_hours="UNAVAILABLE",
+                    sessions=[
+                        SessionAvailability(session="morning", capacity=10, booked=0, remaining=0, available=False),
+                        SessionAvailability(session="evening", capacity=5, booked=0, remaining=0, available=False)
+                    ],
                     slots=[],
                     booked_count=0,
                     available_count=0
@@ -122,6 +139,10 @@ def compute_doctor_availability(
                     date=target_date.strftime("%Y-%m-%d"),
                     day=day_full,
                     working_hours="HOLIDAY",
+                    sessions=[
+                        SessionAvailability(session="morning", capacity=10, booked=0, remaining=0, available=False),
+                        SessionAvailability(session="evening", capacity=5, booked=0, remaining=0, available=False)
+                    ],
                     slots=[],
                     booked_count=0,
                     available_count=0
@@ -129,97 +150,84 @@ def compute_doctor_availability(
             )
             continue
 
-        # Determine start time, end time, breaks, and max capacity
+        # Determine working hours string
         start_t = (schedule.start_time if schedule and schedule.start_time else clinic.working_hours_start) or time(9, 0)
         end_t = (schedule.end_time if schedule and schedule.end_time else clinic.working_hours_end) or time(17, 0)
-        break_start_t = schedule.break_start if schedule else None
-        break_end_t = schedule.break_end if schedule else None
-        daily_max_patients = (schedule.max_patients if schedule and schedule.max_patients else doctor.max_patients_per_day) or 20
-
         working_hours_str = f"{start_t.strftime('%H:%M')}-{end_t.strftime('%H:%M')}"
 
-        # 5. Fetch existing active appointments for this doctor on target_date
-        start_of_day = datetime.combine(target_date, time.min)
-        end_of_day = datetime.combine(target_date, time.max)
+        # 5. Fetch existing active scheduled appointments on target_date for Morning and Evening
+        # Map target_date calendar day in clinic_tz to naive UTC range in DB
+        start_local = clinic_tz.localize(datetime.combine(target_date, time.min))
+        end_local = clinic_tz.localize(datetime.combine(target_date, time.max))
+        utc_start = start_local.astimezone(pytz.UTC).replace(tzinfo=None)
+        utc_end = end_local.astimezone(pytz.UTC).replace(tzinfo=None)
 
-        existing_appts = db.query(Appointment).filter(
+        booked_morning = db.query(Appointment).filter(
             Appointment.doctor_id == doctor.id,
             Appointment.status == "scheduled",
-            Appointment.appointment_time >= start_of_day,
-            Appointment.appointment_time <= end_of_day
-        ).all()
+            Appointment.session == "morning",
+            Appointment.appointment_time >= utc_start,
+            Appointment.appointment_time <= utc_end
+        ).count()
 
-        booked_appointments_count = len(existing_appts)
-        capacity_exhausted = booked_appointments_count >= daily_max_patients
+        booked_evening = db.query(Appointment).filter(
+            Appointment.doctor_id == doctor.id,
+            Appointment.status == "scheduled",
+            Appointment.session == "evening",
+            Appointment.appointment_time >= utc_start,
+            Appointment.appointment_time <= utc_end
+        ).count()
 
-        # 6. Generate time slots
-        slots: List[AvailabilitySlot] = []
-        current_dt = datetime.combine(target_date, start_t)
-        end_dt = datetime.combine(target_date, end_t)
+        morning_capacity = 10
+        evening_capacity = 5
 
-        while current_dt + duration_delta <= end_dt:
-            slot_start_time = current_dt.time()
-            slot_end_time = (current_dt + duration_delta).time()
+        morning_remaining = max(0, morning_capacity - booked_morning)
+        evening_remaining = max(0, evening_capacity - booked_evening)
 
-            # Timezone-aware representation
-            slot_localized = KARACHI_TZ.localize(current_dt)
-            slot_iso = slot_localized.isoformat()
-            time_str = slot_start_time.strftime("%H:%M")
+        morning_available = morning_remaining > 0
+        evening_available = evening_remaining > 0
 
-            is_slot_available = True
-            slot_status = "free"
+        # Check if session has already passed if target_date is today or in past
+        if target_date == now_local.date():
+            # Morning cutoff: 14:00 local time
+            if now_local.time() >= time(14, 0):
+                morning_available = False
+            # Evening cutoff: 21:00 local time
+            if now_local.time() >= time(21, 0):
+                evening_available = False
+        elif target_date < now_local.date():
+            morning_available = False
+            evening_available = False
 
-            # Check if in past
-            if slot_localized <= now_karachi:
-                is_slot_available = False
-                slot_status = "past"
-
-            # Check if during doctor break
-            if break_start_t and break_end_t:
-                # If slot overlaps break
-                if not (slot_end_time <= break_start_t or slot_start_time >= break_end_t):
-                    is_slot_available = False
-                    slot_status = "booked"
-
-            # Check if overlapping any scheduled appointment
-            if is_slot_available:
-                for appt in existing_appts:
-                    appt_start = appt.appointment_time
-                    appt_duration = timedelta(minutes=appt.duration_minutes or 30)
-                    appt_end = appt_start + appt_duration
-
-                    # Overlap check
-                    if current_dt < appt_end and (current_dt + duration_delta) > appt_start:
-                        is_slot_available = False
-                        slot_status = "booked"
-                        break
-
-            # If daily capacity is reached, all slots become unavailable
-            if capacity_exhausted:
-                is_slot_available = False
-                slot_status = "booked"
-
-            slots.append(
-                AvailabilitySlot(
-                    time=time_str,
-                    timestamp=slot_iso,
-                    available=is_slot_available,
-                    status=slot_status
-                )
+        sessions = [
+            SessionAvailability(
+                session="morning",
+                capacity=morning_capacity,
+                booked=booked_morning,
+                remaining=morning_remaining,
+                available=morning_available
+            ),
+            SessionAvailability(
+                session="evening",
+                capacity=evening_capacity,
+                booked=booked_evening,
+                remaining=evening_remaining,
+                available=evening_available
             )
+        ]
 
-            current_dt += duration_delta
-
-        available_slots_count = sum(1 for s in slots if s.available)
+        total_booked = booked_morning + booked_evening
+        total_available = (morning_remaining if morning_available else 0) + (evening_remaining if evening_available else 0)
 
         day_availabilities.append(
             DayAvailability(
                 date=target_date.strftime("%Y-%m-%d"),
                 day=day_full,
                 working_hours=working_hours_str,
-                slots=slots,
-                booked_count=booked_appointments_count,
-                available_count=available_slots_count
+                sessions=sessions,
+                slots=[],
+                booked_count=total_booked,
+                available_count=total_available
             )
         )
 

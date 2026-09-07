@@ -25,11 +25,22 @@ export interface ParsedSlot {
   label: string
 }
 
+export interface ParsedSession {
+  session: 'morning' | 'evening' | string
+  date: string
+  label: string
+  capacity: number
+  booked: number
+  remaining: number
+  available: boolean
+}
+
 export interface ParsedAppointment {
   appointment_id: string
   doctor_name: string
   doctor_specialization: string
   appointment_time: string
+  session?: 'morning' | 'evening' | string | null
   status: string
   clinic_name: string
   symptoms_reported: string
@@ -42,6 +53,8 @@ export type ProposalStatus = 'pending' | 'executed' | 'expired' | 'failed'
 export interface ParsedBookingSummary {
   doctor: ParsedDoctorOption
   selectedSlot: string
+  session?: 'morning' | 'evening' | string | null
+  date?: string | null
   /** @deprecated Use `status` instead */
   isConfirmed: boolean
   proposal_id?: string | null
@@ -52,6 +65,8 @@ export interface ParsedRescheduleSummary {
   doctor: ParsedDoctorOption
   oldSlot: string
   newSlot: string
+  session?: 'morning' | 'evening' | string | null
+  date?: string | null
   proposal_id?: string | null
   status?: ProposalStatus | null
 }
@@ -76,6 +91,7 @@ export interface TriageUiData {
 export interface ChatUiData {
   doctors?: ParsedDoctorOption[]
   slots?: ParsedSlot[]
+  sessions?: ParsedSession[]
   appointments?: ParsedAppointment[]
   booking?: ParsedBookingSummary
   reschedule?: ParsedRescheduleSummary

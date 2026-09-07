@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button, Badge } from '../ui';
 import { type ParsedRescheduleSummary } from '../../services/chat';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { formatSessionDisplay } from './ConfirmationCard';
 
 interface RescheduleConfirmationProps {
   reschedule: ParsedRescheduleSummary;
@@ -90,16 +91,16 @@ export const RescheduleConfirmation: React.FC<RescheduleConfirmationProps> = ({
         </div>
 
         <div className="p-3 bg-surfaceContainer rounded-xl opacity-70">
-          <span className="text-[10px] text-error uppercase font-bold block mb-0.5">{t('reschedule.oldTime')}</span>
+          <span className="text-[10px] text-error uppercase font-bold block mb-0.5">Previous Session</span>
           <span className="font-semibold text-textSecondary text-xs block line-through">
-            {reschedule.oldSlot}
+            {formatSessionDisplay(reschedule.oldSlot, reschedule.session, reschedule.date)}
           </span>
         </div>
 
         <div className="p-3 bg-primary/10 rounded-xl border border-primary/20">
-          <span className="text-[10px] text-primary uppercase font-bold block mb-0.5">{t('reschedule.newTime')}</span>
+          <span className="text-[10px] text-primary uppercase font-bold block mb-0.5">New Session</span>
           <span className="font-bold text-primary text-xs block">
-            {reschedule.newSlot}
+            {formatSessionDisplay(reschedule.newSlot, reschedule.session, reschedule.date)}
           </span>
         </div>
       </div>

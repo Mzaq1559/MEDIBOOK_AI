@@ -129,17 +129,20 @@ def sync_appointment(appointment_id: UUID, db: Session) -> bool:
 
         end_dt = start_dt + timedelta(minutes=duration)
 
+        session_label = (getattr(appointment, 'session', None) or "morning").capitalize()
+
         # Create Google Calendar event WITHOUT attendees.
         # Service accounts cannot invite attendees without
         # Google Workspace Domain-Wide Delegation.
         event_payload = {
             'summary': (
                 f"Appointment with Dr. {doctor_name} "
-                f"({clinic_name})"
+                f"({clinic_name}) - {session_label} Session"
             ),
 
             'description': (
                 f"Patient: {patient_name}\n"
+                f"Session: {session_label} Session\n"
                 f"Symptoms: {appointment.symptoms_reported or 'N/A'}\n"
                 f"Urgency: {appointment.urgency_level or 'normal'}\n"
                 f"Type: {appointment.appointment_type or 'in_person'}"

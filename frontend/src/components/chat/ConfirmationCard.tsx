@@ -3,6 +3,64 @@ import { Button, Badge } from '../ui';
 import { type ParsedBookingSummary } from '../../services/chat';
 import { useLanguage } from '../../i18n/LanguageContext';
 
+export function formatSessionDisplay(
+  rawSlot?: string,
+  session?: string | null,
+  date?: string | null
+): string {
+  let sessionName = '';
+  if (session) {
+    sessionName = session.toLowerCase() === 'morning' ? 'Morning Session' : 'Evening Session';
+  } else if (rawSlot && /morning/i.test(rawSlot)) {
+    sessionName = 'Morning Session';
+  } else if (rawSlot && /evening/i.test(rawSlot)) {
+    sessionName = 'Evening Session';
+  }
+
+  let dateObj: Date | null = null;
+  if (date) {
+    const d = new Date(date + (date.includes('T') ? '' : 'T00:00:00'));
+    if (!Number.isNaN(d.getTime())) dateObj = d;
+  }
+  if (!dateObj && rawSlot) {
+    const match = rawSlot.match(/(\d{4}-\d{2}-\d{2})/);
+    if (match) {
+      const d = new Date(match[1] + 'T00:00:00');
+      if (!Number.isNaN(d.getTime())) dateObj = d;
+    } else {
+      const parsed = new Date(rawSlot);
+      if (!Number.isNaN(parsed.getTime())) dateObj = parsed;
+    }
+  }
+
+  if (!sessionName && rawSlot) {
+    const hourMatch = rawSlot.match(/(\d{1,2}):\d{2}/);
+    if (hourMatch) {
+      const hr = parseInt(hourMatch[1], 10);
+      const isPm = /pm/i.test(rawSlot);
+      const effHr = isPm && hr < 12 ? hr + 12 : hr;
+      sessionName = effHr < 14 ? 'Morning Session' : 'Evening Session';
+    } else {
+      sessionName = 'Morning Session';
+    }
+  }
+
+  if (!sessionName) {
+    sessionName = 'Morning Session';
+  }
+
+  if (dateObj) {
+    const formattedDate = dateObj.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    return `${sessionName} — ${formattedDate}`;
+  }
+
+  return sessionName;
+}
+
 interface ConfirmationCardProps {
   booking: ParsedBookingSummary;
   onConfirm: () => void;
@@ -60,6 +118,12 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
     onConfirm();
   };
 
+  const displaySession = formatSessionDisplay(
+    booking.selectedSlot,
+    booking.session,
+    booking.date
+  );
+
   return (
     <div className="p-5 bg-white rounded-2xl border-2 border-primary/20 shadow-soft-md space-y-4 animate-fadeIn">
       <div className="flex items-center justify-between border-b border-surfaceContainerHigh pb-3">
@@ -106,9 +170,9 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
         </div>
 
         <div className="p-3 bg-surfaceContainer rounded-xl">
-          <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">{t('confirm.dateTime')}</span>
+          <span className="text-[10px] text-textSecondary uppercase font-bold block mb-0.5">Session</span>
           <span className="font-bold text-textPrimary text-sm block text-primary">
-            {booking.selectedSlot}
+            {displaySession}
           </span>
         </div>
 

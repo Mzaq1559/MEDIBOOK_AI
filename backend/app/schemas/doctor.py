@@ -80,11 +80,20 @@ class AvailabilitySlot(BaseModel):
     status: str  # 'free' or 'booked'
 
 
+class SessionAvailability(BaseModel):
+    session: str  # 'morning' or 'evening'
+    capacity: int  # 10 for morning, 5 for evening
+    booked: int
+    remaining: int
+    available: bool
+
+
 class DayAvailability(BaseModel):
     date: str
     day: str
     working_hours: str
-    slots: List[AvailabilitySlot]
+    sessions: List[SessionAvailability] = []
+    slots: List[AvailabilitySlot] = []
     booked_count: int
     available_count: int
 

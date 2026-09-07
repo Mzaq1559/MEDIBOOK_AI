@@ -1,17 +1,39 @@
 from uuid import UUID
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, date
+from typing import List, Optional, Any
 from pydantic import BaseModel, Field, field_validator
 
 
 class AppointmentCreate(BaseModel):
     patient_id: UUID
     doctor_id: UUID
-    appointment_time: str  # ISO 8601 string
+    session: str = Field(..., description="Booking session: 'morning' or 'evening'")
+    appointment_date: Optional[str] = Field(None, description="Target booking date in YYYY-MM-DD")
+    date: Optional[str] = Field(None, description="Target booking date in YYYY-MM-DD (alias)")
+    appointment_time: Optional[str] = Field(None, description="ISO 8601 string, retained for internal/backward compatibility")
     symptoms_reported: str = Field(..., min_length=3, max_length=1000)
     urgency_level: str = Field(..., description="low, normal, high, critical")
     urgency_reason: Optional[str] = Field(None, description="Machine-readable triage reason code")
     appointment_type: Optional[str] = "in_person"
+
+    @field_validator("appointment_date", "date", mode="before")
+    @classmethod
+    def serialize_date_input(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        if isinstance(v, (date, datetime)):
+            return v.isoformat()
+        return str(v)
+
+    @field_validator("session")
+    @classmethod
+    def validate_session(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            raise ValueError("session is required and must be 'morning' or 'evening'")
+        v_clean = v.strip().lower()
+        if v_clean not in {"morning", "evening"}:
+            raise ValueError(f"Invalid session '{v}'. Must be 'morning' or 'evening'.")
+        return v_clean
 
     @field_validator("urgency_level")
     @classmethod
@@ -38,6 +60,7 @@ class AppointmentCreateResponse(BaseModel):
     doctor_id: UUID
     doctor_name: str
     patient_id: UUID
+    session: str
     appointment_time: str
     status: str
     symptoms_reported: str
@@ -67,6 +90,7 @@ class AppointmentListItem(BaseModel):
     patient_blood_type: Optional[str] = None
     patient_allergies: Optional[str] = None
     patient_medical_conditions: Optional[str] = None
+    session: str = "morning"
     appointment_time: str
     end_time: Optional[str] = None
     status: str
@@ -98,6 +122,7 @@ class AppointmentDetailResponse(BaseModel):
     doctor_specialization: str
     patient_id: UUID
     patient_name: str
+    session: str = "morning"
     appointment_time: str
     duration_minutes: int
     status: str
@@ -113,11 +138,14 @@ class AppointmentDetailResponse(BaseModel):
 
 
 class AppointmentRescheduleRequest(BaseModel):
-    appointment_time: str
+    appointment_time: Optional[str] = None
+    appointment_date: Optional[str] = None
+    session: Optional[str] = None
 
 
 class AppointmentRescheduleResponse(BaseModel):
     appointment_id: UUID
+    session: str = "morning"
     appointment_time: str
     status: str
     message: str = "Appointment rescheduled successfully"

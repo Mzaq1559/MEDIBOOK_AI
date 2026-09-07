@@ -33,7 +33,8 @@ def send_reminder(appointment_id: UUID, reminder_type: str, db: Session) -> bool
             logger.warning(f"No patient email found for appointment {appointment_id}. Skipping email reminder.")
             return False
 
-        formatted_time = appointment.appointment_time.strftime("%A, %B %d, %Y at %I:%M %p")
+        session_title = (getattr(appointment, 'session', None) or 'morning').capitalize()
+        formatted_date = appointment.appointment_time.strftime("%A, %B %d, %Y")
         reschedule_url = f"{settings.FRONTEND_URL}/appointments"
 
         time_frame = "24 hours" if reminder_type == "24h" else "1 hour"
@@ -64,7 +65,8 @@ def send_reminder(appointment_id: UUID, reminder_type: str, db: Session) -> bool
 
                     <div class="details-box">
                         <p style="margin: 5px 0;"><strong>Doctor:</strong> Dr. {doctor_name}</p>
-                        <p style="margin: 5px 0;"><strong>Date & Time:</strong> {formatted_time}</p>
+                        <p style="margin: 5px 0;"><strong>Date:</strong> {formatted_date}</p>
+                        <p style="margin: 5px 0;"><strong>Session:</strong> {session_title} Session</p>
                         <p style="margin: 5px 0;"><strong>Clinic:</strong> {clinic_name}</p>
                         <p style="margin: 5px 0;"><strong>Address:</strong> {clinic_address}</p>
                         <p style="margin: 5px 0;"><strong>Type:</strong> {appointment.appointment_type.replace('_', ' ').title() if appointment.appointment_type else 'In Person'}</p>

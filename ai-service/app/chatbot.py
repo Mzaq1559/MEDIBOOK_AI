@@ -130,7 +130,7 @@ def _next_action_from_ui(session: dict[str, Any], ui_data: dict[str, Any], bot: 
         return "appointment_booked"
     if ui_data.get("booking") and not (ui_data.get("booking") or {}).get("isConfirmed"):
         return "waiting_for_confirmation"
-    if ui_data.get("slots"):
+    if ui_data.get("slots") or ui_data.get("sessions"):
         return "waiting_for_slot_selection"
     if ui_data.get("doctors"):
         return "waiting_for_doctor_selection"
@@ -389,26 +389,30 @@ def run_agent_loop_stream(
     else:
         bot = strip_markdown(content or "I've got what I need — what would you like to do next?")
 
-    # Ensure slot selection clears stale doctor list cards from earlier turns
-    if "slots" in this_turn_ui_keys:
+    # Ensure session/slot selection clears stale doctor list cards from earlier turns
+    if "slots" in this_turn_ui_keys or "sessions" in this_turn_ui_keys:
         if "doctors" not in this_turn_ui_keys:
             ui_data.pop("doctors", None)
             last = session.get("last_ui_data")
             if isinstance(last, dict):
                 last.pop("doctors", None)
 
-    # Listing appointments should not keep leftover doctor/slot cards from an earlier turn.
+    # Listing appointments should not keep leftover doctor/slot/session cards from an earlier turn.
     if "appointments" in this_turn_ui_keys:
         if "doctors" not in this_turn_ui_keys:
             ui_data.pop("doctors", None)
         if "slots" not in this_turn_ui_keys:
             ui_data.pop("slots", None)
+        if "sessions" not in this_turn_ui_keys:
+            ui_data.pop("sessions", None)
         last = session.get("last_ui_data")
         if isinstance(last, dict):
             if "doctors" not in this_turn_ui_keys:
                 last.pop("doctors", None)
             if "slots" not in this_turn_ui_keys:
                 last.pop("slots", None)
+            if "sessions" not in this_turn_ui_keys:
+                last.pop("sessions", None)
 
     ui_data = _strip_listed_appointment_cards(bot, ui_data, session)
 

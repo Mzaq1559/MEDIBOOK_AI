@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, date
 from typing import Any, Callable, Optional
+from dateutil import parser as date_parser
 
 from app import backend_client
 from app.chatbot_slots import (
@@ -160,8 +162,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "propose_book_appointment",
             "description": (
-                "Create a new appointment. Confirm doctor, time, and symptoms with the "
-                "patient before calling. Returns Appointment."
+                "Create a new appointment proposal. Confirm doctor, date, session ('morning' or 'evening'), and symptoms with the "
+                "patient before calling. Returns Appointment Proposal."
             ),
             "parameters": {
                 "type": "object",
@@ -174,16 +176,24 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "type": "string",
                         "description": "Doctor UUID to book with",
                     },
+                    "date": {
+                        "type": "string",
+                        "description": "Target date in YYYY-MM-DD",
+                    },
+                    "session": {
+                        "type": "string",
+                        "description": "Session: 'morning' or 'evening'",
+                    },
                     "datetime": {
                         "type": "string",
-                        "description": "Slot as ISO-8601 timestamp or availability label",
+                        "description": "Legacy datetime string (optional)",
                     },
                     "symptoms": {
                         "type": "string",
                         "description": "Brief symptom description for the visit",
                     },
                 },
-                "required": ["patient_id", "doctor_id", "datetime", "symptoms"],
+                "required": ["patient_id", "doctor_id", "date", "session", "symptoms"],
             },
         },
     },
@@ -233,8 +243,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "get_availability",
             "description": (
-                "List open time slots for a doctor on a given date. "
-                "Returns List[str] of slot labels / ISO timestamps."
+                "List available sessions (morning / evening) for a doctor on a given date. "
+                "Returns session capacity, booked, and remaining counts."
             ),
             "parameters": {
                 "type": "object",
@@ -301,7 +311,7 @@ REQUIRED_PARAMS: dict[str, list[str]] = {
     "propose_reschedule_appointment": ["appointment_id", "new_datetime"],
     "execute_confirmed_action": ["proposal_id"],
     "propose_cancel_appointment": ["appointment_id"],
-    "propose_book_appointment": ["patient_id", "doctor_id", "datetime", "symptoms"],
+    "propose_book_appointment": ["patient_id", "doctor_id", "date", "session", "symptoms"],
     "get_doctors_by_specialty": ["specialty"],
     "get_availability": ["doctor_id", "date"],
     "get_doctor_availability": ["doctor_id", "date"],
@@ -347,9 +357,9 @@ def build_system_prompt() -> str:
         "\n"
         "Bad vs good:\n"
         "- Bad: I see you have one upcoming appointment with details as follows...\n"
-        "- Good: Hi Ali! You have an appointment with Dr. Tariq on Aug 27th at 10 AM.\n"
+        "- Good: Hi Ali! You have an appointment with Dr. Tariq on Aug 27th (Morning Session).\n"
         "- Bad: Please inform me of your preferred time slot\n"
-        "- Good: When works best for you?\n"
+        "- Good: Would you prefer the Morning or Evening session?\n"
         "- Bad: Would you like to reschedule or cancel?\n"
         "- Good: Want to reschedule instead?\n"
         "- Bad: Patient Name: Ali Khan / Last Visit: Dr. Tariq Mahmood / Date: 27 August 2026\n"
@@ -372,7 +382,9 @@ def build_system_prompt() -> str:
         "3. Answer in one or two warm sentences using the tool results\n"
         "\n"
         "Rules:\n"
-        "- Use tools for live clinic data. Do not invent doctors, slots, or appointment IDs.\n"
+        "- Appointments are session-based: Morning (maximum 10 bookings) and Evening (maximum 5 bookings).\n"
+        "- NEVER ask for or invent individual time slots (e.g. 9:00 AM, 10:00 AM, 5:30 PM). Only ask for their session preference: Morning or Evening.\n"
+        "- Use tools for live clinic data. Do not invent doctors, sessions, or appointment IDs.\n"
         "- For booking, reschedule, and cancel: call propose_X first, state the summary, wait for "
         "explicit affirmative text, then call execute_confirmed_action.\n"
         "- If the patient is not logged in, ask them to sign in instead of guessing IDs.\n"
@@ -402,12 +414,18 @@ def _require_auth(auth: Optional[str]) -> Optional[str]:
 
 
 def _booking_error(exc: backend_client.BackendError) -> str:
+    if exc.error_code == "SESSION_FULL":
+        return "That session has reached its booking capacity (10 for morning, 5 for evening). Please choose another session or date."
+    if exc.error_code in ("SESSION_UNAVAILABLE", "CLINIC_CLOSED", "DOCTOR_UNAVAILABLE"):
+        return "The doctor or clinic is not available for that session/date. Please choose another date or session."
+    if exc.error_code == "INVALID_SESSION":
+        return "Please select a valid session: Morning or Evening."
     if exc.error_code == "INVALID_TIME":
-        return "That appointment time is not valid. Please pick another available slot."
+        return "That appointment time is not valid. Please choose Morning or Evening session."
     if exc.error_code == "SLOT_UNAVAILABLE":
-        return "That time slot is not available. Please pick another time."
+        return "That session is not available. Please pick another session or date."
     if exc.error_code == "DOUBLE_BOOKING":
-        return "You already have an appointment at that time. Would you like a different slot?"
+        return "You already have an appointment booked for that session. Would you like a different session or date?"
     if exc.status_code in (401, 403):
         return LOGIN_REQUIRED
     return exc.message or "I could not complete the request. Please try again."
@@ -564,54 +582,51 @@ def tool_get_availability(
     doctor_id = str(args.get("doctor_id") or "")
     date = str(args.get("date") or today_karachi())
     avail = backend_client.get_availability(doctor_id, date, next_days=3)
-    labels: list[str] = []
-    timestamps: list[str] = []
-    slots_for_ui: list[dict[str, Any]] = []
+    session_summaries: list[str] = []
+    sessions_for_ui: list[dict[str, Any]] = []
+
     if avail:
         for day in avail.get("availability") or []:
             date_label = day.get("date", date)
-            for slot in day.get("slots") or []:
-                if not slot.get("available"):
-                    continue
-                ts = slot.get("timestamp") or ""
-                label = f"{date_label} at {slot.get('time', '')}"
-                labels.append(label)
-                if ts:
-                    timestamps.append(ts)
-                slots_for_ui.append(
+            for sess in day.get("sessions") or []:
+                s_name = sess.get("session")
+                cap = sess.get("capacity", 10 if s_name == "morning" else 5)
+                bked = sess.get("booked", 0)
+                rem = sess.get("remaining", 0)
+                is_avail = bool(sess.get("available"))
+                label = f"{date_label} {s_name.capitalize()} Session"
+                if is_avail:
+                    session_summaries.append(f"{label} ({rem} spots remaining)")
+                sessions_for_ui.append(
                     {
                         "date": date_label,
-                        "time": slot.get("time", ""),
-                        "timestamp": ts,
+                        "session": s_name,
                         "label": label,
+                        "capacity": cap,
+                        "booked": bked,
+                        "remaining": rem,
+                        "available": is_avail,
                     }
                 )
+
     doc = _load_doctor(session, doctor_id)
     if isinstance(session.get("last_ui_data"), dict):
         session["last_ui_data"].pop("doctors", None)
-    if not labels and doc:
-        for s in doc.get("availability_slots") or doc.get("slots") or []:
-            labels.append(s.get("label") or s.get("timestamp") or "")
-            if s.get("timestamp"):
-                timestamps.append(s["timestamp"])
-            slots_for_ui.append(s)
-        doc["slots"] = slots_for_ui or doc.get("slots") or []
-        ui = _merge_ui(session, {"slots": slots_ui_data(doc)})
-    else:
-        if doc:
-            doc["availability_slots"] = slots_for_ui
-            doc["slots"] = slots_for_ui
-            session["selected_doctor"] = doc
-        ui = _merge_ui(session, {"slots": slots_for_ui})
 
-    dates_available = sorted(list({s["date"] for s in slots_for_ui if s.get("date")}))
+    if doc:
+        doc["availability_sessions"] = sessions_for_ui
+        session["selected_doctor"] = doc
+
+    ui = _merge_ui(session, {"sessions": sessions_for_ui, "slots": []})
+    dates_available = sorted(list({s["date"] for s in sessions_for_ui if s.get("available")}))
+
     return {
         "ok": True,
         "doctor_id": doctor_id,
         "date": date,
-        "total_slots_available": len(labels),
+        "sessions_available": len(session_summaries),
         "dates_available": dates_available,
-        "sample_slots": labels[:3],
+        "available_sessions": session_summaries[:6],
         "ui_data": ui,
     }
 
@@ -656,34 +671,74 @@ def tool_propose_book_appointment(
     if not patient_id:
         return {"ok": False, "error": LOGIN_REQUIRED}
     doctor_id = str(args.get("doctor_id") or "")
-    when = str(args.get("datetime") or "")
     symptoms = str(args.get("symptoms") or "General Consultation")[:500]
     doc = _load_doctor(session, doctor_id)
     if not doc:
         return {"ok": False, "error": f"Doctor '{doctor_id}' not found."}
-    slot = _resolve_slot(doc, when)
-    if not slot:
-        available = [s.get("label") for s in (doc.get("availability_slots") or [])]
+
+    req_session = str(args.get("session") or "").strip().lower()
+    req_date = str(args.get("date") or "").strip()
+    when = str(args.get("datetime") or "")
+
+    if not req_session and when:
+        if "morning" in when.lower():
+            req_session = "morning"
+        elif "evening" in when.lower():
+            req_session = "evening"
+        else:
+            try:
+                dt = date_parser.parse(when)
+                req_session = "morning" if dt.hour < 14 else "evening"
+                if not req_date:
+                    req_date = dt.strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
+    if not req_date and when:
+        try:
+            req_date = date_parser.parse(when).strftime("%Y-%m-%d")
+        except Exception:
+            pass
+
+    if not req_date:
         return {
             "ok": False,
-            "error": f"Requested slot '{when}' is unavailable for {doc['name']}. Available slots: {available}",
+            "error": "A booking date is required (YYYY-MM-DD).",
         }
+
+    try:
+        parsed_d = date_parser.parse(req_date).date()
+        req_date = parsed_d.strftime("%Y-%m-%d")
+    except Exception:
+        return {
+            "ok": False,
+            "error": f"Invalid date format '{req_date}'. Please provide a valid date (YYYY-MM-DD).",
+        }
+
+    if req_session not in {"morning", "evening"}:
+        return {
+            "ok": False,
+            "error": "Please select a session: Morning (max 10 bookings) or Evening (max 5 bookings).",
+        }
+
     payload = {
         "patient_id": patient_id,
         "doctor_id": doc["doctor_id"],
-        "appointment_time": slot["timestamp"],
+        "session": req_session,
+        "appointment_date": req_date,
         "symptoms_reported": symptoms,
         "urgency_level": session.get("urgency_level") or "normal",
         "urgency_reason": session.get("urgency_reason"),
         "appointment_type": "in_person",
     }
     
-    summary = f"Book appointment with {doc['name']} on {slot.get('label') or slot.get('timestamp')}."
-    pid = _create_proposal(session, "book", patient_id, {"payload": payload, "doc": doc, "slot": slot, "symptoms": symptoms}, summary)
+    session_title = req_session.capitalize()
+    summary = f"Book appointment with {doc['name']} for {session_title} Session on {req_date}."
+    pid = _create_proposal(session, "book", patient_id, {"payload": payload, "doc": doc, "session": req_session, "date": req_date, "symptoms": symptoms}, summary)
     
     ui = _merge_ui(
         session,
-        {"booking": {"doctor": doc, "selectedSlot": slot.get("label"), "isConfirmed": False}},
+        {"booking": {"doctor": doc, "selectedSlot": f"{session_title} Session — {req_date}", "isConfirmed": False}},
     )
     return {"ok": True, "proposal_id": pid, "summary": summary, "ui_data": ui}
 
@@ -788,8 +843,7 @@ def tool_execute_confirmed_action(
     if p_type == "book":
         payload = data["payload"]
         doc = data["doc"]
-        slot = data["slot"]
-        symptoms = data["symptoms"]
+        symptoms = data.get("symptoms", "")
         
         try:
             created = backend_client.create_appointment(payload, auth or "")
@@ -807,7 +861,7 @@ def tool_execute_confirmed_action(
                 "patient_name": "Patient",
                 "clinic_name": doc["clinic_name"],
                 "clinic_address": doc["clinic_address"],
-                "appointment_time": slot["timestamp"],
+                "appointment_time": created.get("appointment_time"),
                 "duration_minutes": 30,
                 "symptoms_reported": symptoms,
             }
@@ -818,7 +872,7 @@ def tool_execute_confirmed_action(
             n8n_p["patient_id"] = patient_id
             n8n_p["doctor_id"] = doc["doctor_id"]
             n8n_p["clinic_id"] = created.get("clinic_id")
-            n8n_p["urgency_level"] = payload["urgency_level"]
+            n8n_p["urgency_level"] = payload.get("urgency_level", "normal")
             n8n_p["google_calendar_event_id"] = session.get("google_calendar_event_id")
             n8n_webhook.dispatch_appointment_created(n8n_p)
         except Exception as exc:
@@ -1023,6 +1077,25 @@ def execute_tool(
     if name in ("get_patient_appointments", "propose_book_appointment", "get_patient_info"):
         if not args.get("patient_id") and session.get("patient_id"):
             args["patient_id"] = str(session["patient_id"])
+    if name == "propose_book_appointment":
+        when = str(args.get("datetime") or "").strip()
+        if when:
+            if not args.get("session"):
+                if "morning" in when.lower():
+                    args["session"] = "morning"
+                elif "evening" in when.lower():
+                    args["session"] = "evening"
+                else:
+                    try:
+                        dt = date_parser.parse(when)
+                        args["session"] = "morning" if dt.hour < 14 else "evening"
+                    except Exception:
+                        pass
+            if not args.get("date"):
+                try:
+                    args["date"] = date_parser.parse(when).strftime("%Y-%m-%d")
+                except Exception:
+                    pass
     if name in ("get_availability", "get_doctor_availability") and not args.get("date"):
         args["date"] = today_karachi()
     missing = [p for p in required if args.get(p) in (None, "")]

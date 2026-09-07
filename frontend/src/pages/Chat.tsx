@@ -11,7 +11,7 @@ import {
   type ChatUiData,
 } from '../services/chat';
 import { DoctorCard } from '../components/chat/DoctorCard';
-import { TimeSlotGrid } from '../components/chat/TimeSlotGrid';
+import { SessionSelector } from '../components/chat/SessionSelector';
 import { ConfirmationCard } from '../components/chat/ConfirmationCard';
 import { RescheduleConfirmation } from '../components/chat/RescheduleConfirmation';
 import { AppointmentCard } from '../components/chat/AppointmentCard';
@@ -439,17 +439,47 @@ export const Chat: React.FC = () => {
                     })()}
 
                   {(msg.nextAction === 'waiting_for_slot_selection' || msg.nextAction === 'doctor_reschedule') &&
-                    msg.uiData?.slots &&
-                    msg.uiData.slots.length > 0 &&
-                    !listsAppointmentDetails(msg.text) && (
-                      <div className="pt-2">
-                        <TimeSlotGrid
-                          slots={msg.uiData.slots}
-                          onSelect={(ts) => handleAction("Selected Time Slot", ts)}
-                          disabled={isBotTyping}
-                        />
-                      </div>
-                    )}
+                    !listsAppointmentDetails(msg.text) && (() => {
+                      const sessionsToDisplay = (msg.uiData?.sessions && msg.uiData.sessions.length > 0)
+                        ? msg.uiData.sessions
+                        : (msg.uiData?.slots && msg.uiData.slots.length > 0)
+                        ? msg.uiData.slots.reduce((acc: any[], slot) => {
+                            const hourMatch = slot.time?.match(/(\d{1,2}):/);
+                            const isPm = /pm/i.test(slot.time || '');
+                            const hr = hourMatch ? parseInt(hourMatch[1], 10) : 9;
+                            const effHr = isPm && hr < 12 ? hr + 12 : hr;
+                            const sessionName = effHr < 14 ? 'morning' : 'evening';
+                            const existing = acc.find((s) => s.date === slot.date && s.session === sessionName);
+                            if (!existing) {
+                              acc.push({
+                                date: slot.date,
+                                session: sessionName,
+                                label: `${slot.date} ${sessionName === 'morning' ? 'Morning' : 'Evening'}`,
+                                capacity: sessionName === 'morning' ? 10 : 5,
+                                booked: 0,
+                                remaining: sessionName === 'morning' ? 10 : 5,
+                                available: true,
+                              });
+                            }
+                            return acc;
+                          }, [])
+                        : [];
+
+                      if (sessionsToDisplay.length === 0) return null;
+
+                      return (
+                        <div className="pt-2">
+                          <SessionSelector
+                            sessions={sessionsToDisplay}
+                            onSelect={(session) => {
+                              const sessionCapitalized = session.session.charAt(0).toUpperCase() + session.session.slice(1);
+                              handleAction(`Book ${sessionCapitalized} session on ${session.date}`);
+                            }}
+                            disabled={isBotTyping}
+                          />
+                        </div>
+                      );
+                    })()}
 
                   {msg.uiData?.appointments &&
                     msg.uiData.appointments.length > 0 && (
