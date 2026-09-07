@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Iterator, Optional
@@ -19,7 +20,7 @@ from app.tools import TOOL_DEFINITIONS, build_system_prompt, execute_tool
 logger = logging.getLogger("medibook.ai.agent")
 
 SESSION_TTL = 2 * 60 * 60
-MAX_HISTORY = 20
+MAX_HISTORY = 10
 MAX_TOOL_ROUNDS = 8
 
 TOOL_FRIENDLY_LABELS: dict[str, str] = {
@@ -153,6 +154,135 @@ def _strip_listed_appointment_cards(
     return ui_data
 
 
+def _format_doctor_entry(doc: dict[str, Any]) -> str:
+    doctor_id = doc.get("doctor_id") or doc.get("id") or ""
+    name = doc.get("name") or "Doctor"
+    specialty = doc.get("specialization") or doc.get("specialty") or "General"
+    return f"{{id: {doctor_id}, name: '{name}', specialty: '{specialty}'}}"
+
+
+def _doctor_matches_text(doc: dict[str, Any], text: str) -> bool:
+    if not text or not doc:
+        return False
+    text_lower = text.lower()
+    full_name = str(doc.get("name") or "").strip().lower()
+    if not full_name:
+        return False
+    if full_name in text_lower:
+        return True
+    clean_name = re.sub(r"^(dr\.?|doctor)\s+", "", full_name).strip()
+    if clean_name and clean_name in text_lower:
+        return True
+    for part in clean_name.split():
+        if len(part) >= 4 and re.search(r"\b" + re.escape(part) + r"\b", text_lower):
+            return True
+    return False
+
+
+def _resolve_selected_doctor(session: dict[str, Any], latest_user_msg: str = "") -> Optional[dict[str, Any]]:
+    candidates = session.get("candidate_doctors") or []
+    selected = session.get("selected_doctor")
+
+    if selected:
+        if latest_user_msg:
+            for c in candidates:
+                c_id = str(c.get("doctor_id") or c.get("id") or "")
+                s_id = str(selected.get("doctor_id") or selected.get("id") or "")
+                if c_id and s_id and c_id != s_id and _doctor_matches_text(c, latest_user_msg):
+                    session["selected_doctor"] = c
+                    return c
+        return selected
+
+    if len(candidates) == 1:
+        session["selected_doctor"] = candidates[0]
+        return candidates[0]
+
+    if len(candidates) > 1:
+        if latest_user_msg:
+            for c in candidates:
+                if _doctor_matches_text(c, latest_user_msg):
+                    session["selected_doctor"] = c
+                    return c
+        messages = session.get("messages") or []
+        for m in reversed(messages):
+            role = getattr(m, "role", None) or (m.get("role") if isinstance(m, dict) else "")
+            if role == "assistant":
+                text = getattr(m, "message", None) or (m.get("message") if isinstance(m, dict) else "") or ""
+                matched = [c for c in candidates if _doctor_matches_text(c, text)]
+                if len(matched) == 1:
+                    session["selected_doctor"] = matched[0]
+                    return matched[0]
+                break
+
+    return session.get("selected_doctor")
+
+
+def _build_doctor_context_message(session: dict[str, Any]) -> Optional[dict[str, Any]]:
+    selected = session.get("selected_doctor")
+    if selected:
+        doc_id = selected.get("doctor_id") or selected.get("id") or ""
+        content = (
+            f"Active doctor selected for booking: {_format_doctor_entry(selected)}. "
+            f"Use doctor_id '{doc_id}' for availability and booking."
+        )
+        return {"role": "system", "content": content}
+
+    candidates = session.get("candidate_doctors") or []
+    if candidates:
+        entries = ", ".join(_format_doctor_entry(d) for d in candidates)
+        content = f"Candidate doctors available: [{entries}]. Use their IDs for booking."
+        return {"role": "system", "content": content}
+
+    return None
+
+
+def _update_session_doctor_state(
+    session: dict[str, Any],
+    fn_name: str,
+    fn_args: Any,
+    result: Any,
+) -> None:
+    if isinstance(fn_args, str):
+        try:
+            parsed_args = json.loads(fn_args)
+        except Exception:
+            parsed_args = {}
+    elif isinstance(fn_args, dict):
+        parsed_args = fn_args
+    else:
+        parsed_args = {}
+
+    if fn_name in ("get_doctors_by_specialty", "list_doctors"):
+        docs = []
+        if isinstance(result, dict) and isinstance(result.get("doctors"), list):
+            docs = result["doctors"]
+        elif isinstance(session.get("candidate_doctors"), list):
+            docs = session["candidate_doctors"]
+
+        if len(docs) == 1:
+            candidates = session.get("candidate_doctors") or []
+            doc_id = docs[0].get("doctor_id") or docs[0].get("id")
+            matched = next((c for c in candidates if (c.get("doctor_id") or c.get("id")) == doc_id), docs[0])
+            session["selected_doctor"] = matched
+        elif len(docs) > 1:
+            session["selected_doctor"] = None
+
+    if fn_name in ("get_availability", "get_doctor_availability", "propose_book_appointment"):
+        doctor_id = str(parsed_args.get("doctor_id") or (result.get("doctor_id") if isinstance(result, dict) else "") or "")
+        if doctor_id:
+            candidates = session.get("candidate_doctors") or []
+            matched = next((c for c in candidates if str(c.get("doctor_id") or c.get("id")) == doctor_id), None)
+            if matched:
+                session["selected_doctor"] = matched
+            elif not session.get("selected_doctor") or str(session["selected_doctor"].get("doctor_id") or session["selected_doctor"].get("id")) != doctor_id:
+                session["selected_doctor"] = {"doctor_id": doctor_id, "name": parsed_args.get("doctor_name") or "Doctor"}
+
+    if isinstance(result, dict) and result.get("ui_data"):
+        booking = result["ui_data"].get("booking")
+        if isinstance(booking, dict) and booking.get("doctor"):
+            session["selected_doctor"] = booking["doctor"]
+
+
 def run_agent_loop_stream(
     session: dict[str, Any],
     authorization: Optional[str],
@@ -184,6 +314,19 @@ def run_agent_loop_stream(
                 ),
             }
         )
+
+    latest_user_msg = ""
+    for m in reversed(session.get("messages") or []):
+        role = getattr(m, "role", None) or (m.get("role") if isinstance(m, dict) else "")
+        if role == "user":
+            latest_user_msg = getattr(m, "message", None) or (m.get("message") if isinstance(m, dict) else "") or ""
+            break
+
+    _resolve_selected_doctor(session, latest_user_msg)
+    doc_msg = _build_doctor_context_message(session)
+    if doc_msg:
+        messages.append(doc_msg)
+
     for m in session["messages"]:
         messages.append({"role": m.role, "content": m.message})
 
@@ -225,15 +368,19 @@ def run_agent_loop_stream(
             yield {"event": "status", "data": {"label": label}}
 
             result = execute_tool(fn_name, fn_args, session, authorization)
+            _update_session_doctor_state(session, fn_name, fn_args, result)
             if isinstance(result, dict) and result.get("ui_data"):
                 fresh = result["ui_data"]
                 this_turn_ui_keys.update(fresh.keys())
                 ui_data.update(fresh)
+            tool_payload = result
+            if isinstance(result, dict) and "ui_data" in result:
+                tool_payload = {k: v for k, v in result.items() if k != "ui_data"}
             messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": getattr(tool_call, "id", "") or "",
-                    "content": json.dumps(result, default=str),
+                    "content": json.dumps(tool_payload, default=str),
                 }
             )
         else:

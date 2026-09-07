@@ -83,11 +83,14 @@ def summarize_appointments(appts: list[dict[str, Any]], limit: int = 3) -> list[
     ordered = sorted(appts, key=_appt_sort_key, reverse=True)
     out: list[dict[str, str]] = []
     for appt in ordered[:limit]:
+        sym = _symptoms(appt) or "not recorded"
+        if len(sym) > 60:
+            sym = sym[:57] + "..."
         out.append(
             {
                 "date": format_visit_when(appt.get("appointment_time")),
                 "doctor": _doctor_name(appt),
-                "symptoms": _symptoms(appt) or "not recorded",
+                "symptoms": sym,
                 "clinic": _clinic(appt),
                 "status": str(appt.get("status") or ""),
             }
@@ -139,22 +142,27 @@ def build_patient_context_block(
     preferred_doctor: str,
     preferred_clinic: str,
     language: str,
-    conversation_history: str,
+    conversation_history: str = "",
     special_notes: str = "",
 ) -> str:
     last = last_visits[0] if last_visits else None
     history_lines = []
     if last:
+        sym = last.get("symptoms") or "not recorded"
+        if len(sym) > 60:
+            sym = sym[:57] + "..."
         history_lines.append(
             f"- Last visit: {last['date']} with {last['doctor']}"
         )
-        history_lines.append(f"- Symptoms: {last.get('symptoms') or 'not recorded'}")
+        history_lines.append(f"- Symptoms: {sym}")
     else:
         history_lines.append("- Last visit: none on file")
         history_lines.append("- Symptoms: none on file")
     if len(last_visits) > 1:
+        def _trunc(s: str) -> str:
+            return s[:57] + "..." if len(s) > 60 else s
         extras = "; ".join(
-            f"{v['date']} with {v['doctor']} ({v.get('symptoms') or 'n/a'})"
+            f"{v['date']} with {v['doctor']} ({_trunc(v.get('symptoms') or 'n/a')})"
             for v in last_visits[1:]
         )
         history_lines.append(f"- Earlier visits: {extras}")
@@ -168,13 +176,10 @@ def build_patient_context_block(
         f"Patient: {full_name or display_name}",
         f"First name: {display_name}",
         f"Language preference: {language or 'english'}",
-        f"Preferred doctor: {preferred_doctor or 'none noted'}",
-        f"Preferred clinic: {preferred_clinic or 'none noted'}",
+        f"Past preferred doctor (reference only): {preferred_doctor or 'none noted'}",
+        f"Past preferred clinic (reference only): {preferred_clinic or 'none noted'}",
         "Medical History:",
         *history_lines,
-        "",
-        "Current conversation:",
-        conversation_history or "(new conversation)",
     ]
     return "\n".join(lines)
 
@@ -202,7 +207,6 @@ def load_patient_context(
             preferred_doctor=str(facts.get("preferred_doctor") or ""),
             preferred_clinic=str(facts.get("preferred_clinic") or ""),
             language=language,
-            conversation_history=format_conversation_history(session.get("messages") or []),
             special_notes=str(facts.get("special_notes") or ""),
         )
 
@@ -252,6 +256,5 @@ def load_patient_context(
         preferred_doctor=pref_doc,
         preferred_clinic=pref_clinic,
         language=language,
-        conversation_history=format_conversation_history(session.get("messages") or []),
         special_notes=notes,
     )
