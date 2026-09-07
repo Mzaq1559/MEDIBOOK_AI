@@ -9,6 +9,9 @@
 [![Groq](https://img.shields.io/badge/LLM-Groq-f55036)](https://groq.com/)
 [![ChromaDB](https://img.shields.io/badge/Vector_DB-ChromaDB-FF6B35)](https://www.trychroma.com/)
 
+![MediBook AI Virtual Receptionist and Clinic Platform](docs/Images/1.png)
+*MediBook AI landing page featuring 24/7 virtual receptionist introduction, interactive clinical triage preview, and smart clinic coordination.*
+
 ---
 
 ## Three Implementations
@@ -264,6 +267,9 @@ Emergency Response   Groq Agent
               ▼
       Natural Language Response
 ```
+
+![MediBook AI Conversational Health Chat](docs/Images/8.png)
+*Interactive conversational AI health chat guiding a patient through symptom inquiry and appointment scheduling.*
 
 ---
 
@@ -543,6 +549,9 @@ flowchart TB
 
 # ✨ Key Features
 
+![MediBook AI Key Platform Capabilities](docs/Images/2.png)
+*Overview of core platform capabilities spanning AI symptom triage, smart appointment booking, automated notifications, clinical workflow portal, and emergency detection.*
+
 ## Agentic AI
 
 * ✅ Single tool-calling AI agent
@@ -577,8 +586,20 @@ flowchart TB
 
 * ✅ Patient authentication
 * ✅ Patient dashboard
+
+![MediBook AI Patient Portal Dashboard](docs/Images/7.png)
+*Patient portal dashboard displaying upcoming consultation details, direct rescheduling and cancellation actions, and medical history navigation.*
+
 * ✅ Doctor dashboard
+
+![MediBook AI Doctor Clinical Portal and Appointments Queue](docs/Images/4.png)
+*Doctor clinical workspace displaying daily shift schedule, live patient queue with triage urgency indicators, and visit documentation actions.*
+
 * ✅ Admin dashboard
+
+![MediBook AI System Administrator Dashboard](docs/Images/3.png)
+*System administrator dashboard showcasing live clinic operational metrics, no-show rate analytics, and clinical staff management.*
+
 * ✅ Prescriptions
 * ✅ Google Calendar integration
 * ✅ Email reminders
@@ -740,6 +761,9 @@ curl http://localhost:8001/api/rag/health
 ## 5. Seed Credentials
 
 The database is automatically seeded on first start. Use these accounts to log in:
+
+![MediBook AI Account Registration Portal](docs/Images/5.png)
+*User onboarding screen supporting dedicated registration flows for patients and healthcare providers.*
 
 ### 🩺 Patients
 
