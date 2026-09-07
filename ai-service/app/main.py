@@ -220,7 +220,8 @@ def send_chat_message(
 
     bot_message = strip_markdown(result["bot_message"])
     ui_data = result.get("ui_data")
-    if isinstance(ui_data, dict) and lists_appointment_details(bot_message):
+    is_doctor_action = str(result.get("next_action") or "").startswith("doctor_")
+    if isinstance(ui_data, dict) and not is_doctor_action and lists_appointment_details(bot_message):
         ui_data = dict(ui_data)
         ui_data.pop("appointments", None)
         ui_data.pop("doctors", None)

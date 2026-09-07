@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 from typing import Any, Iterator, Optional
 from uuid import uuid4
 
-from app import groq_client
+from app import backend_client, groq_client
+from app.chatbot_doctor import handle_doctor_message
 from app.patient_context import load_patient_context
 from app.response_format import lists_appointment_details, strip_markdown
 from app.schemas import MessageItem
@@ -429,6 +430,36 @@ def run_agent_loop(
     return bot, ui_data
 
 
+def _match_doctor_context(authorization: Optional[str]) -> tuple[bool, Optional[dict[str, Any]]]:
+    """Check if the user is a doctor and return (is_doctor, doctor_context)."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return False, None
+    current_user = backend_client.get_current_user(authorization)
+    user_type = str((current_user or {}).get("user_type") or "").lower()
+    if user_type != "doctor":
+        return False, None
+
+    doctor_candidates = backend_client.list_doctors()
+    current_uid = str((current_user or {}).get("user_id") or "").lower()
+    current_did = str((current_user or {}).get("doctor_id") or "").lower()
+
+    matching_doctor = next(
+        (
+            d for d in doctor_candidates
+            if (current_uid and str(d.get("user_id") or "").lower() == current_uid)
+            or (current_did and str(d.get("doctor_id") or "").lower() == current_did)
+        ),
+        None,
+    )
+    if not matching_doctor and current_did:
+        matching_doctor = {
+            "doctor_id": (current_user or {}).get("doctor_id"),
+            "user_id": (current_user or {}).get("user_id"),
+            "name": (current_user or {}).get("name") or "Doctor",
+        }
+    return True, matching_doctor
+
+
 def handle_message(
     *,
     conversation_id: Optional[str],
@@ -446,6 +477,51 @@ def handle_message(
         session["patient_id"] = patient_id
 
     append_msg(session, "user", message, _utc_now())
+
+    # Doctor routing: bypass patient triage & agent loop for authenticated doctors
+    is_doctor, matching_doctor = _match_doctor_context(authorization)
+    if is_doctor:
+        if matching_doctor:
+            doctor_result = handle_doctor_message(
+                session=session,
+                message=message,
+                authorization=authorization,
+                doctor_context=matching_doctor,
+            )
+            append_msg(session, "assistant", doctor_result["bot_message"], _utc_now())
+            return {
+                "conversation_id": conv_id,
+                "patient_id": session.get("patient_id"),
+                "timestamp": _utc_now(),
+                "bot_message": doctor_result["bot_message"],
+                "next_action": doctor_result["next_action"],
+                "options": [],
+                "ui_data": doctor_result.get("ui_data", {}),
+                "conversation_history": session["messages"],
+                "status": session.get("status", "ongoing"),
+                "appointment_booked": session.get("appointment_booked"),
+                "created_at": session.get("created_at") or _utc_now(),
+                "updated_at": session.get("updated_at") or _utc_now(),
+            }
+
+        bot = "Unable to load your doctor profile - please contact support"
+        action = "doctor_profile_error"
+        ui_data = {}
+        append_msg(session, "assistant", bot, _utc_now())
+        return {
+            "conversation_id": conv_id,
+            "patient_id": session.get("patient_id"),
+            "timestamp": _utc_now(),
+            "bot_message": bot,
+            "next_action": action,
+            "options": [],
+            "ui_data": ui_data,
+            "conversation_history": session["messages"],
+            "status": session.get("status", "ongoing"),
+            "appointment_booked": session.get("appointment_booked"),
+            "created_at": session.get("created_at") or _utc_now(),
+            "updated_at": session.get("updated_at") or _utc_now(),
+        }
 
     t_em_start = time.perf_counter()
     em_check = is_emergency(message)
@@ -525,6 +601,55 @@ def handle_message_stream(
         session["patient_id"] = patient_id
 
     append_msg(session, "user", message, _utc_now())
+
+    is_doctor, matching_doctor = _match_doctor_context(authorization)
+    if is_doctor:
+        yield f"event: status\ndata: {json.dumps({'label': 'Checking doctor schedule...'})}\n\n"
+        if matching_doctor:
+            doctor_result = handle_doctor_message(
+                session=session,
+                message=message,
+                authorization=authorization,
+                doctor_context=matching_doctor,
+            )
+            append_msg(session, "assistant", doctor_result["bot_message"], _utc_now())
+            final_payload = {
+                "conversation_id": conv_id,
+                "patient_id": session.get("patient_id"),
+                "timestamp": _utc_now(),
+                "bot_message": doctor_result["bot_message"],
+                "next_action": doctor_result["next_action"],
+                "options": [],
+                "ui_data": doctor_result.get("ui_data", {}),
+                "conversation_history": session["messages"],
+                "status": session.get("status", "ongoing"),
+                "appointment_booked": session.get("appointment_booked"),
+                "created_at": session.get("created_at") or _utc_now(),
+                "updated_at": session.get("updated_at") or _utc_now(),
+            }
+            yield f"event: final\ndata: {json.dumps(final_payload, default=str)}\n\n"
+            return
+
+        bot = "Unable to load your doctor profile - please contact support"
+        action = "doctor_profile_error"
+        ui_data = {}
+        append_msg(session, "assistant", bot, _utc_now())
+        final_payload = {
+            "conversation_id": conv_id,
+            "patient_id": session.get("patient_id"),
+            "timestamp": _utc_now(),
+            "bot_message": bot,
+            "next_action": action,
+            "options": [],
+            "ui_data": ui_data,
+            "conversation_history": session["messages"],
+            "status": session.get("status", "ongoing"),
+            "appointment_booked": session.get("appointment_booked"),
+            "created_at": session.get("created_at") or _utc_now(),
+            "updated_at": session.get("updated_at") or _utc_now(),
+        }
+        yield f"event: final\ndata: {json.dumps(final_payload, default=str)}\n\n"
+        return
 
     if is_emergency(message):
         bot = EMERGENCY_ALERT
