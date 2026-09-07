@@ -93,11 +93,15 @@ export const Chat: React.FC = () => {
     userName = rawName.split(/\s+/)[0];
   }
 
+  const isDoctor = currentUser?.userType === 'doctor';
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'msg-welcome',
       sender: 'bot',
-      text: `Hi ${userName}! How can I help you today?`,
+      text: isDoctor
+        ? `Hi Dr. ${userName}! How can I help you manage your appointments today?`
+        : `Hi ${userName}! How can I help you today?`,
       timestamp: 'Just now',
     },
   ]);
@@ -213,12 +217,20 @@ export const Chat: React.FC = () => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isRecording, isBotTyping, startVoiceInput]);
 
-  const quickSymptoms = [
-    'Book an appointment',
-    'Cancel my appointment',
-    'Reschedule appointment',
-    'What are my appointments?',
-  ];
+  const quickSymptoms = isDoctor
+    ? [
+        'Show my appointments',
+        'Cancel appointment',
+        'Reschedule appointment',
+        "Reschedule a patient's appointment",
+        "Cancel a patient's appointment",
+      ]
+    : [
+        'Book an appointment',
+        'Cancel my appointment',
+        'Reschedule appointment',
+        'What are my appointments?',
+      ];
 
   const callChatApi = useCallback(
     async (text: string, optionId?: string) => {
@@ -307,14 +319,16 @@ export const Chat: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-heading font-extrabold text-xl sm:text-2xl text-textPrimary tracking-tight">
-                AI Health Assistant
+                {isDoctor ? 'Doctor Schedule Assistant' : 'AI Health Assistant'}
               </h1>
               <Badge status="success" size="sm" withDot>
                 Online
               </Badge>
             </div>
             <p className="text-xs text-textSecondary">
-              Describe your symptoms and I'll help you book the right appointment
+              {isDoctor
+                ? 'Manage your schedule, look up appointments, and view patient details'
+                : "Describe your symptoms and I'll help you book the right appointment"}
             </p>
           </div>
         </div>
@@ -420,7 +434,7 @@ export const Chat: React.FC = () => {
                       );
                     })()}
 
-                  {msg.nextAction === 'waiting_for_slot_selection' &&
+                  {(msg.nextAction === 'waiting_for_slot_selection' || msg.nextAction === 'doctor_reschedule') &&
                     msg.uiData?.slots &&
                     msg.uiData.slots.length > 0 &&
                     !listsAppointmentDetails(msg.text) && (
@@ -434,14 +448,19 @@ export const Chat: React.FC = () => {
                     )}
 
                   {msg.uiData?.appointments &&
-                    msg.uiData.appointments.length > 0 &&
-                    msg.nextAction === 'show_appointments' && (
+                    msg.uiData.appointments.length > 0 && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
                         {msg.uiData.appointments.map((appt) => (
                           <AppointmentCard
                             key={appt.appointment_id}
                             appointment={appt}
-                            onSelect={undefined}
+                            onSelect={
+                              msg.nextAction === 'show_appointments' &&
+                              msg.text?.includes('cancel') === false &&
+                              msg.text?.includes('reschedule') === false
+                                ? undefined
+                                : (id) => handleAction("Selected Appointment", id)
+                            }
                             disabled={isBotTyping}
                           />
                         ))}
