@@ -549,7 +549,6 @@ def tool_get_doctors_by_specialty(
             "specialization": d["specialization"],
             "clinic_name": d["clinic_name"],
             "consultation_fee": d["consultation_fee"],
-            "available_slots": [s.get("label") for s in (d.get("availability_slots") or [])],
         }
         for d in enriched
     ]
@@ -604,12 +603,15 @@ def tool_get_availability(
             doc["slots"] = slots_for_ui
             session["selected_doctor"] = doc
         ui = _merge_ui(session, {"slots": slots_for_ui})
+
+    dates_available = sorted(list({s["date"] for s in slots_for_ui if s.get("date")}))
     return {
         "ok": True,
         "doctor_id": doctor_id,
         "date": date,
-        "slots": labels,
-        "timestamps": timestamps,
+        "total_slots_available": len(labels),
+        "dates_available": dates_available,
+        "sample_slots": labels[:3],
         "ui_data": ui,
     }
 
