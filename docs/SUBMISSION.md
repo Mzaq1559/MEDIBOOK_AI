@@ -95,6 +95,7 @@ MEDIBOOK_AI/
 │       ├── chatbot_handlers.py   # Tool call handlers
 │       ├── tools.py              # Tool definitions
 │       └── rag/                  # ChromaDB RAG pipeline
+├── docs/              # Specifications, architecture, and project documentation
 ├── docker-compose.yml # Single-command deployment
 ├── .env.example       # Environment variable template
 └── README.md          # Full documentation
@@ -106,13 +107,13 @@ MEDIBOOK_AI/
 
 | Name | Role |
 |---|---|
-| See `README.md → Team` section | Full details in README |
+| See [`README.md → Team`](../README.md#-team) section | Full details in README |
 
 ---
 
 ## Demo
 
-See the [README.md Demo Scenarios](README.md#-demo-scenarios) section for a walkthrough of chatbot flows.
+See the [README.md Demo Scenarios](../README.md#-demo-scenarios) section for a walkthrough of chatbot flows.
 
 ---
 

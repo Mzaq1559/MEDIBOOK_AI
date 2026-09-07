@@ -67,6 +67,7 @@ Flexible + Grounded + Safe Clinic AI
 * [Knowledge Base](#-knowledge-base)
 * [API Documentation](#-api-documentation)
 * [Database](#-database)
+* [Documentation](#-documentation)
 * [Project Structure](#-project-structure)
 * [Testing](#-testing)
 * [Observability](#-observability)
@@ -843,6 +844,22 @@ ChromaDB is **not** used for transactional or identity data.
 
 ---
 
+# 📚 Documentation
+
+Comprehensive documentation for the MediBook AI platform is located in the [`docs/`](docs/) directory:
+
+* **[Architecture Document](docs/ARCHITECTURE.md)** — Core system architecture, service communication, RAG pipeline, appointment status state machine, and data flows.
+* **[Hackathon Submission](docs/SUBMISSION.md)** — Submission details, architectural evolution across branches, key technical achievements, and quick start guide.
+* **[API Contracts](docs/API_CONTRACTS.md)** — Complete REST API specifications, request and response models, query parameters, authentication headers, and error responses.
+* **[Database Schema](docs/DATABASE_SCHEMA.md)** — PostgreSQL relational schema, table definitions, foreign keys, indexes, and ChromaDB data separation model.
+* **[RAG Architecture](docs/RAG_ARCHITECTURE.md)** — Medical RAG subsystem architecture, ChromaDB vector store design, embedding pipeline, and clinical safety gates.
+* **[RAG Setup & Operations Guide](docs/RAG_SETUP.md)** — Configuration settings, index lifecycle management, query caching, circuit breakers, and troubleshooting.
+* **[Architecture Analysis](docs/architecture_analysis.md)** — In-depth architectural analysis of the agentic LLM implementation, emergency guard, and request traces.
+* **[Complete Specifications](docs/MEDIBOOK_AI_COMPLETE_SPECIFICATIONS.txt)** — Comprehensive technical specifications and platform operational requirements.
+* **[Technical Specifications (DOCX)](docs/MEDIBOOK_AI_Technical_Specifications.docx)** — Platform technical specifications document in Microsoft Word format.
+
+---
+
 # 📁 Project Structure
 
 ```text
@@ -888,6 +905,9 @@ MEDIBOOK_AI/
 │       ├── test_rag_pipeline.py
 │       ├── test_rag_safety.py
 │       └── test_rag_integration.py
+│
+├── docs/
+│   └── # Specifications, architecture documents, and guides
 │
 ├── docker-compose.yml
 ├── .env.example
